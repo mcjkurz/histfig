@@ -41,6 +41,8 @@ class DocumentProcessor:
                 try:
                     page_text = page.extract_text()
                     if page_text.strip():
+                        # Fix common character encoding issues from PDF extraction
+                        page_text = self._fix_pdf_encoding_issues(page_text)
                         text += f"\n--- Page {page_num + 1} ---\n"
                         text += page_text
                 except Exception as e:
@@ -80,6 +82,53 @@ class DocumentProcessor:
         except Exception as e:
             logging.error(f"Error extracting text from text file: {e}")
             raise Exception(f"Failed to extract text from text file: {str(e)}")
+    
+    def _fix_pdf_encoding_issues(self, text: str) -> str:
+        """
+        Fix common character encoding issues from PDF extraction.
+        
+        Args:
+            text: Raw text from PDF extraction
+            
+        Returns:
+            Text with fixed encoding issues
+        """
+        # Dictionary of common problematic characters and their replacements
+        replacements = {
+            '\u25a0': '-',  # Black square (■) to hyphen
+            '\u25aa': '-',  # Small black square to hyphen
+            '\u25ab': '-',  # Small white square to hyphen
+            '\u2022': '•',  # Bullet point
+            '\u2013': '-',  # En dash to hyphen
+            '\u2014': '--', # Em dash to double hyphen
+            '\u2018': "'",  # Left single quote
+            '\u2019': "'",  # Right single quote
+            '\u201c': '"',  # Left double quote
+            '\u201d': '"',  # Right double quote
+            '\u2026': '...', # Ellipsis
+            '\ufb01': 'fi', # fi ligature
+            '\ufb02': 'fl', # fl ligature
+            '\ufffd': '',   # Replacement character (remove)
+            '\xa0': ' ',    # Non-breaking space
+            '\u00ad': '-',  # Soft hyphen
+            '\u2010': '-',  # Hyphen
+            '\u2011': '-',  # Non-breaking hyphen
+            '\u2012': '-',  # Figure dash
+            '\u2015': '--', # Horizontal bar
+            '■': '-',       # Direct black square character
+            '□': '-',       # White square
+            '▪': '-',       # Small black square
+            '▫': '-',       # Small white square
+        }
+        
+        # Apply replacements
+        for old_char, new_char in replacements.items():
+            text = text.replace(old_char, new_char)
+        
+        # Remove any remaining control characters except newlines and tabs
+        text = ''.join(char if char.isprintable() or char in '\n\t' else ' ' for char in text)
+        
+        return text
     
     def clean_text(self, text: str, preserve_newlines: bool = True) -> str:
         """

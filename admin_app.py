@@ -4,7 +4,7 @@ Historical Figures Administration Interface
 A web-based admin panel for managing historical figures and their documents.
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, send_from_directory
 import os
 import json
 import logging
@@ -18,7 +18,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
-from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS
+from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR
 
 app = Flask(__name__)
 app.secret_key = 'historical_figures_admin_key_change_in_production'
@@ -50,11 +50,17 @@ app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['MAX_FORM_MEMORY_SIZE'] = None
 
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
+os.makedirs(FIGURE_IMAGES_DIR, exist_ok=True)
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def allowed_image_file(filename):
+    """Check if image file extension is allowed."""
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
 @app.route('/')
 def index():
@@ -119,6 +125,28 @@ def create_figure():
             max_length = max(100, min(2000, max_length))  # Clamp between 100 and 2000
         except (ValueError, TypeError):
             max_length = 500  # Default value
+        
+        # Handle image upload
+        image_filename = None
+        if 'image' in request.files:
+            image_file = request.files['image']
+            if image_file and image_file.filename != '' and allowed_image_file(image_file.filename):
+                try:
+                    # Create secure filename
+                    file_extension = Path(image_file.filename).suffix.lower()
+                    image_filename = f"{figure_id}{file_extension}"
+                    image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
+                    
+                    # Save the image
+                    image_file.save(image_path)
+                    logging.info(f"Saved image for figure {figure_id}: {image_path}")
+                except Exception as e:
+                    logging.error(f"Error saving image for figure {figure_id}: {str(e)}")
+                    flash(f'Warning: Image could not be saved: {str(e)}', 'warning')
+        
+        # Add image filename to metadata if available
+        if image_filename:
+            metadata['image'] = image_filename
         
         # Create figure
         figure_manager = get_figure_manager()
@@ -241,6 +269,32 @@ def update_figure(figure_id):
             metadata['occupation'] = form_data['occupation'][:200]  # Limit length
         elif 'occupation' in metadata:
             del metadata['occupation']
+        
+        # Handle image upload
+        if 'image' in request.files:
+            image_file = request.files['image']
+            if image_file and image_file.filename != '' and allowed_image_file(image_file.filename):
+                try:
+                    # Remove old image if it exists
+                    old_image = metadata.get('image')
+                    if old_image:
+                        old_image_path = os.path.join(FIGURE_IMAGES_DIR, old_image)
+                        if os.path.exists(old_image_path):
+                            os.remove(old_image_path)
+                            logging.info(f"Removed old image: {old_image_path}")
+                    
+                    # Save new image
+                    file_extension = Path(image_file.filename).suffix.lower()
+                    image_filename = f"{figure_id}{file_extension}"
+                    image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
+                    image_file.save(image_path)
+                    
+                    # Update metadata
+                    metadata['image'] = image_filename
+                    logging.info(f"Updated image for figure {figure_id}: {image_path}")
+                except Exception as e:
+                    logging.error(f"Error updating image for figure {figure_id}: {str(e)}")
+                    flash(f'Warning: Image could not be updated: {str(e)}', 'warning')
         
         updates['metadata'] = metadata
         
@@ -594,6 +648,15 @@ def api_figure_stats(figure_id):
         return jsonify(stats)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/figure_images/<filename>')
+def serve_figure_image(filename):
+    """Serve figure images."""
+    try:
+        return send_from_directory(FIGURE_IMAGES_DIR, filename)
+    except Exception as e:
+        logging.error(f"Error serving figure image {filename}: {str(e)}")
+        return jsonify({'error': 'Image not found'}), 404
 
 if __name__ == '__main__':
     app.run(debug=DEBUG_MODE, host='0.0.0.0', port=ADMIN_PORT)

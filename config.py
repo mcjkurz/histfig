@@ -24,4 +24,6 @@ CHROMA_DB_PATH = "./chroma_db"
 
 # File Upload Settings
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'md'}
+ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 TEMP_UPLOAD_DIR = "./temp_uploads"
+FIGURE_IMAGES_DIR = "./static/figure_images"

@@ -352,7 +352,7 @@ class ChatApp {
             
             if (current.figure_id) {
                 this.figureSelect.value = current.figure_id;
-                this.currentFigure = current.figure_id;
+                this.currentFigure = current;  // Store the full figure object
                 this.updateRagStatus();
             } else {
                 this.figureSelect.value = '';
@@ -379,7 +379,6 @@ class ChatApp {
             
             if (result.success) {
                 this.currentFigure = result.current_figure;
-                this.updateWelcomeMessage(result.current_figure, result.figure_name);
                 this.updateRagStatus();
             } else {
                 console.error('Failed to select figure:', result.error);
@@ -389,18 +388,6 @@ class ChatApp {
         }
     }
 
-    updateWelcomeMessage(currentFigure, figureName) {
-        const firstAssistantMessage = this.chatMessages.querySelector('.message.assistant .message-content');
-        if (firstAssistantMessage) {
-            if (currentFigure) {
-                firstAssistantMessage.textContent = `Hello! I am ${figureName}. How may I help you today?`;
-                this.figureInfo.style.display = 'none';
-            } else {
-                firstAssistantMessage.textContent = "Hello! I'm your AI assistant powered by Ollama. How can I help you today?";
-                this.figureInfo.style.display = 'none';
-            }
-        }
-    }
 
     toggleRAG() {
         this.ragEnabled = !this.ragEnabled;
@@ -511,7 +498,30 @@ class ChatApp {
         
         const avatar = document.createElement('div');
         avatar.className = 'message-avatar';
-        avatar.textContent = sender === 'user' ? 'You' : 'AI';
+        
+        if (sender === 'user') {
+            avatar.textContent = 'You';
+        } else {
+            // For AI messages, use figure image if available
+            if (this.currentFigure && this.currentFigure.metadata && this.currentFigure.metadata.image) {
+                const img = document.createElement('img');
+                img.src = `/figure_images/${this.currentFigure.metadata.image}`;
+                img.alt = this.currentFigure.name || 'AI';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.borderRadius = '50%';
+                img.style.objectFit = 'cover';
+                img.onerror = () => {
+                    // Fallback to text if image fails to load
+                    avatar.innerHTML = '';
+                    avatar.textContent = 'AI';
+                    console.error('Failed to load figure image in addMessage:', img.src);
+                };
+                avatar.appendChild(img);
+            } else {
+                avatar.textContent = 'AI';
+            }
+        }
         
         const contentDiv = document.createElement('div');
         contentDiv.className = 'message-content';

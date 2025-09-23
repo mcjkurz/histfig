@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response, make_response
+from flask import Flask, render_template, request, jsonify, Response, make_response, send_from_directory
 import requests
 import json
 import logging
@@ -13,8 +13,10 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
 from reportlab.lib import colors
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import OLLAMA_URL, DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE
+from config import OLLAMA_URL, DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR
 
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
@@ -23,6 +25,51 @@ logging.basicConfig(level=logging.WARNING)
 
 conversation_history = []
 current_figure = None
+
+def register_unicode_fonts():
+    """Register Unicode-capable fonts for PDF generation"""
+    try:
+        # Try to use system fonts that support Chinese characters
+        import platform
+        system = platform.system()
+        
+        if system == "Darwin":  # macOS
+            # Try to register common macOS fonts that support Chinese
+            font_paths = [
+                "/System/Library/Fonts/PingFang.ttc",  # PingFang SC
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",  # Hiragino Sans GB
+                "/System/Library/Fonts/STHeiti Light.ttc",  # STHeiti
+                "/System/Library/Fonts/Arial Unicode MS.ttf",  # Arial Unicode MS
+            ]
+        elif system == "Linux":
+            # Try common Linux fonts
+            font_paths = [
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            ]
+        else:  # Windows
+            font_paths = [
+                "C:/Windows/Fonts/msyh.ttc",  # Microsoft YaHei
+                "C:/Windows/Fonts/simsun.ttc",  # SimSun
+                "C:/Windows/Fonts/arial.ttf",  # Arial
+            ]
+        
+        # Try to register the first available font
+        for font_path in font_paths:
+            try:
+                if os.path.exists(font_path):
+                    pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
+                    return 'UnicodeFont'
+            except Exception as e:
+                continue
+        
+        # Fallback: use Helvetica (built-in font that handles basic Latin)
+        return 'Helvetica'
+        
+    except Exception as e:
+        logging.warning(f"Could not register Unicode fonts: {e}")
+        return 'Helvetica'
 
 def clean_thinking_content(text):
     """Remove thinking tags and content from text"""
@@ -158,6 +205,8 @@ def chat():
                             
                             enhanced_prompt = f"""{base_instruction}
 
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+
 Based on the following context from your writings and documents, please answer the user's current question in character:
 
 Your Documents:
@@ -177,6 +226,8 @@ Your Documents:
                             
                             enhanced_prompt = f"""{base_instruction}
 
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+
 {f'Conversation history:' + chr(10) + conversation_context + chr(10) + chr(10) if conversation_context else ''}User's Current Question: {message}{thinking_instruction}
 
 {response_start}Answer as {figure_name} would (no specific documents available for this query):"""
@@ -186,7 +237,11 @@ Your Documents:
                     thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
                     
                     if conversation_context:
-                        enhanced_prompt = f"""You are a helpful AI assistant. Here is the conversation history:
+                        enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+
+Here is the conversation history:
 
 {conversation_context}
 
@@ -195,6 +250,8 @@ User's Current Question: {message}{thinking_instruction}
 {response_start}Answer:"""
                     else:
                         enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
 
 User's Question: {message}{thinking_instruction}
 
@@ -206,7 +263,11 @@ User's Question: {message}{thinking_instruction}
                 thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
                 
                 if conversation_context:
-                    enhanced_prompt = f"""You are a helpful AI assistant. Here is the conversation history:
+                    enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+
+Here is the conversation history:
 
 {conversation_context}
 
@@ -215,6 +276,8 @@ User's Current Question: {message}{thinking_instruction}
 {response_start}Answer:"""
                 else:
                     enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
 
 User's Question: {message}{thinking_instruction}
 
@@ -225,7 +288,11 @@ User's Question: {message}{thinking_instruction}
             thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
             
             if conversation_context:
-                enhanced_prompt = f"""You are a helpful AI assistant. Here is the conversation history:
+                enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+
+Here is the conversation history:
 
 {conversation_context}
 
@@ -234,6 +301,8 @@ User's Current Question: {message}{thinking_instruction}
 {response_start}Answer:"""
             else:
                 enhanced_prompt = f"""You are a helpful AI assistant.
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
 
 User's Question: {message}{thinking_instruction}
 
@@ -439,7 +508,7 @@ def select_figure():
             
             return jsonify({
                 'success': True,
-                'current_figure': current_figure,
+                'current_figure': metadata,  # Return full metadata instead of just ID
                 'figure_name': metadata.get('name', figure_id)
             })
         else:
@@ -464,12 +533,7 @@ def get_current_figure():
             figure_manager = get_figure_manager()
             metadata = figure_manager.get_figure_metadata(current_figure)
             if metadata:
-                return jsonify({
-                    'figure_id': current_figure,
-                    'figure_name': metadata.get('name', current_figure),
-                    'description': metadata.get('description', ''),
-                    'personality_prompt': metadata.get('personality_prompt', '')
-                })
+                return jsonify(metadata)
         
         return jsonify({'figure_id': None, 'figure_name': None})
     except Exception as e:
@@ -498,6 +562,15 @@ def convert_markdown():
         logging.error(f"Error converting markdown: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/figure_images/<filename>')
+def serve_figure_image(filename):
+    """Serve figure images."""
+    try:
+        return send_from_directory(FIGURE_IMAGES_DIR, filename)
+    except Exception as e:
+        logging.error(f"Error serving figure image {filename}: {str(e)}")
+        return jsonify({'error': 'Image not found'}), 404
+
 @app.route('/api/export/pdf', methods=['POST'])
 def export_conversation_pdf():
     """Export conversation as PDF"""
@@ -515,6 +588,9 @@ def export_conversation_pdf():
         rag_enabled = data.get('rag_enabled', True)
         retrieved_documents = data.get('retrieved_documents', [])
         
+        # Register Unicode fonts for Chinese character support
+        unicode_font = register_unicode_fonts()
+        
         # Create PDF in memory
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
@@ -527,31 +603,34 @@ def export_conversation_pdf():
         # Define styles
         styles = getSampleStyleSheet()
         
-        # Simple title style
+        # Simple title style with Unicode font
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Title'],
             fontSize=18,
+            fontName=unicode_font,
             textColor=colors.HexColor('#2c3e50'),
             spaceAfter=20,
             alignment=TA_CENTER
         )
         
-        # Settings style
+        # Settings style with Unicode font
         settings_style = ParagraphStyle(
             'Settings',
             parent=styles['Normal'],
             fontSize=10,
+            fontName=unicode_font,
             textColor=colors.HexColor('#7f8c8d'),
             spaceAfter=20,
             alignment=TA_LEFT
         )
         
-        # Simple message style
+        # Simple message style with Unicode font
         message_style = ParagraphStyle(
             'Message',
             parent=styles['Normal'],
             fontSize=11,
+            fontName=unicode_font,
             textColor=colors.HexColor('#2c3e50'),
             spaceAfter=12,
             spaceBefore=6,
@@ -590,14 +669,8 @@ def export_conversation_pdf():
             content = content.replace('<', '&lt;')
             content = content.replace('>', '&gt;')
             
-            # Fix common character encoding issues that cause black squares
-            content = content.replace('–', '-')  # En dash to hyphen
-            content = content.replace('—', '-')  # Em dash to hyphen
-            content = content.replace(''', "'")  # Smart quote to regular quote
-            content = content.replace(''', "'")  # Smart quote to regular quote
-            content = content.replace('"', '"')  # Smart quote to regular quote
-            content = content.replace('"', '"')  # Smart quote to regular quote
-            content = content.replace('…', '...')  # Ellipsis to three dots
+            # Only replace specific problematic characters, preserve Unicode content
+            # Don't replace characters that might be legitimate Unicode text (like Chinese)
             
             # Convert newlines to HTML line breaks
             content = content.replace('\n', '<br/>')
@@ -618,11 +691,12 @@ def export_conversation_pdf():
             from reportlab.platypus import PageBreak
             story.append(PageBreak())
             
-            # Appendix title
+            # Appendix title with Unicode font
             appendix_title_style = ParagraphStyle(
                 'AppendixTitle',
                 parent=styles['Title'],
                 fontSize=16,
+                fontName=unicode_font,
                 textColor=colors.HexColor('#2c3e50'),
                 spaceAfter=20,
                 alignment=TA_CENTER
@@ -630,22 +704,23 @@ def export_conversation_pdf():
             story.append(Paragraph("Appendix: Retrieved Documents", appendix_title_style))
             story.append(Spacer(1, 0.2*inch))
             
-            # Document header style
+            # Document header style with Unicode font
             doc_header_style = ParagraphStyle(
                 'DocHeader',
                 parent=styles['Normal'],
                 fontSize=12,
+                fontName=unicode_font,
                 textColor=colors.HexColor('#2c3e50'),
-                fontName='Helvetica-Bold',
                 spaceAfter=8,
                 spaceBefore=12
             )
             
-            # Document content style
+            # Document content style with Unicode font
             doc_content_style = ParagraphStyle(
                 'DocContent',
                 parent=styles['Normal'],
                 fontSize=10,
+                fontName=unicode_font,
                 textColor=colors.HexColor('#34495e'),
                 spaceAfter=10,
                 leftIndent=12,
@@ -653,15 +728,15 @@ def export_conversation_pdf():
                 leading=13
             )
             
-            # Document metadata style
+            # Document metadata style with Unicode font
             doc_meta_style = ParagraphStyle(
                 'DocMeta',
                 parent=styles['Normal'],
                 fontSize=9,
+                fontName=unicode_font,
                 textColor=colors.HexColor('#7f8c8d'),
                 spaceAfter=15,
-                leftIndent=12,
-                fontName='Helvetica-Oblique'
+                leftIndent=12
             )
             
             # Sort documents by filename and chunk ID for better organization
@@ -692,14 +767,8 @@ def export_conversation_pdf():
                 content = content.replace('<', '&lt;')
                 content = content.replace('>', '&gt;')
                 
-                # Fix character encoding issues
-                content = content.replace('–', '-')
-                content = content.replace('—', '-')
-                content = content.replace(''', "'")
-                content = content.replace(''', "'")
-                content = content.replace('"', '"')
-                content = content.replace('"', '"')
-                content = content.replace('…', '...')
+                # Preserve Unicode content including Chinese characters
+                # Don't replace characters that might be legitimate Unicode text
                 
                 # Preserve line breaks
                 content = content.replace('\n', '<br/>')

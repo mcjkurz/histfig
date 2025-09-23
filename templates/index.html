@@ -961,12 +961,6 @@
       </div>
 
       <div class="chat-messages" id="chat-messages">
-        <div class="message assistant">
-          <div class="message-avatar">AI</div>
-          <div class="message-content">
-            Hello! I'm your AI assistant powered by Ollama. How can I help you today?
-          </div>
-        </div>
       </div>
 
       <div class="chat-input-container">
@@ -1361,9 +1355,6 @@
                 if (result.success) {
                     this.currentFigure = result.current_figure;
                     
-                    // Update the existing welcome message instead of clearing chat
-                    this.updateWelcomeMessage(result.current_figure, result.figure_name);
-                    
                     // Update RAG status to show current figure's document count
                     this.updateRagStatus();
                 } else {
@@ -1376,20 +1367,6 @@
 
 
 
-        updateWelcomeMessage(currentFigure, figureName) {
-            // Find the first assistant message (welcome message)
-            const firstAssistantMessage = this.chatMessages.querySelector('.message.assistant .message-content');
-            if (firstAssistantMessage) {
-                if (currentFigure) {
-                    firstAssistantMessage.textContent = `Hello! I am ${figureName}. How may I help you today?`;
-                    // Hide figure info since it's redundant
-                    this.figureInfo.style.display = 'none';
-                } else {
-                    firstAssistantMessage.textContent = "Hello! I'm your AI assistant powered by Ollama. How can I help you today?";
-                    this.figureInfo.style.display = 'none';
-                }
-            }
-        }
 
         toggleRAG() {
             this.ragEnabled = !this.ragEnabled;
@@ -1477,7 +1454,29 @@
                 
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = sender === 'user' ? 'You' : 'AI';
+            
+            if (sender === 'user') {
+                avatar.textContent = 'You';
+            } else {
+                // For AI messages, use figure image if available
+                if (this.currentFigure && this.currentFigure.metadata && this.currentFigure.metadata.image) {
+                    const img = document.createElement('img');
+                    img.src = `/figure_images/${this.currentFigure.metadata.image}`;
+                    img.alt = this.currentFigure.name || 'AI';
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.borderRadius = '50%';
+                    img.style.objectFit = 'cover';
+                    img.onerror = () => {
+                        // Fallback to text if image fails to load
+                        avatar.innerHTML = '';
+                        avatar.textContent = 'AI';
+                    };
+                    avatar.appendChild(img);
+                } else {
+                    avatar.textContent = 'AI';
+                }
+            }
                 
             const contentDiv = document.createElement('div');
             contentDiv.className = 'message-content';
@@ -1795,7 +1794,25 @@
             
             const avatar = document.createElement('div');
             avatar.className = 'message-avatar';
-            avatar.textContent = 'AI';
+            
+            // For typing indicator, use figure image if available
+            if (this.currentFigure && this.currentFigure.metadata && this.currentFigure.metadata.image) {
+                const img = document.createElement('img');
+                img.src = `/figure_images/${this.currentFigure.metadata.image}`;
+                img.alt = this.currentFigure.name || 'AI';
+                img.style.width = '100%';
+                img.style.height = '100%';
+                img.style.borderRadius = '50%';
+                img.style.objectFit = 'cover';
+                img.onerror = () => {
+                    // Fallback to text if image fails to load
+                    avatar.innerHTML = '';
+                    avatar.textContent = 'AI';
+                };
+                avatar.appendChild(img);
+            } else {
+                avatar.textContent = 'AI';
+            }
             
             const typingDiv = document.createElement('div');
             typingDiv.className = 'typing-indicator';

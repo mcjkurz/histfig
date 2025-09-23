@@ -9,7 +9,7 @@
         <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Dashboard</a>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('create_figure') }}">
+        <form method="POST" action="{{ url_for('create_figure') }}" enctype="multipart/form-data">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                 <div>
                     <div class="form-group">
@@ -93,6 +93,14 @@
                                max="2000"
                                title="Maximum length for document paragraphs (100-2000 characters)">
                         <small style="color: #666; font-size: 0.8rem;">Characters per paragraph when processing documents (default: 500)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="image">Figure Image</label>
+                        <input type="file" id="image" name="image" class="form-control" 
+                               accept=".png,.jpg,.jpeg,.gif,.webp"
+                               title="Upload an image for this figure (PNG, JPG, JPEG, GIF, WEBP)">
+                        <small style="color: #666; font-size: 0.8rem;">This image will appear instead of the "AI" text in chat (PNG, JPG, JPEG, GIF, WEBP)</small>
                     </div>
 
                     <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
