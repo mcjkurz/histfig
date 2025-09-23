@@ -1,0 +1,109 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Dashboard - Historical Figures Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>📊 Dashboard</h2>
+        <a href="{{ url_for('new_figure') }}" class="btn btn-primary">+ Create New Figure</a>
+    </div>
+    <div class="card-body">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number">{{ figures|length }}</div>
+                <div class="stat-label">Total Figures</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ figures|sum(attribute='document_count', start=0) }}</div>
+                <div class="stat-label">Total Documents</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ (figures|selectattr('personality_prompt')|list)|length }}</div>
+                <div class="stat-label">With Personality</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number">{{ (figures|rejectattr('document_count', 'equalto', 0)|list)|length }}</div>
+                <div class="stat-label">Active Figures</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if figures %}
+<div class="card">
+    <div class="card-header">
+        <h3>📚 Historical Figures</h3>
+    </div>
+    <div class="card-body">
+        <div class="figure-grid">
+            {% for figure in figures %}
+            <div class="figure-card">
+                <div class="figure-card-header">
+                    <h3>{{ figure.name }}</h3>
+                    <p>{{ figure.description or 'No description available' }}</p>
+                    <div class="figure-meta">
+                        <span>ID: {{ figure.figure_id }}</span>
+                        <span>📄 {{ figure.document_count or 0 }} docs</span>
+                        {% if figure.metadata %}
+                            {% if figure.metadata.birth_year or figure.metadata.death_year %}
+                                <span>
+                                    🗓️ {% if figure.metadata.birth_year %}{{ figure.metadata.birth_year }}{% endif %}{% if figure.metadata.birth_year and figure.metadata.death_year %}-{% endif %}{% if figure.metadata.death_year %}{{ figure.metadata.death_year }}{% endif %}
+                                </span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% if figure.personality_prompt %}
+                        <div style="margin-top: 0.5rem; font-size: 0.8rem; color: #666; font-style: italic;">
+                            "{{ figure.personality_prompt[:100] }}{% if figure.personality_prompt|length > 100 %}...{% endif %}"
+                        </div>
+                    {% endif %}
+                </div>
+                <div class="figure-card-actions">
+                    <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-primary" style="font-size: 0.8rem; padding: 0.5rem 1rem;">View</a>
+                    <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="font-size: 0.8rem; padding: 0.5rem 1rem;">Edit</a>
+                    <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success" style="font-size: 0.8rem; padding: 0.5rem 1rem;">Upload</a>
+                    <form method="POST" action="{{ url_for('delete_figure', figure_id=figure.figure_id) }}" style="display: inline;" onsubmit="return confirmDelete('{{ figure.name }}')">
+                        <button type="submit" class="btn btn-danger" style="font-size: 0.8rem; padding: 0.5rem 1rem;">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% else %}
+<div class="card">
+    <div class="card-body" style="text-align: center; padding: 3rem;">
+        <h3 style="color: #666; margin-bottom: 1rem;">No Historical Figures Created Yet</h3>
+        <p style="color: #999; margin-bottom: 2rem;">Get started by creating your first historical figure</p>
+        <a href="{{ url_for('new_figure') }}" class="btn btn-primary">+ Create Your First Figure</a>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <h3>🚀 Quick Actions</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">📝 Create Figure</h4>
+                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Add a new historical figure with custom personality and metadata</p>
+                <a href="{{ url_for('new_figure') }}" class="btn btn-primary">Create Figure</a>
+            </div>
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">💬 Chat Interface</h4>
+                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Open the main chat interface to talk with your figures</p>
+                <a href="http://localhost:5001" target="_blank" class="btn btn-success">Open Chat</a>
+            </div>
+            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">📚 CLI Tools</h4>
+                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Use command line tools for bulk operations and management</p>
+                <code style="background: white; padding: 0.5rem; border-radius: 4px; font-size: 0.8rem;">python figure_cli.py --help</code>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

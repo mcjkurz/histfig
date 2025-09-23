@@ -1,0 +1,9 @@
+Flask
+requests
+chromadb
+sentence-transformers
+PyPDF2
+python-multipart
+torch
+markdown
+reportlab

@@ -1,0 +1,279 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Create New Figure - Historical Figures Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>📝 Create New Historical Figure</h2>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Dashboard</a>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('create_figure') }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <div>
+                    <div class="form-group">
+                        <label for="figure_id">Figure ID *</label>
+                        <input type="text" id="figure_id" name="figure_id" class="form-control" required
+                               placeholder="e.g., napoleonbonaparte"
+                               pattern="[a-zA-Z]+"
+                               maxlength="50"
+                               title="Use only letters (no numbers, spaces, or special characters)">
+                        <small style="color: #666; font-size: 0.8rem;">Unique identifier (letters only, no spaces or special characters)</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="name">Display Name *</label>
+                        <input type="text" id="name" name="name" class="form-control" required
+                               placeholder="e.g., Napoleon Bonaparte"
+                               pattern="[a-zA-Z\s]+"
+                               maxlength="100"
+                               title="Use only letters and spaces">
+                        <small style="color: #666; font-size: 0.8rem;">Letters and spaces only</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description <span id="desc-counter" style="color: #999; font-size: 0.8rem;">(0/400)</span></label>
+                        <textarea id="description" name="description" class="form-control" rows="3"
+                                  maxlength="400"
+                                  placeholder="Brief description of the historical figure..."></textarea>
+                        <small style="color: #666; font-size: 0.8rem;">Maximum 400 characters</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="personality_prompt">Personality Prompt <span id="prompt-counter" style="color: #999; font-size: 0.8rem;">(0/400)</span></label>
+                        <textarea id="personality_prompt" name="personality_prompt" class="form-control" rows="4"
+                                  maxlength="400"
+                                  placeholder="Optional: How should this figure respond? e.g., 'Respond as Napoleon would, with confidence and strategic thinking...'"></textarea>
+                        <small style="color: #666; font-size: 0.8rem;">This will guide how the AI responds (max 400 characters)</small>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: #2c3e50;">📅 Additional Metadata</h4>
+                    
+                    <div class="form-group">
+                        <label for="birth_year">Birth Year</label>
+                        <input type="text" id="birth_year" name="birth_year" class="form-control"
+                               placeholder="e.g., 1769" 
+                               pattern="[0-9]{4}"
+                               maxlength="4"
+                               title="Enter a 4-digit year (e.g., 1769)">
+                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="death_year">Death Year</label>
+                        <input type="text" id="death_year" name="death_year" class="form-control"
+                               placeholder="e.g., 1821" 
+                               pattern="[0-9]{4}"
+                               maxlength="4"
+                               title="Enter a 4-digit year (e.g., 1821)">
+                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nationality">Nationality</label>
+                        <input type="text" id="nationality" name="nationality" class="form-control"
+                               placeholder="e.g., French">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="occupation">Occupation/Title</label>
+                        <input type="text" id="occupation" name="occupation" class="form-control"
+                               placeholder="e.g., Emperor, Military General">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max_length">Max Paragraph Length</label>
+                        <input type="number" id="max_length" name="max_length" class="form-control"
+                               placeholder="e.g., 500" 
+                               value="500"
+                               min="100"
+                               max="2000"
+                               title="Maximum length for document paragraphs (100-2000 characters)">
+                        <small style="color: #666; font-size: 0.8rem;">Characters per paragraph when processing documents (default: 500)</small>
+                    </div>
+
+                    <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; margin-top: 1rem;">
+                        <h5 style="color: #2c3e50; margin-bottom: 0.5rem;">💡 Quick Tips</h5>
+                        <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.9rem; color: #666;">
+                            <li>Use a descriptive Figure ID (cannot be changed later)</li>
+                            <li>Add a personality prompt for more authentic responses</li>
+                            <li>You can upload documents after creating the figure</li>
+                            <li>All fields except Figure ID and Name can be edited later</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; text-align: center; padding-top: 1rem; border-top: 1px solid #e9ecef;">
+                <button type="submit" class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1rem;">
+                    ✨ Create Historical Figure
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>📋 Example Figures</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                <h5 style="color: #2c3e50;">Napoleon Bonaparte</h5>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>ID:</strong> napoleon_bonaparte</p>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>Prompt:</strong> "Respond as Napoleon would, with confidence, strategic thinking, and references to military campaigns..."</p>
+            </div>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                <h5 style="color: #2c3e50;">Leonardo da Vinci</h5>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>ID:</strong> leonardo_da_vinci</p>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>Prompt:</strong> "Respond as Leonardo would, with curiosity, artistic insight, and Renaissance thinking..."</p>
+            </div>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px;">
+                <h5 style="color: #2c3e50;">Marcus Aurelius</h5>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>ID:</strong> marcus_aurelius</p>
+                <p style="font-size: 0.8rem; color: #666; margin: 0.5rem 0;"><strong>Prompt:</strong> "Respond as Marcus Aurelius would, with Stoic philosophy, wisdom, and reflective insight..."</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Character counters
+    function updateCharCounter(inputId, counterId, maxLength) {
+        const input = document.getElementById(inputId);
+        const counter = document.getElementById(counterId);
+        if (input && counter) {
+            const updateCount = () => {
+                const length = input.value.length;
+                counter.textContent = `(${length}/${maxLength})`;
+                if (length > maxLength * 0.9) {
+                    counter.style.color = '#e74c3c';
+                } else if (length > maxLength * 0.7) {
+                    counter.style.color = '#f39c12';
+                } else {
+                    counter.style.color = '#999';
+                }
+            };
+            input.addEventListener('input', updateCount);
+            updateCount(); // Initial count
+        }
+    }
+    
+    // Initialize character counters
+    updateCharCounter('description', 'desc-counter', 400);
+    updateCharCounter('personality_prompt', 'prompt-counter', 400);
+    
+    // Auto-generate figure ID from name (letters only)
+    document.getElementById('name').addEventListener('input', function() {
+        const name = this.value;
+        const figureIdField = document.getElementById('figure_id');
+        
+        if (!figureIdField.dataset.userModified) {
+            const figureId = name
+                .toLowerCase()
+                .replace(/[^a-z]/g, '') // Remove all non-letter characters
+                .substring(0, 50);
+            figureIdField.value = figureId;
+        }
+    });
+
+    // Mark figure ID as user-modified if manually edited
+    document.getElementById('figure_id').addEventListener('input', function() {
+        this.dataset.userModified = 'true';
+        // Remove any non-letter characters as user types
+        this.value = this.value.replace(/[^a-zA-Z]/g, '');
+    });
+    
+    // Validate name input (letters and spaces only)
+    document.getElementById('name').addEventListener('input', function() {
+        this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
+    });
+    
+    // Validate year inputs (numbers only, 4 digits)
+    ['birth_year', 'death_year'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', function() {
+                // Remove non-numeric characters
+                this.value = this.value.replace(/[^0-9]/g, '');
+                // Limit to 4 digits
+                if (this.value.length > 4) {
+                    this.value = this.value.slice(0, 4);
+                }
+            });
+        }
+    });
+
+    // Form validation
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const figureId = document.getElementById('figure_id').value;
+        const name = document.getElementById('name').value;
+        const birthYear = document.getElementById('birth_year').value;
+        const deathYear = document.getElementById('death_year').value;
+        const description = document.getElementById('description').value;
+        const personality = document.getElementById('personality_prompt').value;
+        
+        // Required fields
+        if (!figureId || !name) {
+            e.preventDefault();
+            alert('Figure ID and Name are required!');
+            return false;
+        }
+        
+        // Figure ID validation (letters only)
+        if (!/^[a-zA-Z]+$/.test(figureId)) {
+            e.preventDefault();
+            alert('Figure ID must contain only letters (no numbers, spaces, or special characters)!');
+            return false;
+        }
+        
+        // Name validation (letters and spaces only)
+        if (!/^[a-zA-Z\s]+$/.test(name)) {
+            e.preventDefault();
+            alert('Name must contain only letters and spaces!');
+            return false;
+        }
+        
+        // Year validation
+        if (birthYear && !/^\d{4}$/.test(birthYear)) {
+            e.preventDefault();
+            alert('Birth year must be a 4-digit number!');
+            return false;
+        }
+        
+        if (deathYear && !/^\d{4}$/.test(deathYear)) {
+            e.preventDefault();
+            alert('Death year must be a 4-digit number!');
+            return false;
+        }
+        
+        // Check death year is after birth year
+        if (birthYear && deathYear) {
+            const birth = parseInt(birthYear);
+            const death = parseInt(deathYear);
+            if (death < birth) {
+                e.preventDefault();
+                alert('Death year cannot be before birth year!');
+                return false;
+            }
+        }
+        
+        // Length validation
+        if (description.length > 400) {
+            e.preventDefault();
+            alert('Description must be 400 characters or less!');
+            return false;
+        }
+        
+        if (personality.length > 400) {
+            e.preventDefault();
+            alert('Personality prompt must be 400 characters or less!');
+            return false;
+        }
+    });
+</script>
+{% endblock %}

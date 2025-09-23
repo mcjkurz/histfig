@@ -1,0 +1,251 @@
+{% extends "admin/base.html" %}
+
+{% block title %}Edit {{ figure.name }} - Historical Figures Admin{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>✏️ Edit {{ figure.name }}</h2>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary">← Back to Figure</a>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">Dashboard</a>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="POST" action="{{ url_for('update_figure', figure_id=figure.figure_id) }}">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                <div>
+                    <div class="form-group">
+                        <label for="figure_id">Figure ID</label>
+                        <input type="text" id="figure_id" name="figure_id" class="form-control" 
+                               value="{{ figure.figure_id }}" disabled
+                               style="background: #f8f9fa; color: #666;">
+                        <small style="color: #666; font-size: 0.8rem;">Figure ID cannot be changed after creation</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="name">Display Name *</label>
+                        <input type="text" id="name" name="name" class="form-control" required
+                               value="{{ figure.name }}"
+                               pattern="[a-zA-Z\s]+"
+                               maxlength="100"
+                               title="Use only letters and spaces">
+                        <small style="color: #666; font-size: 0.8rem;">Letters and spaces only</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="description">Description <span id="desc-counter" style="color: #999; font-size: 0.8rem;">(0/400)</span></label>
+                        <textarea id="description" name="description" class="form-control" rows="3"
+                                  maxlength="400">{{ figure.description or '' }}</textarea>
+                        <small style="color: #666; font-size: 0.8rem;">Maximum 400 characters</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="personality_prompt">Personality Prompt <span id="prompt-counter" style="color: #999; font-size: 0.8rem;">(0/400)</span></label>
+                        <textarea id="personality_prompt" name="personality_prompt" class="form-control" rows="4"
+                                  maxlength="400">{{ figure.personality_prompt or '' }}</textarea>
+                        <small style="color: #666; font-size: 0.8rem;">This guides how the AI responds (max 400 characters)</small>
+                    </div>
+                </div>
+
+                <div>
+                    <h4 style="margin-bottom: 1rem; color: #2c3e50;">📅 Additional Metadata</h4>
+                    
+                    <div class="form-group">
+                        <label for="birth_year">Birth Year</label>
+                        <input type="text" id="birth_year" name="birth_year" class="form-control"
+                               value="{{ figure.metadata.birth_year if figure.metadata and figure.metadata.birth_year else '' }}"
+                               pattern="[0-9]{4}"
+                               maxlength="4"
+                               title="Enter a 4-digit year (e.g., 1769)">
+                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="death_year">Death Year</label>
+                        <input type="text" id="death_year" name="death_year" class="form-control"
+                               value="{{ figure.metadata.death_year if figure.metadata and figure.metadata.death_year else '' }}"
+                               pattern="[0-9]{4}"
+                               maxlength="4"
+                               title="Enter a 4-digit year (e.g., 1821)">
+                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="nationality">Nationality</label>
+                        <input type="text" id="nationality" name="nationality" class="form-control"
+                               value="{{ figure.metadata.nationality if figure.metadata and figure.metadata.nationality else '' }}">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="occupation">Occupation/Title</label>
+                        <input type="text" id="occupation" name="occupation" class="form-control"
+                               value="{{ figure.metadata.occupation if figure.metadata and figure.metadata.occupation else '' }}">
+                    </div>
+
+                    <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid #ffc107;">
+                        <h5 style="color: #856404; margin-bottom: 0.5rem;">⚠️ Important</h5>
+                        <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.9rem; color: #856404;">
+                            <li>Changes will apply to future conversations</li>
+                            <li>Existing chat history remains unchanged</li>
+                            <li>Documents are not affected by these changes</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 2rem; text-align: center; padding-top: 1rem; border-top: 1px solid #e9ecef;">
+                <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
+                    <button type="submit" class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1rem;">
+                        💾 Save Changes
+                    </button>
+                    <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="padding: 1rem 2rem; font-size: 1rem;">
+                        Cancel
+                    </a>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h3>📊 Current Figure Status</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #3498db;">{{ figure.document_count or 0 }}</div>
+                <div style="color: #666; font-size: 0.9rem;">Documents</div>
+            </div>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #27ae60;">
+                    {% if figure.personality_prompt %}✓{% else %}✗{% endif %}
+                </div>
+                <div style="color: #666; font-size: 0.9rem;">Has Personality</div>
+            </div>
+            <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
+                <div style="font-size: 1.5rem; font-weight: bold; color: #e74c3c;">
+                    {% if figure.metadata %}{{ figure.metadata|length }}{% else %}0{% endif %}
+                </div>
+                <div style="color: #666; font-size: 0.9rem;">Metadata Fields</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Character counters
+    function updateCharCounter(inputId, counterId, maxLength) {
+        const input = document.getElementById(inputId);
+        const counter = document.getElementById(counterId);
+        if (input && counter) {
+            const updateCount = () => {
+                const length = input.value.length;
+                counter.textContent = `(${length}/${maxLength})`;
+                if (length > maxLength * 0.9) {
+                    counter.style.color = '#e74c3c';
+                } else if (length > maxLength * 0.7) {
+                    counter.style.color = '#f39c12';
+                } else {
+                    counter.style.color = '#999';
+                }
+            };
+            input.addEventListener('input', updateCount);
+            updateCount(); // Initial count
+        }
+    }
+    
+    // Initialize character counters
+    updateCharCounter('description', 'desc-counter', 400);
+    updateCharCounter('personality_prompt', 'prompt-counter', 400);
+    
+    // Validate name input (letters and spaces only)
+    document.getElementById('name').addEventListener('input', function() {
+        this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
+    });
+    
+    // Validate year inputs (numbers only, 4 digits)
+    ['birth_year', 'death_year'].forEach(id => {
+        const input = document.getElementById(id);
+        if (input) {
+            input.addEventListener('input', function() {
+                // Remove non-numeric characters
+                this.value = this.value.replace(/[^0-9]/g, '');
+                // Limit to 4 digits
+                if (this.value.length > 4) {
+                    this.value = this.value.slice(0, 4);
+                }
+            });
+        }
+    });
+
+    // Form validation
+    document.querySelector('form').addEventListener('submit', function(e) {
+        const name = document.getElementById('name').value;
+        const birthYear = document.getElementById('birth_year').value;
+        const deathYear = document.getElementById('death_year').value;
+        const description = document.getElementById('description').value;
+        const personality = document.getElementById('personality_prompt').value;
+        
+        // Required fields
+        if (!name.trim()) {
+            e.preventDefault();
+            alert('Display Name is required!');
+            return false;
+        }
+        
+        // Name validation (letters and spaces only)
+        if (!/^[a-zA-Z\s]+$/.test(name)) {
+            e.preventDefault();
+            alert('Name must contain only letters and spaces!');
+            return false;
+        }
+        
+        // Year validation
+        if (birthYear && !/^\d{4}$/.test(birthYear)) {
+            e.preventDefault();
+            alert('Birth year must be a 4-digit number!');
+            return false;
+        }
+        
+        if (deathYear && !/^\d{4}$/.test(deathYear)) {
+            e.preventDefault();
+            alert('Death year must be a 4-digit number!');
+            return false;
+        }
+        
+        // Check death year is after birth year
+        if (birthYear && deathYear) {
+            const birth = parseInt(birthYear);
+            const death = parseInt(deathYear);
+            if (death < birth) {
+                e.preventDefault();
+                alert('Death year cannot be before birth year!');
+                return false;
+            }
+        }
+        
+        // Length validation
+        if (description.length > 400) {
+            e.preventDefault();
+            alert('Description must be 400 characters or less!');
+            return false;
+        }
+        
+        if (personality.length > 400) {
+            e.preventDefault();
+            alert('Personality prompt must be 400 characters or less!');
+            return false;
+        }
+    });
+
+    // Auto-resize textareas
+    document.querySelectorAll('textarea').forEach(textarea => {
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = this.scrollHeight + 'px';
+        });
+    });
+</script>
+{% endblock %}
