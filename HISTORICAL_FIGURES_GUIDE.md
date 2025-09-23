@@ -9,7 +9,7 @@ This system allows you to simulate conversations with historical figures by uplo
 ### 1. Create a Historical Figure
 
 ```bash
-python figure_cli.py create napoleon_bonaparte "Napoleon Bonaparte" \
+python scripts/figure_cli.py create napoleon_bonaparte "Napoleon Bonaparte" \
   --description "French military general and political leader" \
   --personality-prompt "Respond as Napoleon Bonaparte would, with confidence, strategic thinking, and references to military campaigns and political philosophy." \
   --metadata '{"birth_year": 1769, "death_year": 1821, "nationality": "French", "occupation": "Emperor, Military General"}'
@@ -19,42 +19,42 @@ python figure_cli.py create napoleon_bonaparte "Napoleon Bonaparte" \
 
 ```bash
 # Upload PDF files
-python figure_cli.py upload napoleon_bonaparte /path/to/napoleon_diary.pdf
+python scripts/figure_cli.py upload napoleon_bonaparte /path/to/napoleon_diary.pdf
 
 # Upload text files
-python figure_cli.py upload napoleon_bonaparte /path/to/letters.txt /path/to/speeches.txt
+python scripts/figure_cli.py upload napoleon_bonaparte /path/to/letters.txt /path/to/speeches.txt
 
 # Upload multiple files at once
-python figure_cli.py upload napoleon_bonaparte *.pdf *.txt
+python scripts/figure_cli.py upload napoleon_bonaparte *.pdf *.txt
 ```
 
 ### 3. List Available Figures
 
 ```bash
-python figure_cli.py list
+python scripts/figure_cli.py list
 ```
 
 ### 4. View Figure Details
 
 ```bash
-python figure_cli.py show napoleon_bonaparte
+python scripts/figure_cli.py show napoleon_bonaparte
 ```
 
 ### 5. Search Figure's Documents
 
 ```bash
-python figure_cli.py search napoleon_bonaparte "military strategy" --limit 3
+python scripts/figure_cli.py search napoleon_bonaparte "military strategy" --limit 3
 ```
 
 ### 6. Delete a Figure
 
 ```bash
-python figure_cli.py delete napoleon_bonaparte --force
+python scripts/figure_cli.py delete napoleon_bonaparte --force
 ```
 
 ## Using the Web Interface
 
-1. **Start the Server**: Run `python app.py`
+1. **Start the Server**: Run `./start_foreground.sh` or `./start_background.sh`
 2. **Open Browser**: Navigate to `http://localhost:5001`
 3. **Select Figure**: Use the dropdown in the top-left to select a historical figure
 4. **Chat**: Ask questions and the AI will respond as that figure, using their documents for context

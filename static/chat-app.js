@@ -909,7 +909,8 @@ class ChatApp {
     async updateRagStatus() {
         try {
             if (this.currentFigure) {
-                const response = await fetch(`/api/figure/${this.currentFigure}`);
+                const figureId = this.currentFigure.figure_id || this.currentFigure;
+                const response = await fetch(`/api/figure/${figureId}`);
                 if (response.ok) {
                     const figure = await response.json();
                     const docCount = figure.document_count || 0;

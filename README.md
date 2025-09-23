@@ -44,7 +44,7 @@ Runs persistently in background. Use `./kill_ports.sh` to stop.
 
 ## Configuration
 
-All configuration is centralized in `config.py`. You can modify:
+All configuration is centralized in `scripts/config.py`. You can modify:
 
 ### Ports
 - `PROXY_PORT = 5001` - Main external access port
@@ -57,7 +57,7 @@ All configuration is centralized in `config.py`. You can modify:
 - `MAX_CONTENT_LENGTH` - Maximum file upload size
 - `DEBUG_MODE` - Enable/disable debug mode
 
-**To change ports:** Edit the values in `config.py`, then restart the application.
+**To change ports:** Edit the values in `scripts/config.py`, then restart the application.
 
 ## Out-of-the-Box Ready
 

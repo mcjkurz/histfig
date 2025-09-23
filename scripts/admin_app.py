@@ -20,7 +20,7 @@ from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
 from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = 'historical_figures_admin_key_change_in_production'
 
 app.config['APPLICATION_ROOT'] = '/admin'

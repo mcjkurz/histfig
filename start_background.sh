@@ -12,9 +12,9 @@ echo "🚀 Starting Historical Figures Chat System (Background Mode)..."
 echo "================================================"
 
 # Get port configuration  
-CHAT_PORT=$(python3 get_ports.py chat 2>/dev/null || echo "5003")
-ADMIN_PORT=$(python3 get_ports.py admin 2>/dev/null || echo "5004") 
-PROXY_PORT=$(python3 get_ports.py proxy 2>/dev/null || echo "5001")
+CHAT_PORT=$(python3 scripts/get_ports.py chat 2>/dev/null || echo "5003")
+ADMIN_PORT=$(python3 scripts/get_ports.py admin 2>/dev/null || echo "5004") 
+PROXY_PORT=$(python3 scripts/get_ports.py proxy 2>/dev/null || echo "5001")
 
 # Check if already running
 RUNNING_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)

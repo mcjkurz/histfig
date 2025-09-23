@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 from vector_db import get_vector_db
 from document_processor import document_processor
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = 'your-secret-key-change-this'  # Change this in production
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size

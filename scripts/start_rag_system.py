@@ -94,7 +94,7 @@ def main():
     print("=" * 40)
     
     # Check if we're in the right directory
-    if not Path("app.py").exists() or not Path("upload_app.py").exists():
+    if not Path("scripts/app.py").exists() or not Path("scripts/upload_app.py").exists():
         print("❌ Error: Please run this script from the rag-chat directory")
         sys.exit(1)
     
@@ -122,12 +122,12 @@ def main():
     
     try:
         # Start the upload application (port 5002)
-        upload_process = start_application("upload_app.py", 5002, "Document Upload App")
+        upload_process = start_application("scripts/upload_app.py", 5002, "Document Upload App")
         if upload_process:
             processes.append(upload_process)
         
         # Start the main chat application (port 5001)
-        chat_process = start_application("app.py", 5001, "Main Chat App")
+        chat_process = start_application("scripts/app.py", 5001, "Main Chat App")
         if chat_process:
             processes.append(chat_process)
         

@@ -41,23 +41,23 @@ fi
 source venv/bin/activate
 
 # Initialize application (creates directories, checks dependencies)
-python init_app.py || exit 1
+python scripts/init_app.py || exit 1
 
 # Get port configuration
-CHAT_PORT=$(python get_ports.py chat)
-ADMIN_PORT=$(python get_ports.py admin)
-PROXY_PORT=$(python get_ports.py proxy)
+CHAT_PORT=$(python scripts/get_ports.py chat)
+ADMIN_PORT=$(python scripts/get_ports.py admin)
+PROXY_PORT=$(python scripts/get_ports.py proxy)
 
 # Start chat application
 echo "🗨️  Starting chat application on port $CHAT_PORT..."
-python app.py &
+python scripts/app.py &
 CHAT_PID=$!
 
 sleep 2
 
 # Start admin application
 echo "⚙️  Starting admin application on port $ADMIN_PORT..."
-python admin_app.py &
+python scripts/admin_app.py &
 ADMIN_PID=$!
 
 sleep 2
@@ -72,7 +72,7 @@ echo ""
 echo "Press Ctrl+C to stop all applications"
 echo "================================================"
 
-python proxy_app.py &
+python scripts/proxy_app.py &
 PROXY_PID=$!
 
 # Wait for all processes

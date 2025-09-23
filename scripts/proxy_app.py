@@ -14,7 +14,7 @@ import sys
 import os
 from config import MAX_CONTENT_LENGTH, PROXY_PORT, CHAT_PORT, ADMIN_PORT, DEBUG_MODE
 
-app = Flask(__name__)
+app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['MAX_FORM_MEMORY_SIZE'] = None
 logging.basicConfig(level=logging.INFO)
