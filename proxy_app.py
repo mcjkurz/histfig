@@ -12,15 +12,15 @@ import logging
 import signal
 import sys
 import os
+from config import MAX_CONTENT_LENGTH, PROXY_PORT, CHAT_PORT, ADMIN_PORT, DEBUG_MODE
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['MAX_FORM_MEMORY_SIZE'] = None
 logging.basicConfig(level=logging.INFO)
 
-# Internal service URLs
-CHAT_APP_URL = "http://localhost:5003"
-ADMIN_APP_URL = "http://localhost:5004"
+CHAT_APP_URL = f"http://localhost:{CHAT_PORT}"
+ADMIN_APP_URL = f"http://localhost:{ADMIN_PORT}"
 
 def proxy_request(target_url, path=""):
     """Proxy a request to the target service"""
@@ -28,19 +28,13 @@ def proxy_request(target_url, path=""):
         # Build the full target URL
         url = f"{target_url}{path}"
         
-        # Prepare headers (exclude Host header and Content-Length which will be recalculated)
         headers = {key: value for (key, value) in request.headers 
                    if key.lower() not in ['host', 'content-length']}
         
-        # Handle different request methods
         if request.method in ['POST', 'PUT', 'PATCH']:
-            # Get the raw data from the request
-            # This preserves the original multipart/form-data boundary and structure
             raw_data = request.get_data()
             
-            # For multipart form data, we need to forward the raw data with correct headers
             if request.content_type and 'multipart/form-data' in request.content_type:
-                # Make sure to include the Content-Type header with boundary
                 headers['Content-Type'] = request.content_type
                 logging.debug(f"Proxying multipart upload to {url}")
                 logging.debug(f"Content-Type: {request.content_type}")
@@ -171,14 +165,11 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Check if running in production mode
-    debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    
     try:
-        logging.info("Starting reverse proxy on port 5001")
+        logging.info(f"Starting reverse proxy on port {PROXY_PORT}")
         logging.info(f"Chat app: {CHAT_APP_URL}")
         logging.info(f"Admin app: {ADMIN_APP_URL}")
-        app.run(debug=debug_mode, host='0.0.0.0', port=5001)
+        app.run(debug=DEBUG_MODE, host='0.0.0.0', port=PROXY_PORT)
     except KeyboardInterrupt:
         logging.info("Proxy application stopped by user")
     except Exception as e:

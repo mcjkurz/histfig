@@ -13,36 +13,26 @@ from reportlab.lib.units import inch
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
 from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
 from reportlab.lib import colors
-# Removed: from vector_db import get_vector_db, reset_vector_db - no longer using general vector DB
 from figure_manager import get_figure_manager
+from config import OLLAMA_URL, DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE
 
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size
-logging.basicConfig(level=logging.WARNING)  # Reduced logging
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['MAX_FORM_MEMORY_SIZE'] = None
+logging.basicConfig(level=logging.WARNING)
 
-# Ollama configuration
-OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen3:30b"  # Default model, will fallback if not available
-
-# Conversation history storage (in-memory for simplicity)
 conversation_history = []
-MAX_CONTEXT_MESSAGES = 10  # Keep last 10 exchanges (20 messages)
-
-# Current figure context
 current_figure = None
 
 def clean_thinking_content(text):
     """Remove thinking tags and content from text"""
     import re
-    # Remove everything between <think> and </think> tags
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned.strip()
 
 def get_thinking_instructions(intensity):
     """Get thinking instruction and response start based on intensity level"""
     if intensity == 'none':
-        # Strong instruction to suppress all thinking  
         instruction = "\n\nPlease respond directly to the user's message. You are not allowed to analyze the query or provide any other information, please respond directly."
         response_start = "<think></think>\n\n"
     elif intensity == 'low':
@@ -51,7 +41,7 @@ def get_thinking_instructions(intensity):
     elif intensity == 'high':
         instruction = "\n\nPlease think deeply and thoroughly about this question. Consider multiple perspectives and implications before answering."
         response_start = ""
-    else:  # normal or any other value
+    else:
         instruction = "\n\nThink through your answer carefully before responding."
         response_start = ""
     
@@ -632,11 +622,8 @@ if __name__ == '__main__':
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Check if running in production mode via environment variable
-    debug_mode = os.environ.get('FLASK_ENV') != 'production'
-    
     try:
-        app.run(debug=debug_mode, host='0.0.0.0', port=5003)
+        app.run(debug=DEBUG_MODE, host='0.0.0.0', port=CHAT_PORT)
     except KeyboardInterrupt:
         logging.info("Chat application stopped by user")
     except Exception as e:

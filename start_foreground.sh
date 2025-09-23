@@ -7,10 +7,10 @@
 # - Press Ctrl+C to stop the server
 # - Closing the terminal will stop the server
 # 
-# Applications started:
-# 1. Chat app on port 5003 (internal)
-# 2. Admin app on port 5004 (internal)  
-# 3. Proxy app on port 5001 (external - connects to Cloudflare tunnel)
+# Applications started based on config.py:
+# 1. Chat app (internal)
+# 2. Admin app (internal)  
+# 3. Proxy app (external)
 
 echo "🚀 Starting Historical Figures Chat System..."
 echo "================================================"
@@ -40,30 +40,34 @@ fi
 # Activate virtual environment
 source venv/bin/activate
 
-# Start chat application (internal port 5003)
-echo "🗨️  Starting chat application on port 5003..."
+# Initialize application (creates directories, checks dependencies)
+python init_app.py || exit 1
+
+# Get port configuration
+CHAT_PORT=$(python get_ports.py chat)
+ADMIN_PORT=$(python get_ports.py admin)
+PROXY_PORT=$(python get_ports.py proxy)
+
+# Start chat application
+echo "🗨️  Starting chat application on port $CHAT_PORT..."
 python app.py &
 CHAT_PID=$!
 
-# Wait a moment for chat app to start
 sleep 2
 
-# Start admin application (internal port 5004)
-echo "⚙️  Starting admin application on port 5004..."
+# Start admin application
+echo "⚙️  Starting admin application on port $ADMIN_PORT..."
 python admin_app.py &
 ADMIN_PID=$!
 
-# Wait a moment for admin app to start
 sleep 2
 
-# Start proxy application (external port 5001)
-echo "🔄 Starting reverse proxy on port 5001..."
+# Start proxy application
+echo "🔄 Starting reverse proxy on port $PROXY_PORT..."
 echo ""
 echo "🌐 Access URLs:"
-echo "   Chat Interface: http://localhost:5001/"
-echo "   Admin Interface: http://localhost:5001/admin/"
-echo "   External Domain: https://chat.qhchina.org/"
-echo "   Admin via Domain: https://chat.qhchina.org/admin/"
+echo "   Chat Interface: http://localhost:$PROXY_PORT/"
+echo "   Admin Interface: http://localhost:$PROXY_PORT/admin/"
 echo ""
 echo "Press Ctrl+C to stop all applications"
 echo "================================================"

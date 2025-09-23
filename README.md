@@ -42,19 +42,36 @@ Runs persistently in background. Use `./kill_ports.sh` to stop.
 - Chat Interface: `http://localhost:5001/`
 - Admin Interface: `http://localhost:5001/admin/`
 
-## Port Configuration
+## Configuration
 
-The system uses these ports:
-- 5001: Main proxy (external access)
-- 5003: Chat app (internal)
-- 5004: Admin app (internal)
+All configuration is centralized in `config.py`. You can modify:
 
-To use different ports, modify the port numbers in the respective Python files.
+### Ports
+- `PROXY_PORT = 5001` - Main external access port
+- `CHAT_PORT = 5003` - Internal chat application port  
+- `ADMIN_PORT = 5004` - Internal admin application port
+
+### Other Settings
+- `OLLAMA_URL` - Ollama server URL
+- `DEFAULT_MODEL` - Default language model
+- `MAX_CONTENT_LENGTH` - Maximum file upload size
+- `DEBUG_MODE` - Enable/disable debug mode
+
+**To change ports:** Edit the values in `config.py`, then restart the application.
+
+## Out-of-the-Box Ready
+
+The application automatically:
+- Creates necessary directories (`figures/`, `chroma_db/`, `temp_uploads/`)
+- Initializes the vector database
+- Sets up historical figure management
+- No manual database setup required
 
 ## Features
 
-- Chat with historical figures
-- Document upload and RAG integration
-- Admin interface for managing figures
+- Chat with historical figures using RAG-enhanced AI
+- Upload and process documents (TXT, PDF, DOCX, MD)
+- Admin interface for managing figures and documents
 - Real-time streaming responses
+- Configurable ports and settings
 - Modern responsive UI

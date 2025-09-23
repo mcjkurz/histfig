@@ -13,20 +13,17 @@ from pathlib import Path
 import sys
 import time
 
-# Add the current directory to Python path for imports
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
+from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS
 
 app = Flask(__name__)
 app.secret_key = 'historical_figures_admin_key_change_in_production'
 
-# Configure for reverse proxy with /admin/ prefix
 app.config['APPLICATION_ROOT'] = '/admin'
-
-# Custom URL prefix handling for reverse proxy
 class PrefixMiddleware:
     def __init__(self, app, prefix=''):
         self.app = app
@@ -41,27 +38,18 @@ class PrefixMiddleware:
             environ['SCRIPT_NAME'] = self.prefix
             return self.app(environ, start_response)
 
-# Trust proxy headers for proper client IP and protocol detection
 from werkzeug.middleware.proxy_fix import ProxyFix
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
-
-# Apply middleware to handle /admin/ prefix properly
 app.wsgi_app = PrefixMiddleware(app.wsgi_app, '/admin')
 
-# Configure logging
 logging.basicConfig(level=logging.INFO)
 
-# File upload configuration
-UPLOAD_FOLDER = 'temp_uploads'
-ALLOWED_EXTENSIONS = {'txt', 'pdf'}
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
-
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+from config import TEMP_UPLOAD_DIR, MAX_CONTENT_LENGTH
+app.config['UPLOAD_FOLDER'] = TEMP_UPLOAD_DIR
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
-app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size
+app.config['MAX_FORM_MEMORY_SIZE'] = None
 
-# Ensure upload directory exists
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
@@ -608,4 +596,4 @@ def api_figure_stats(figure_id):
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5004)
+    app.run(debug=DEBUG_MODE, host='0.0.0.0', port=ADMIN_PORT)

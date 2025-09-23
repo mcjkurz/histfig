@@ -11,10 +11,15 @@
 echo "🚀 Starting Historical Figures Chat System (Background Mode)..."
 echo "================================================"
 
+# Get port configuration  
+CHAT_PORT=$(python3 get_ports.py chat 2>/dev/null || echo "5003")
+ADMIN_PORT=$(python3 get_ports.py admin 2>/dev/null || echo "5004") 
+PROXY_PORT=$(python3 get_ports.py proxy 2>/dev/null || echo "5001")
+
 # Check if already running
-RUNNING_PIDS=$(lsof -t -i :5001 -i :5003 -i :5004 2>/dev/null)
+RUNNING_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)
 if [ ! -z "$RUNNING_PIDS" ]; then
-    echo "⚠️  Server appears to be already running on ports 5001, 5003, or 5004"
+    echo "⚠️  Server appears to be already running on ports $PROXY_PORT, $CHAT_PORT, or $ADMIN_PORT"
     echo "💡 Run ./kill_ports.sh first to stop existing servers"
     echo "🔍 Or run ./check_status.sh to verify status"
     exit 1
@@ -40,14 +45,13 @@ nohup caffeinate -i -s ./start_foreground.sh > rag_server.log 2>&1 &
 sleep 3
 
 # Check if it started successfully
-STARTED_PIDS=$(lsof -t -i :5001 -i :5003 -i :5004 2>/dev/null)
+STARTED_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)
 if [ ! -z "$STARTED_PIDS" ]; then
     echo "✅ Server started successfully in background!"
     echo ""
     echo "🌐 Access URLs:"
-    echo "   Chat Interface: http://localhost:5001/"
-    echo "   Admin Interface: http://localhost:5001/admin/"
-    echo "   External Domain: https://chat.qhchina.org/"
+    echo "   Chat Interface: http://localhost:$PROXY_PORT/"
+    echo "   Admin Interface: http://localhost:$PROXY_PORT/admin/"
     echo ""
     echo "💡 Useful commands:"
     echo "   Check status: ./check_status.sh"
