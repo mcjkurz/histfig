@@ -61,6 +61,7 @@ class ChatApp {
         this.thinkingIntensity = 'normal';
         this.temperature = 1.0;  // Default temperature
         this.abortController = null;
+        this.allRetrievedDocuments = new Map();  // Track all documents retrieved during conversation
         
         this.init();
     }
@@ -750,7 +751,33 @@ class ChatApp {
         }
         
         this.paragraphBuffer = (this.paragraphBuffer || '') + content;
-        this.responseContentElement.textContent = this.paragraphBuffer;
+        // Apply basic formatting and display as HTML
+        const formattedContent = this.applyBasicFormatting(this.paragraphBuffer);
+        this.responseContentElement.innerHTML = formattedContent;
+    }
+
+    applyBasicFormatting(text) {
+        if (!text) return '';
+        
+        // Escape HTML to prevent XSS
+        let formatted = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        
+        // Apply basic markdown-style formatting
+        formatted = formatted
+            // Bold: **text** or *text* (only if not already in HTML tags)
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*\s][^*]*[^*\s])\*/g, '<strong>$1</strong>')
+            .replace(/\*([^*\s])\*/g, '<strong>$1</strong>')
+            // Italic: _text_
+            .replace(/_([^_\s][^_]*[^_\s])_/g, '<em>$1</em>')
+            .replace(/_([^_\s])_/g, '<em>$1</em>')
+            // Line breaks
+            .replace(/\n/g, '<br>');
+        
+        return formatted;
     }
 
     async processFinalContent() {
@@ -767,6 +794,15 @@ class ChatApp {
         this.currentSources = {};
         sources.forEach(source => {
             this.currentSources[source.doc_id] = source;
+            
+            // Store document in our global tracking Map with a unique key
+            const uniqueKey = `${source.filename}_${source.chunk_id || source.document_id || source.doc_id}`;
+            if (!this.allRetrievedDocuments.has(uniqueKey)) {
+                this.allRetrievedDocuments.set(uniqueKey, {
+                    ...source,
+                    timestamp: new Date().toISOString()
+                });
+            }
         });
         
         this.clearDocuments();
@@ -901,8 +937,23 @@ class ChatApp {
                 const contentElement = msgElement.querySelector('.message-content');
                 
                 if (contentElement) {
-                    // Get text content
-                    let content = contentElement.textContent.trim();
+                    // Get text content, preserving line breaks
+                    let content;
+                    if (isUser) {
+                        content = contentElement.textContent.trim();
+                    } else {
+                        // For assistant messages, get HTML and convert <br> tags to newlines
+                        const htmlContent = contentElement.innerHTML;
+                        content = htmlContent
+                            .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> tags to newlines
+                            .replace(/<[^>]*>/g, '')        // Strip other HTML tags
+                            .replace(/&amp;/g, '&')        // Decode HTML entities
+                            .replace(/&lt;/g, '<')
+                            .replace(/&gt;/g, '>')
+                            .replace(/&quot;/g, '"')
+                            .replace(/&#x27;/g, "'")
+                            .trim();
+                    }
                     
                     if (content) {
                         messages.push({
@@ -915,19 +966,31 @@ class ChatApp {
             });
             
             // Get current figure name if selected
-            const figureName = this.figureSelect.selectedOptions[0]?.text || 'General Chat';
+            const figureNameWithDocs = this.figureSelect.selectedOptions[0]?.text || 'General Chat';
+            
+            // Extract clean figure name without document count
+            const cleanFigureName = figureNameWithDocs.split(' (')[0];
+            
+            // Extract document count if present
+            const docCountMatch = figureNameWithDocs.match(/\((\d+) docs?\)/);
+            const documentCount = docCountMatch ? docCountMatch[1] : '0';
+            
+            // Convert Map to array for sending
+            const retrievedDocuments = Array.from(this.allRetrievedDocuments.values());
             
             // Create conversation data
             const conversationData = {
-                title: `Chat with ${figureName}`,
+                title: `Chat with ${cleanFigureName}`,
                 date: new Date().toLocaleString(),
                 messages: messages,
-                figure: figureName,
-                figure_name: figureName,
+                figure: cleanFigureName,
+                figure_name: cleanFigureName,
+                document_count: documentCount,
                 model: this.modelSelect.value,
                 temperature: this.temperature.toString(),
                 thinking_enabled: this.thinkingVisible,
-                rag_enabled: this.ragEnabled
+                rag_enabled: this.ragEnabled,
+                retrieved_documents: retrievedDocuments  // Include all retrieved documents
             };
             
             // Send to server to generate PDF
@@ -947,7 +1010,7 @@ class ChatApp {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = `chat_${figureName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
+                a.download = `chat_${cleanFigureName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);

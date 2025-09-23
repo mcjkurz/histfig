@@ -4,7 +4,7 @@
   "description": "Lu Xun is a Chinese revolutionary writer...",
   "personality_prompt": "You were born in late imperial China",
   "created_at": "/Users/maciejkurzynski/Documents/Projects/rag-chat",
-  "document_count": 1754,
+  "document_count": 1663,
   "metadata": {
     "birth_year": 1880,
     "death_year": 1936,

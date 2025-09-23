@@ -123,6 +123,7 @@ class DocumentProcessor:
         1. First, split by passages (newlines) to respect document structure
         2. For short passages, combine them into coherent chunks
         3. For long passages with multiple sentences, split them appropriately
+        4. Remove line breaks within chunks to create coherent single-line text
         
         Args:
             text: Text to chunk
@@ -139,8 +140,10 @@ class DocumentProcessor:
         
         if len(text) <= self.chunk_size:
             # Text is small enough to be a single chunk
+            # Remove line breaks to create coherent single-line text
+            single_line_text = ' '.join(text.split())
             chunks.append({
-                "text": text,
+                "text": single_line_text,
                 "metadata": {**metadata, "chunk_index": 0, "total_chunks": 1}
             })
             return chunks
@@ -157,7 +160,9 @@ class DocumentProcessor:
             if len(passage) > self.chunk_size:
                 # First, save any accumulated passages as a chunk
                 if current_chunk_passages:
-                    chunk_text = '\n'.join(current_chunk_passages)
+                    # Join passages with space and remove line breaks
+                    chunk_text = ' '.join(current_chunk_passages)
+                    chunk_text = ' '.join(chunk_text.split())
                     chunks.append({
                         "text": chunk_text,
                         "metadata": {**metadata, "chunk_index": chunk_index}
@@ -176,7 +181,9 @@ class DocumentProcessor:
                 
                 if current_chunk_length + passage_with_newline_length > self.chunk_size and current_chunk_passages:
                     # Save current chunk
-                    chunk_text = '\n'.join(current_chunk_passages)
+                    # Join passages with space and remove line breaks
+                    chunk_text = ' '.join(current_chunk_passages)
+                    chunk_text = ' '.join(chunk_text.split())
                     chunks.append({
                         "text": chunk_text,
                         "metadata": {**metadata, "chunk_index": chunk_index}
@@ -189,7 +196,7 @@ class DocumentProcessor:
                         overlap_passages = []
                         overlap_length = 0
                         for i in range(len(current_chunk_passages) - 1, -1, -1):
-                            passage_len = len(current_chunk_passages[i]) + 1  # +1 for newline
+                            passage_len = len(current_chunk_passages[i]) + 1  # +1 for space
                             if overlap_length + passage_len <= self.chunk_overlap:
                                 overlap_passages.insert(0, current_chunk_passages[i])
                                 overlap_length += passage_len
@@ -208,7 +215,9 @@ class DocumentProcessor:
         
         # Add the last chunk if it exists
         if current_chunk_passages:
-            chunk_text = '\n'.join(current_chunk_passages)
+            # Join passages with space and remove line breaks
+            chunk_text = ' '.join(current_chunk_passages)
+            chunk_text = ' '.join(chunk_text.split())
             chunks.append({
                 "text": chunk_text,
                 "metadata": {**metadata, "chunk_index": chunk_index}
@@ -235,6 +244,9 @@ class DocumentProcessor:
         """
         chunks = []
         
+        # First, remove line breaks within the passage to create coherent text
+        passage = ' '.join(passage.split())
+        
         # Split into sentences
         sentences = re.split(r'(?<=[.!?])\s+', passage)
         
@@ -244,7 +256,7 @@ class DocumentProcessor:
         for sentence in sentences:
             # Check if adding this sentence would exceed chunk size
             if len(current_chunk) + len(sentence) + 1 > self.chunk_size and current_chunk:
-                # Save current chunk
+                # Save current chunk (already single-line)
                 chunks.append({
                     "text": current_chunk.strip(),
                     "metadata": {**base_metadata, "chunk_index": chunk_index}

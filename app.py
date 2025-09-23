@@ -508,10 +508,12 @@ def export_conversation_pdf():
         messages = data.get('messages', [])
         figure = data.get('figure', 'General Chat')
         figure_name = data.get('figure_name', figure)
+        document_count = data.get('document_count', '0')
         model = data.get('model', 'Unknown')
         temperature = data.get('temperature', '1.0')
         thinking_enabled = data.get('thinking_enabled', False)
         rag_enabled = data.get('rag_enabled', True)
+        retrieved_documents = data.get('retrieved_documents', [])
         
         # Create PDF in memory
         buffer = BytesIO()
@@ -552,7 +554,11 @@ def export_conversation_pdf():
             fontSize=11,
             textColor=colors.HexColor('#2c3e50'),
             spaceAfter=12,
-            alignment=TA_LEFT
+            spaceBefore=6,
+            leftIndent=0,
+            rightIndent=0,
+            alignment=TA_LEFT,
+            leading=14  # Line height for better readability
         )
         
         # Add title
@@ -562,6 +568,7 @@ def export_conversation_pdf():
         settings_text = f"<b>Chat Settings:</b><br/>"
         settings_text += f"Date: {date}<br/>"
         settings_text += f"Figure: {figure_name}<br/>"
+        settings_text += f"Documents: {document_count}<br/>"
         settings_text += f"Model: {model}<br/>"
         settings_text += f"Temperature: {temperature}<br/>"
         settings_text += f"Thinking Mode: {'Enabled' if thinking_enabled else 'Disabled'}<br/>"
@@ -578,10 +585,21 @@ def export_conversation_pdf():
             role = msg.get('role', 'unknown')
             content = msg.get('content', '')
             
-            # Escape HTML special characters
+            # Escape HTML special characters and fix encoding issues
             content = content.replace('&', '&amp;')
             content = content.replace('<', '&lt;')
             content = content.replace('>', '&gt;')
+            
+            # Fix common character encoding issues that cause black squares
+            content = content.replace('–', '-')  # En dash to hyphen
+            content = content.replace('—', '-')  # Em dash to hyphen
+            content = content.replace(''', "'")  # Smart quote to regular quote
+            content = content.replace(''', "'")  # Smart quote to regular quote
+            content = content.replace('"', '"')  # Smart quote to regular quote
+            content = content.replace('"', '"')  # Smart quote to regular quote
+            content = content.replace('…', '...')  # Ellipsis to three dots
+            
+            # Convert newlines to HTML line breaks
             content = content.replace('\n', '<br/>')
             
             # Use figure name for assistant messages
@@ -593,6 +611,110 @@ def export_conversation_pdf():
                 story.append(Paragraph(f"<b>{display_name}:</b> {content}", message_style))
             
             story.append(Spacer(1, 0.05*inch))
+        
+        # Add retrieved documents appendix if available
+        if retrieved_documents and len(retrieved_documents) > 0:
+            # Add page break before appendix
+            from reportlab.platypus import PageBreak
+            story.append(PageBreak())
+            
+            # Appendix title
+            appendix_title_style = ParagraphStyle(
+                'AppendixTitle',
+                parent=styles['Title'],
+                fontSize=16,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceAfter=20,
+                alignment=TA_CENTER
+            )
+            story.append(Paragraph("Appendix: Retrieved Documents", appendix_title_style))
+            story.append(Spacer(1, 0.2*inch))
+            
+            # Document header style
+            doc_header_style = ParagraphStyle(
+                'DocHeader',
+                parent=styles['Normal'],
+                fontSize=12,
+                textColor=colors.HexColor('#2c3e50'),
+                fontName='Helvetica-Bold',
+                spaceAfter=8,
+                spaceBefore=12
+            )
+            
+            # Document content style
+            doc_content_style = ParagraphStyle(
+                'DocContent',
+                parent=styles['Normal'],
+                fontSize=10,
+                textColor=colors.HexColor('#34495e'),
+                spaceAfter=10,
+                leftIndent=12,
+                rightIndent=12,
+                leading=13
+            )
+            
+            # Document metadata style
+            doc_meta_style = ParagraphStyle(
+                'DocMeta',
+                parent=styles['Normal'],
+                fontSize=9,
+                textColor=colors.HexColor('#7f8c8d'),
+                spaceAfter=15,
+                leftIndent=12,
+                fontName='Helvetica-Oblique'
+            )
+            
+            # Sort documents by filename and chunk ID for better organization
+            sorted_docs = sorted(retrieved_documents, key=lambda d: (
+                d.get('filename', ''),
+                d.get('chunk_id') or d.get('document_id') or d.get('doc_id', '')
+            ))
+            
+            # Add each document
+            for idx, doc_data in enumerate(sorted_docs, 1):
+                filename = doc_data.get('filename', 'Unknown')
+                chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
+                text = doc_data.get('full_text') or doc_data.get('text', '')
+                similarity = doc_data.get('similarity', 0)
+                
+                # Document header
+                header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
+                story.append(Paragraph(header_text, doc_header_style))
+                
+                # Document metadata
+                meta_text = f"Relevance Score: {similarity:.2%}"
+                if doc_data.get('timestamp'):
+                    meta_text += f" | Retrieved: {doc_data['timestamp']}"
+                story.append(Paragraph(meta_text, doc_meta_style))
+                
+                # Document content - escape and format
+                content = text.replace('&', '&amp;')
+                content = content.replace('<', '&lt;')
+                content = content.replace('>', '&gt;')
+                
+                # Fix character encoding issues
+                content = content.replace('–', '-')
+                content = content.replace('—', '-')
+                content = content.replace(''', "'")
+                content = content.replace(''', "'")
+                content = content.replace('"', '"')
+                content = content.replace('"', '"')
+                content = content.replace('…', '...')
+                
+                # Preserve line breaks
+                content = content.replace('\n', '<br/>')
+                
+                # Add content
+                story.append(Paragraph(content, doc_content_style))
+                
+                # Add separator between documents
+                if idx < len(sorted_docs):
+                    story.append(Spacer(1, 0.1*inch))
+                    # Add a subtle line separator
+                    from reportlab.platypus import HRFlowable
+                    story.append(HRFlowable(width="80%", thickness=0.5, 
+                                           color=colors.HexColor('#e0e0e0'),
+                                           spaceAfter=10, spaceBefore=10))
         
         # Build PDF
         doc.build(story)
