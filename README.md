@@ -10,7 +10,7 @@ This project is developed for purely educational and experimental purposes.
 
 - Python 3.7+
 - [Ollama](https://ollama.ai/) installed and running
-- At least one language model pulled in Ollama (e.g., `ollama pull llama2`)
+- At least one language model pulled in Ollama (e.g., `ollama pull gpt-oss:20b`)
 
 ## Installation
 
