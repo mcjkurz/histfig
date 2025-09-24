@@ -37,6 +37,9 @@ temp_uploads/
 tmp/
 temp/
 
+# Static files (user-specific content like figure images)
+static/
+
 # ChromaDB persist directory (can be large)
 chroma_db/
 

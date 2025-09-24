@@ -39,10 +39,10 @@ echo "🌙 Starting server with sleep prevention..."
 
 # Use nohup to detach from terminal, caffeinate to prevent sleep
 # Redirect output to log file for debugging if needed
-nohup caffeinate -i -s ./start_foreground.sh > rag_server.log 2>&1 &
+(nohup caffeinate -i -s ./start_foreground.sh > rag_server.log 2>&1 &)
 
 # Give it a moment to start
-sleep 3
+sleep 5
 
 # Check if it started successfully
 STARTED_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)
