@@ -1,6 +1,8 @@
 # Historical Figures Chat System
 
-Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style.
+Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style. 
+
+This project is developed for purely educational and experimental purposes.
 
 ![Screenshot](img/screenshot_1.png)
 
