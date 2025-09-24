@@ -846,9 +846,15 @@
         <div class="chat-container">
             <div class="chat-header">
                 <h1>Historical Figures Chat</h1>
-                <button class="save-conversation-btn" id="save-conversation-btn" title="Save conversation as PDF">
-                    Save
-                </button>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="status-indicator" style="display: none;">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span class="status-text" id="status-text">Connecting...</span>
+                    </div>
+                    <button class="save-conversation-btn" id="save-conversation-btn" title="Save conversation as PDF">
+                        Save
+                    </button>
+                </div>
             </div>
 
             <div class="chat-messages" id="chat-messages">

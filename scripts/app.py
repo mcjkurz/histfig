@@ -566,9 +566,14 @@ def convert_markdown():
 def serve_figure_image(filename):
     """Serve figure images."""
     try:
-        return send_from_directory(FIGURE_IMAGES_DIR, filename)
+        # Use absolute path for FIGURE_IMAGES_DIR
+        import os
+        figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
+        logging.info(f"Serving figure image {filename} from {figure_images_path}")
+        return send_from_directory(figure_images_path, filename)
     except Exception as e:
         logging.error(f"Error serving figure image {filename}: {str(e)}")
+        logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
         return jsonify({'error': 'Image not found'}), 404
 
 @app.route('/api/export/pdf', methods=['POST'])

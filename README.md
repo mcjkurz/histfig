@@ -2,6 +2,8 @@
 
 Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style.
 
+![Screenshot](img/screenshot_1.png)
+
 ## Prerequisites
 
 - Python 3.7+
