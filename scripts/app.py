@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, Response, make_response, send_from_directory
+from flask import Flask, render_template, request, jsonify, Response, make_response, send_from_directory, session
 import requests
 import json
 import logging
@@ -6,6 +6,7 @@ import os
 import signal
 import sys
 import markdown
+import secrets
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -21,10 +22,14 @@ from config import OLLAMA_URL, DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_ME
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 app.config['MAX_FORM_MEMORY_SIZE'] = None
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
+app.config['SESSION_TYPE'] = 'filesystem'
+app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 logging.basicConfig(level=logging.WARNING)
 
-conversation_history = []
-current_figure = None
+# Store conversation history per session
+# We'll use a dictionary to store per-session data
+session_data = {}
 
 def register_unicode_fonts():
     """Register Unicode-capable fonts for PDF generation"""
@@ -94,9 +99,27 @@ def get_thinking_instructions(intensity):
     
     return instruction, response_start
 
+def get_session_id():
+    """Get or create a session ID for the current user"""
+    if 'session_id' not in session:
+        session['session_id'] = secrets.token_hex(16)
+        session.permanent = True
+    return session['session_id']
+
+def get_session_data():
+    """Get session data for the current user"""
+    session_id = get_session_id()
+    if session_id not in session_data:
+        session_data[session_id] = {
+            'conversation_history': [],
+            'current_figure': None
+        }
+    return session_data[session_id]
+
 def add_to_conversation_history(role, content):
-    """Add a message to conversation history"""
-    global conversation_history
+    """Add a message to conversation history for current session"""
+    user_session = get_session_data()
+    conversation_history = user_session['conversation_history']
     
     # Clean thinking content from assistant messages
     if role == "assistant":
@@ -108,10 +131,13 @@ def add_to_conversation_history(role, content):
         
         # Keep only recent messages
         if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:  # 2 messages per exchange
-            conversation_history = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+            user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
 
 def build_conversation_context():
-    """Build conversation context string"""
+    """Build conversation context string for current session"""
+    user_session = get_session_data()
+    conversation_history = user_session['conversation_history']
+    
     if not conversation_history:
         return ""
     
@@ -126,8 +152,8 @@ def build_conversation_context():
 
 @app.route('/')
 def index():
-    """Serve the main chat interface - mobile optimized version"""
-    # Use the new mobile-optimized template
+    """Serve the main chat interface - responsive version with three panels"""
+    # Use the mobile-optimized template which handles both mobile and desktop
     return render_template('index_mobile.html')
 
 @app.route('/api/models')
@@ -172,7 +198,8 @@ def chat():
         
         if use_rag:
             try:
-                global current_figure
+                user_session = get_session_data()
+                current_figure = user_session['current_figure']
                 
                 if current_figure:
                     # Use figure-specific RAG
@@ -205,16 +232,16 @@ def chat():
                             
                             enhanced_prompt = f"""{base_instruction}
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
 
-Based on the following context from your writings and documents, please answer the user's current question in character:
+Based on the following context from your writings and documents, please answer the user's current question:
 
 Your Documents:
 {rag_context}
 
 {f'Conversation history:' + chr(10) + conversation_context + chr(10) if conversation_context else ''}User's Current Question: {message}{thinking_instruction}
 
-{response_start}Answer as {figure_name} would, drawing from the provided documents:"""
+Answer as {figure_name} would, drawing from the provided documents:{response_start}"""
                         else:
                             # No relevant documents found for figure
                             figure_name = figure_metadata.get('name', current_figure)
@@ -226,7 +253,7 @@ Your Documents:
                             
                             enhanced_prompt = f"""{base_instruction}
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
 
 {f'Conversation history:' + chr(10) + conversation_context + chr(10) + chr(10) if conversation_context else ''}User's Current Question: {message}{thinking_instruction}
 
@@ -308,6 +335,9 @@ User's Question: {message}{thinking_instruction}
 
 {response_start}Answer:"""
         
+        # Get the session data before entering the generator (while we still have request context)
+        session_id = get_session_id()
+        
         # Prepare request for Ollama
         ollama_request = {
             "model": model,
@@ -373,7 +403,22 @@ User's Question: {message}{thinking_instruction}
                                 yield f"data: {json.dumps({'content': content})}\n\n"
                             if chunk_data.get('done', False):
                                 # Add assistant response to conversation history
-                                add_to_conversation_history("assistant", full_response)
+                                # Use session_id directly instead of calling get_session_data() which needs request context
+                                if session_id in session_data:
+                                    user_session = session_data[session_id]
+                                    conversation_history = user_session['conversation_history']
+                                    
+                                    # Clean thinking content from assistant messages
+                                    cleaned_content = clean_thinking_content(full_response)
+                                    
+                                    # Only add if content is not empty
+                                    if cleaned_content.strip():
+                                        conversation_history.append({"role": "assistant", "content": cleaned_content})
+                                        
+                                        # Keep only recent messages
+                                        if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
+                                            user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+                                
                                 yield f"data: {json.dumps({'done': True})}\n\n"
                                 break
                         except json.JSONDecodeError:
@@ -405,7 +450,8 @@ def health_check():
 def rag_stats():
     """Get RAG database statistics - now only shows figure-specific stats"""
     try:
-        global current_figure
+        user_session = get_session_data()
+        current_figure = user_session['current_figure']
         if current_figure:
             figure_manager = get_figure_manager()
             stats = figure_manager.get_figure_stats(current_figure)
@@ -421,7 +467,8 @@ def rag_stats():
 def reset_rag():
     """Reset figure-specific RAG collections"""
     try:
-        global current_figure
+        user_session = get_session_data()
+        current_figure = user_session['current_figure']
         if current_figure:
             figure_manager = get_figure_manager()
             # Could add figure-specific reset logic here if needed
@@ -437,7 +484,10 @@ def reset_rag():
 def debug_rag():
     """Debug endpoint for figure-specific RAG system status"""
     try:
+        user_session = get_session_data()
+        current_figure = user_session['current_figure']
         debug_info = {
+            'session_id': get_session_id(),
             'current_figure': current_figure,
             'figure_manager_initialized': False,
             'errors': []
@@ -491,7 +541,7 @@ def get_figure_details(figure_id):
 def select_figure():
     """Select a figure for the current chat session"""
     try:
-        global current_figure, conversation_history
+        user_session = get_session_data()
         
         data = request.json
         figure_id = data.get('figure_id')
@@ -502,9 +552,9 @@ def select_figure():
             if not metadata:
                 return jsonify({'error': 'Figure not found'}), 404
             
-            current_figure = figure_id
+            user_session['current_figure'] = figure_id
             # Clear conversation history when switching figures
-            conversation_history = []
+            user_session['conversation_history'] = []
             
             return jsonify({
                 'success': True,
@@ -512,9 +562,9 @@ def select_figure():
                 'figure_name': metadata.get('name', figure_id)
             })
         else:
-            # Deselect figure (use general RAG)
-            current_figure = None
-            conversation_history = []
+            # Deselect figure (use general chat)
+            user_session['current_figure'] = None
+            user_session['conversation_history'] = []
             return jsonify({
                 'success': True,
                 'current_figure': None,
@@ -526,9 +576,10 @@ def select_figure():
 
 @app.route('/api/figure/current')
 def get_current_figure():
-    """Get currently selected figure"""
+    """Get currently selected figure for current session"""
     try:
-        global current_figure
+        user_session = get_session_data()
+        current_figure = user_session['current_figure']
         if current_figure:
             figure_manager = get_figure_manager()
             metadata = figure_manager.get_figure_metadata(current_figure)
@@ -586,6 +637,7 @@ def export_conversation_pdf():
         messages = data.get('messages', [])
         figure = data.get('figure', 'General Chat')
         figure_name = data.get('figure_name', figure)
+        figure_data = data.get('figure_data', None)
         document_count = data.get('document_count', '0')
         model = data.get('model', 'Unknown')
         temperature = data.get('temperature', '1.0')
@@ -647,6 +699,82 @@ def export_conversation_pdf():
         
         # Add title
         story.append(Paragraph(title, title_style))
+        
+        # Add figure description section if available
+        if figure_data and figure != 'General Chat':
+            # Figure description style
+            figure_desc_style = ParagraphStyle(
+                'FigureDescription',
+                parent=styles['Normal'],
+                fontSize=11,
+                fontName=unicode_font,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceAfter=20,
+                spaceBefore=10,
+                alignment=TA_LEFT,
+                leading=14,
+                leftIndent=20,
+                rightIndent=20
+            )
+            
+            # Figure header style
+            figure_header_style = ParagraphStyle(
+                'FigureHeader',
+                parent=styles['Heading2'],
+                fontSize=14,
+                fontName=unicode_font,
+                textColor=colors.HexColor('#2c3e50'),
+                spaceAfter=10,
+                spaceBefore=5,
+                alignment=TA_CENTER
+            )
+            
+            # Build figure description text
+            figure_text = ""
+            if figure_data.get('name'):
+                figure_text += f"<b>{figure_data['name']}</b>"
+                
+                # Add years if available
+                birth_year = figure_data.get('birth_year')
+                death_year = figure_data.get('death_year')
+                if birth_year or death_year:
+                    birth_display = birth_year if birth_year else '?'
+                    death_display = death_year if death_year else '?'
+                    figure_text += f" ({birth_display} - {death_display})"
+                
+                figure_text += "<br/><br/>"
+            
+            # Add nationality and occupation
+            if figure_data.get('nationality'):
+                figure_text += f"<b>Nationality:</b> {figure_data['nationality']}<br/>"
+            if figure_data.get('occupation'):
+                figure_text += f"<b>Occupation:</b> {figure_data['occupation']}<br/>"
+            
+            if figure_data.get('nationality') or figure_data.get('occupation'):
+                figure_text += "<br/>"
+            
+            # Add description
+            if figure_data.get('description'):
+                # Escape HTML in description
+                description = figure_data['description'].replace('&', '&amp;')
+                description = description.replace('<', '&lt;')
+                description = description.replace('>', '&gt;')
+                description = description.replace('\n', '<br/>')
+                figure_text += f"<b>Description:</b><br/>{description}<br/><br/>"
+            
+            # Add personality prompt
+            if figure_data.get('personality_prompt'):
+                # Escape HTML in personality prompt
+                personality = figure_data['personality_prompt'].replace('&', '&amp;')
+                personality = personality.replace('<', '&lt;')
+                personality = personality.replace('>', '&gt;')
+                personality = personality.replace('\n', '<br/>')
+                figure_text += f"<b>Personality:</b><br/>{personality}"
+            
+            if figure_text.strip():
+                story.append(Paragraph("Historical Figure Information", figure_header_style))
+                story.append(Paragraph(figure_text, figure_desc_style))
+                story.append(Spacer(1, 0.3*inch))
         
         # Add settings section
         settings_text = f"<b>Chat Settings:</b><br/>"
@@ -814,6 +942,9 @@ def signal_handler(sig, frame):
     sys.exit(0)
 
 if __name__ == '__main__':
+    # Session data will be managed per user
+    # No need for global variables
+    
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)

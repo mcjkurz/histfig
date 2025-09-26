@@ -43,6 +43,9 @@ static/
 # ChromaDB persist directory (can be large)
 chroma_db/
 
+# Figures directory (user-generated content)
+figures/
+
 # Environment variables
 .env
 .env.local

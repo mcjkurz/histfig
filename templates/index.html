@@ -28,14 +28,25 @@
 
         .app-container {
             width: 95%;
-            max-width: 1400px;
+            max-width: 1600px;
             height: 90vh;
             display: flex;
             gap: 20px;
         }
 
+        .figure-panel {
+            width: 350px;
+            background: #34495e;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border: 1px solid #4a5f7a;
+        }
+
         .chat-container {
-            flex: 0 0 65%;
+            flex: 1;
             background: #2c3e50;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.3);
@@ -55,6 +66,92 @@
             flex-direction: column;
             overflow: hidden;
             border: 1px solid #4a5f7a;
+        }
+
+        .figure-header {
+            background: #2c3e50;
+            color: #7dd3fc;
+            padding: 20px;
+            text-align: center;
+            border-bottom: 1px solid #4a5f7a;
+        }
+
+        .figure-header h2 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin: 0;
+        }
+
+        .figure-content {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #34495e;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .figure-empty {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #7f8c8d;
+            text-align: center;
+        }
+
+        .figure-info {
+            display: none;
+            text-align: center;
+            width: 100%;
+        }
+
+        .figure-info.visible {
+            display: block;
+        }
+
+        .figure-image {
+            width: 200px;
+            height: 200px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 0 auto 20px auto;
+            display: block;
+            border: 4px solid #7dd3fc;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.3);
+        }
+
+        .figure-name {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #7dd3fc;
+            margin-bottom: 10px;
+        }
+
+        .figure-years {
+            font-size: 1rem;
+            color: #a8c5d9;
+            margin-bottom: 15px;
+        }
+
+        .figure-description {
+            font-size: 0.9rem;
+            color: #e8f4f8;
+            line-height: 1.5;
+            margin-bottom: 15px;
+        }
+
+        .figure-personality {
+            font-size: 0.85rem;
+            color: #7dd3fc;
+            font-style: italic;
+            background: #2c3e50;
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid #4a5f7a;
+            line-height: 1.4;
         }
 
         .control-header {
@@ -559,7 +656,7 @@
             border-radius: 12px;
             padding: 12px 16px;
             font-size: 1rem;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: inherit;
             resize: none;
             min-height: 50px;
             max-height: 120px;
@@ -570,7 +667,7 @@
         }
 
         .chat-input::placeholder {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: inherit;
             font-style: normal;
             opacity: 0.7;
         }
@@ -889,6 +986,16 @@
                 min-height: 90vh;
             }
 
+            .figure-panel {
+                width: 100%;
+                height: 300px;
+                order: -1;
+            }
+
+            .figure-panel.hidden {
+                display: none;
+            }
+
             .documents-panel {
                 width: 100%;
                 height: 300px;
@@ -902,6 +1009,11 @@
             .chat-container {
                 min-width: auto;
                 flex: 1;
+            }
+
+            .control-panel {
+                width: 100%;
+                order: 2;
             }
         }
 
@@ -952,6 +1064,28 @@
 </head>
 <body>
   <div class="app-container">
+    <!-- Figure Description Panel -->
+    <div class="figure-panel" id="figure-panel">
+      <div class="figure-header">
+        <h2>Historical Figure</h2>
+      </div>
+      <div class="figure-content">
+        <div class="figure-empty" id="figure-empty">
+          <p>No figure selected</p>
+          <p style="font-size: 0.8rem; margin-top: 10px; opacity: 0.7;">Select a historical figure from the settings panel to see their information here.</p>
+        </div>
+        <div class="figure-info" id="figure-info">
+          <img class="figure-image" id="figure-image" src="" alt="Figure Portrait" style="display: none;">
+          <div class="figure-name" id="figure-display-name"></div>
+          <div class="figure-years" id="figure-years"></div>
+          <div class="figure-nationality" id="figure-nationality" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 5px;"></div>
+          <div class="figure-occupation" id="figure-occupation" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 15px;"></div>
+          <div class="figure-description" id="figure-display-description"></div>
+          <div class="figure-personality" id="figure-display-personality"></div>
+        </div>
+      </div>
+    </div>
+
     <div class="chat-container">
             <div class="chat-header">
         <h1>Historical Figures Chat</h1>
@@ -1149,6 +1283,14 @@
             this.figureInfo = document.getElementById('figure-info');
             this.figureName = document.getElementById('figure-name');
             this.figureDescription = document.getElementById('figure-description');
+            this.figurePanel = document.getElementById('figure-panel');
+            this.figureEmpty = document.getElementById('figure-empty');
+            this.figureDisplayInfo = document.getElementById('figure-info');
+            this.figureImage = document.getElementById('figure-image');
+            this.figureDisplayName = document.getElementById('figure-display-name');
+            this.figureYears = document.getElementById('figure-years');
+            this.figureDisplayDescription = document.getElementById('figure-display-description');
+            this.figureDisplayPersonality = document.getElementById('figure-display-personality');
             this.ragToggleContainer = document.getElementById('rag-toggle-container');
             this.ragToggleSwitch = document.getElementById('rag-toggle-switch');
             this.thinkingToggleContainer = document.getElementById('thinking-toggle-container');
@@ -1285,14 +1427,14 @@
                     option.textContent = model;
                     this.modelSelect.appendChild(option);
                     
-                    // Check for preferred default model (exactly qwen3:30b)
-                    if (model === 'qwen3:30b') {
+                    // Check for preferred default model (exactly gpt-oss:20b)
+                    if (model === 'gpt-oss:20b') {
                         this.modelSelect.value = model;
                         defaultModelFound = true;
                     }
                 });
                 
-                // If qwen3:30b not found, just use the first available model
+                // If gpt-oss:20b not found, just use the first available model
                 if (!defaultModelFound && models.length > 0) {
                     this.modelSelect.value = models[0];
                 }
@@ -1339,12 +1481,15 @@
                 
                 if (current.figure_id) {
                     this.figureSelect.value = current.figure_id;
-                    this.currentFigure = current.figure_id;
+                    this.currentFigure = current;
+                    // Update figure panel
+                    this.updateFigurePanel();
                     // Update RAG status now that we have a figure
                     this.updateRagStatus();
                 } else {
                     this.figureSelect.value = '';
                     this.currentFigure = null;
+                    this.updateFigurePanel();
                 }
             } catch (error) {
                 console.error('Failed to load current figure:', error);
@@ -1368,6 +1513,9 @@
                 if (result.success) {
                     this.currentFigure = result.current_figure;
                     
+                    // Update figure description panel
+                    this.updateFigurePanel();
+                    
                     // Update RAG status to show current figure's document count
                     this.updateRagStatus();
                 } else {
@@ -1378,8 +1526,60 @@
             }
         }
 
+        updateFigurePanel() {
+            if (!this.currentFigure) {
+                // No figure selected - show empty state
+                this.figureEmpty.style.display = 'block';
+                this.figureDisplayInfo.classList.remove('visible');
+                return;
+            }
 
+            // Hide empty state and show figure info
+            this.figureEmpty.style.display = 'none';
+            this.figureDisplayInfo.classList.add('visible');
 
+            // Update figure information
+            const figure = this.currentFigure;
+            
+            // Set figure name
+            if (figure.name) {
+                this.figureDisplayName.textContent = figure.name;
+            }
+
+            // Set birth and death years
+            if (figure.birth_year || figure.death_year) {
+                const birthYear = figure.birth_year || '?';
+                const deathYear = figure.death_year || '?';
+                this.figureYears.textContent = `(${birthYear} - ${deathYear})`;
+            } else {
+                this.figureYears.textContent = '';
+            }
+
+            // Set description
+            if (figure.description) {
+                this.figureDisplayDescription.textContent = figure.description;
+            } else {
+                this.figureDisplayDescription.textContent = '';
+            }
+
+            // Set personality prompt
+            if (figure.personality_prompt) {
+                this.figureDisplayPersonality.textContent = figure.personality_prompt;
+            } else {
+                this.figureDisplayPersonality.textContent = '';
+            }
+
+            // Set image if available
+            if (figure.image) {
+                this.figureImage.src = `/figure_images/${figure.image}`;
+                this.figureImage.style.display = 'block';
+                this.figureImage.onerror = () => {
+                    this.figureImage.style.display = 'none';
+                };
+            } else {
+                this.figureImage.style.display = 'none';
+            }
+        }
 
         toggleRAG() {
             this.ragEnabled = !this.ragEnabled;
@@ -2206,6 +2406,20 @@
                 // Convert Map to array for sending
                 const retrievedDocuments = Array.from(this.allRetrievedDocuments.values());
                 
+                // Get figure description data if available
+                let figureData = null;
+                if (this.currentFigure) {
+                    figureData = {
+                        name: this.currentFigure.name,
+                        birth_year: this.currentFigure.birth_year,
+                        death_year: this.currentFigure.death_year,
+                        nationality: this.currentFigure.nationality,
+                        occupation: this.currentFigure.occupation,
+                        description: this.currentFigure.description,
+                        personality_prompt: this.currentFigure.personality_prompt
+                    };
+                }
+
                 // Create conversation data
                 const conversationData = {
                     title: `Chat with ${cleanFigureName}`,
@@ -2213,6 +2427,7 @@
                     messages: messages,
                     figure: cleanFigureName,
                     figure_name: cleanFigureName,
+                    figure_data: figureData,
                     document_count: documentCount,
                     model: this.modelSelect.value,
                     temperature: this.temperature.toString(),

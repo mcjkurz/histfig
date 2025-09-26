@@ -37,16 +37,13 @@ class DocumentProcessor:
             pdf_reader = PyPDF2.PdfReader(pdf_file)
             
             text = ""
-            for page_num, page in enumerate(pdf_reader.pages):
+            for page in pdf_reader.pages:
                 try:
                     page_text = page.extract_text()
                     if page_text.strip():
-                        # Fix common character encoding issues from PDF extraction
-                        page_text = self._fix_pdf_encoding_issues(page_text)
-                        text += f"\n--- Page {page_num + 1} ---\n"
                         text += page_text
                 except Exception as e:
-                    logging.warning(f"Error extracting text from page {page_num + 1}: {e}")
+                    logging.warning(f"Error extracting text from page: {e}")
                     continue
             
             return text
@@ -83,96 +80,26 @@ class DocumentProcessor:
             logging.error(f"Error extracting text from text file: {e}")
             raise Exception(f"Failed to extract text from text file: {str(e)}")
     
-    def _fix_pdf_encoding_issues(self, text: str) -> str:
-        """
-        Fix common character encoding issues from PDF extraction.
-        
-        Args:
-            text: Raw text from PDF extraction
-            
-        Returns:
-            Text with fixed encoding issues
-        """
-        # Dictionary of common problematic characters and their replacements
-        replacements = {
-            '\u25a0': '-',  # Black square (■) to hyphen
-            '\u25aa': '-',  # Small black square to hyphen
-            '\u25ab': '-',  # Small white square to hyphen
-            '\u2022': '•',  # Bullet point
-            '\u2013': '-',  # En dash to hyphen
-            '\u2014': '--', # Em dash to double hyphen
-            '\u2018': "'",  # Left single quote
-            '\u2019': "'",  # Right single quote
-            '\u201c': '"',  # Left double quote
-            '\u201d': '"',  # Right double quote
-            '\u2026': '...', # Ellipsis
-            '\ufb01': 'fi', # fi ligature
-            '\ufb02': 'fl', # fl ligature
-            '\ufffd': '',   # Replacement character (remove)
-            '\xa0': ' ',    # Non-breaking space
-            '\u00ad': '-',  # Soft hyphen
-            '\u2010': '-',  # Hyphen
-            '\u2011': '-',  # Non-breaking hyphen
-            '\u2012': '-',  # Figure dash
-            '\u2015': '--', # Horizontal bar
-            '■': '-',       # Direct black square character
-            '□': '-',       # White square
-            '▪': '-',       # Small black square
-            '▫': '-',       # Small white square
-        }
-        
-        # Apply replacements
-        for old_char, new_char in replacements.items():
-            text = text.replace(old_char, new_char)
-        
-        # Remove any remaining control characters except newlines and tabs
-        text = ''.join(char if char.isprintable() or char in '\n\t' else ' ' for char in text)
-        
-        return text
     
-    def clean_text(self, text: str, preserve_newlines: bool = True) -> str:
+    def clean_text(self, text: str) -> str:
         """
-        Clean and normalize text.
+        Clean and normalize text by removing newlines and normalizing whitespace.
         
         Args:
             text: Raw text
-            preserve_newlines: Whether to preserve newline structure
             
         Returns:
-            Cleaned text
+            Cleaned text as one long string without newlines
         """
-        # Remove page numbers and headers (basic patterns)
-        text = re.sub(r'--- Page \d+ ---', '', text)
-        
-        if preserve_newlines:
-            # Preserve paragraph structure by keeping newlines
-            # Remove excessive whitespace within lines but keep line breaks
-            lines = text.split('\n')
-            cleaned_lines = []
-            for line in lines:
-                # Clean each line individually
-                cleaned_line = re.sub(r'\s+', ' ', line.strip())
-                # Remove special characters but keep basic punctuation
-                cleaned_line = re.sub(r'[^\w\s\.\,\!\?\;\:\-\(\)\[\]\"\']+', '', cleaned_line)
-                cleaned_lines.append(cleaned_line)
-            text = '\n'.join(cleaned_lines)
-        else:
-            # Original cleaning behavior - remove all newlines
-            text = re.sub(r'\s+', ' ', text)
-            text = re.sub(r'[^\w\s\.\,\!\?\;\:\-\(\)\[\]\"\']+', '', text)
-            text = text.replace('\n', ' ').replace('\r', ' ')
+        # Remove all newlines and normalize whitespace
+        text = text.replace('\n', ' ').replace('\r', ' ')
+        text = re.sub(r'\s+', ' ', text)
         
         return text.strip()
     
     def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Split text into chunks based on document structure (passages/paragraphs).
-        
-        Strategy:
-        1. First, split by passages (newlines) to respect document structure
-        2. For short passages, combine them into coherent chunks
-        3. For long passages with multiple sentences, split them appropriately
-        4. Remove line breaks within chunks to create coherent single-line text
+        Split text into chunks by max length after removing all newlines.
         
         Args:
             text: Text to chunk
@@ -184,93 +111,52 @@ class DocumentProcessor:
         if metadata is None:
             metadata = {}
         
-        chunks = []
-        text = self.clean_text(text, preserve_newlines=True)
+        # Clean text to create one long string without newlines
+        text = self.clean_text(text)
         
         if len(text) <= self.chunk_size:
             # Text is small enough to be a single chunk
-            # Remove line breaks to create coherent single-line text
-            single_line_text = ' '.join(text.split())
-            chunks.append({
-                "text": single_line_text,
+            return [{
+                "text": text,
                 "metadata": {**metadata, "chunk_index": 0, "total_chunks": 1}
-            })
-            return chunks
+            }]
         
-        # Split into passages/paragraphs (by newlines)
-        passages = [p.strip() for p in text.split('\n') if p.strip()]
-        
-        current_chunk_passages = []
-        current_chunk_length = 0
+        chunks = []
         chunk_index = 0
+        start = 0
         
-        for passage in passages:
-            # Check if this passage alone exceeds chunk_size
-            if len(passage) > self.chunk_size:
-                # First, save any accumulated passages as a chunk
-                if current_chunk_passages:
-                    # Join passages with space and remove line breaks
-                    chunk_text = ' '.join(current_chunk_passages)
-                    chunk_text = ' '.join(chunk_text.split())
-                    chunks.append({
-                        "text": chunk_text,
-                        "metadata": {**metadata, "chunk_index": chunk_index}
-                    })
-                    chunk_index += 1
-                    current_chunk_passages = []
-                    current_chunk_length = 0
-                
-                # Split the long passage by sentences
-                long_passage_chunks = self._chunk_long_passage(passage, metadata, chunk_index)
-                chunks.extend(long_passage_chunks)
-                chunk_index += len(long_passage_chunks)
+        while start < len(text):
+            # Determine end position for this chunk
+            end = start + self.chunk_size
+            
+            if end >= len(text):
+                # Last chunk - take remaining text
+                chunk_text = text[start:]
             else:
-                # Check if adding this passage would exceed chunk_size
-                passage_with_newline_length = len(passage) + (1 if current_chunk_passages else 0)
-                
-                if current_chunk_length + passage_with_newline_length > self.chunk_size and current_chunk_passages:
-                    # Save current chunk
-                    # Join passages with space and remove line breaks
-                    chunk_text = ' '.join(current_chunk_passages)
-                    chunk_text = ' '.join(chunk_text.split())
-                    chunks.append({
-                        "text": chunk_text,
-                        "metadata": {**metadata, "chunk_index": chunk_index}
-                    })
-                    chunk_index += 1
-                    
-                    # Start new chunk with potential overlap
-                    if self.chunk_overlap > 0 and current_chunk_passages:
-                        # Include the last passage(s) as overlap if they fit within overlap size
-                        overlap_passages = []
-                        overlap_length = 0
-                        for i in range(len(current_chunk_passages) - 1, -1, -1):
-                            passage_len = len(current_chunk_passages[i]) + 1  # +1 for space
-                            if overlap_length + passage_len <= self.chunk_overlap:
-                                overlap_passages.insert(0, current_chunk_passages[i])
-                                overlap_length += passage_len
-                            else:
-                                break
-                        
-                        current_chunk_passages = overlap_passages + [passage]
-                        current_chunk_length = overlap_length + len(passage)
-                    else:
-                        current_chunk_passages = [passage]
-                        current_chunk_length = len(passage)
+                # Try to break at word boundary
+                chunk_text = text[start:end]
+                # Find the last space to avoid breaking words
+                last_space = chunk_text.rfind(' ')
+                if last_space != -1 and last_space > start + self.chunk_size // 2:
+                    # Break at word boundary if it's not too far back
+                    chunk_text = text[start:start + last_space]
+                    end = start + last_space + 1  # +1 to skip the space
                 else:
-                    # Add passage to current chunk
-                    current_chunk_passages.append(passage)
-                    current_chunk_length += passage_with_newline_length
-        
-        # Add the last chunk if it exists
-        if current_chunk_passages:
-            # Join passages with space and remove line breaks
-            chunk_text = ' '.join(current_chunk_passages)
-            chunk_text = ' '.join(chunk_text.split())
+                    # No good word boundary found, use the full chunk
+                    end = start + self.chunk_size
+            
             chunks.append({
-                "text": chunk_text,
+                "text": chunk_text.strip(),
                 "metadata": {**metadata, "chunk_index": chunk_index}
             })
+            
+            # Move to next chunk with overlap
+            if self.chunk_overlap > 0 and end < len(text):
+                start = end - self.chunk_overlap
+            else:
+                start = end
+            
+            chunk_index += 1
         
         # Update total_chunks in all metadata
         total_chunks = len(chunks)
@@ -279,66 +165,6 @@ class DocumentProcessor:
         
         return chunks
     
-    def _chunk_long_passage(self, passage: str, base_metadata: Dict[str, Any], start_chunk_index: int) -> List[Dict[str, Any]]:
-        """
-        Chunk a single passage that's longer than chunk_size by sentences.
-        
-        Args:
-            passage: Long passage to chunk
-            base_metadata: Base metadata for chunks
-            start_chunk_index: Starting chunk index
-            
-        Returns:
-            List of chunks from the passage
-        """
-        chunks = []
-        
-        # First, remove line breaks within the passage to create coherent text
-        passage = ' '.join(passage.split())
-        
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', passage)
-        
-        current_chunk = ""
-        chunk_index = start_chunk_index
-        
-        for sentence in sentences:
-            # Check if adding this sentence would exceed chunk size
-            if len(current_chunk) + len(sentence) + 1 > self.chunk_size and current_chunk:
-                # Save current chunk (already single-line)
-                chunks.append({
-                    "text": current_chunk.strip(),
-                    "metadata": {**base_metadata, "chunk_index": chunk_index}
-                })
-                
-                # Start new chunk with overlap
-                if self.chunk_overlap > 0:
-                    # Take the last part of current chunk as overlap
-                    overlap_text = current_chunk[-self.chunk_overlap:]
-                    # Find the start of a word to avoid cutting words
-                    space_index = overlap_text.find(' ')
-                    if space_index != -1:
-                        overlap_text = overlap_text[space_index + 1:]
-                    current_chunk = overlap_text + " " + sentence
-                else:
-                    current_chunk = sentence
-                
-                chunk_index += 1
-            else:
-                # Add sentence to current chunk
-                if current_chunk:
-                    current_chunk += " " + sentence
-                else:
-                    current_chunk = sentence
-        
-        # Add the last chunk if it exists
-        if current_chunk.strip():
-            chunks.append({
-                "text": current_chunk.strip(),
-                "metadata": {**base_metadata, "chunk_index": chunk_index}
-            })
-        
-        return chunks
     
     def process_file(self, file_content: bytes, filename: str, file_type: str) -> List[Dict[str, Any]]:
         """

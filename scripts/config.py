@@ -11,7 +11,7 @@ UPLOAD_PORT = 5002     # Upload application port (if used)
 
 # Ollama Configuration
 OLLAMA_URL = "http://localhost:11434"
-DEFAULT_MODEL = "qwen3:30b"
+DEFAULT_MODEL = "gpt-oss:20b"
 
 # Application Settings
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
