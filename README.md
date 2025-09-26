@@ -57,7 +57,7 @@ All configuration is centralized in `scripts/config.py`. You can modify:
 
 ### Other Settings
 - `OLLAMA_URL` - Ollama server URL
-- `DEFAULT_MODEL` - Default language model
+- `OLLAMA_MODEL` - Default Ollama model
 - `MAX_CONTENT_LENGTH` - Maximum file upload size
 - `DEBUG_MODE` - Enable/disable debug mode
 

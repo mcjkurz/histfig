@@ -2,12 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <meta name="cache-bust" content="v2.4-conversation-history-improved-markdown">
-    <title>RAG Chat - Ollama Interface v2.4</title>
+    <meta name="cache-bust" content="v3.0-mobile-optimized">
+    <title>RAG Chat - Historical Figures</title>
 
     <style>
         * {
@@ -20,52 +20,156 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: #1a2332;
             height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
             display: flex;
-            justify-content: center;
-            align-items: center;
             color: #e8f4f8;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
         }
 
         .app-container {
-            width: 95%;
-            max-width: 1600px;
-            height: 90vh;
+            width: 100%;
+            height: 100vh;
+            height: 100dvh; /* Dynamic viewport height for mobile */
             display: flex;
-            gap: 20px;
+            position: relative;
         }
 
-        .figure-panel {
-            width: 350px;
-            background: #34495e;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        /* Toggle buttons for panels */
+        .control-toggle-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
             display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            border: 1px solid #4a5f7a;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+
+        .control-toggle-btn:hover {
+            transform: scale(1.1);
+            background: #2980b9;
+        }
+
+        .control-toggle-btn.panel-open {
+            background: #e74c3c;
+        }
+
+        .control-toggle-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        .figure-toggle-btn {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: #9b59b6;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.3);
+            transition: all 0.3s;
+        }
+
+        .figure-toggle-btn:hover {
+            transform: scale(1.1);
+            background: #8e44ad;
+        }
+
+        .figure-toggle-btn.panel-open {
+            background: #e74c3c;
+        }
+
+        .figure-toggle-btn svg {
+            width: 24px;
+            height: 24px;
+        }
+
+        /* Overlay for mobile */
+        .overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 998;
+        }
+
+        .overlay.active {
+            display: block;
         }
 
         .chat-container {
             flex: 1;
             background: #2c3e50;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            min-width: 500px;
             border: 1px solid #34495e;
+            position: relative;
+            width: 100%;
+        }
+
+        .figure-panel {
+            position: fixed;
+            top: 0;
+            left: -400px;
+            width: 400px;
+            max-width: 90vw;
+            height: 100vh;
+            background: #34495e;
+            box-shadow: 4px 0 20px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            border-right: 1px solid #4a5f7a;
+            transition: left 0.3s ease;
+            z-index: 999;
+        }
+
+        .figure-panel.open {
+            left: 0;
         }
 
         .control-panel {
-            width: 380px;
+            position: fixed;
+            top: 0;
+            right: -400px;
+            width: 400px;
+            max-width: 90vw;
+            height: 100vh;
             background: #34495e;
-            border-radius: 20px;
-            box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+            box-shadow: -4px 0 20px rgba(0,0,0,0.3);
             display: flex;
             flex-direction: column;
             overflow: hidden;
-            border: 1px solid #4a5f7a;
+            border-left: 1px solid #4a5f7a;
+            transition: right 0.3s ease;
+            z-index: 999;
+        }
+
+        .control-panel.open {
+            right: 0;
         }
 
         .figure-header {
@@ -74,6 +178,9 @@
             padding: 20px;
             text-align: center;
             border-bottom: 1px solid #4a5f7a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .figure-header h2 {
@@ -154,18 +261,36 @@
             line-height: 1.4;
         }
 
+
         .control-header {
             background: #2c3e50;
             color: #7dd3fc;
             padding: 20px;
             text-align: center;
             border-bottom: 1px solid #4a5f7a;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .control-header h2 {
             font-size: 1.2rem;
             font-weight: 600;
             margin: 0;
+        }
+
+        .control-close-btn {
+            background: none;
+            border: none;
+            color: #7dd3fc;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .control-content {
@@ -205,6 +330,8 @@
             padding: 15px;
             background: #2c3e50;
             border-radius: 0 0 12px 12px;
+            max-height: 300px;
+            overflow-y: auto;
         }
 
         .document-item {
@@ -225,93 +352,31 @@
             background: #243447;
         }
 
-        .document-filename {
-            font-weight: 600;
-            color: #7dd3fc;
-            font-size: 0.9rem;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .document-filename::before {
-            content: "📄";
-            font-size: 0.8rem;
-        }
-
-        .document-preview {
-            color: #a8c5d9;
-            font-size: 0.85rem;
-            line-height: 1.4;
-            margin-bottom: 10px;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-
-        .document-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.75rem;
-            color: #7f8c8d;
-        }
-
-        .document-similarity {
-            background: #ecf0f1;
-            padding: 3px 8px;
-            border-radius: 6px;
-            font-weight: 500;
-            color: #2c3e50;
-        }
-
-        .document-similarity.high {
-            background: #d5f4e6;
-            color: #27ae60;
-        }
-
-        .document-similarity.medium {
-            background: #fef9e7;
-            color: #f39c12;
-        }
-
-        .documents-empty {
-            text-align: center;
-            color: #7f8c8d;
-            font-style: italic;
-            padding: 40px 20px;
-        }
-
         .chat-header {
             background: #1e2a3a;
             color: #e8f4f8;
-            padding: 20px;
+            padding: 15px 60px 15px 20px;
             text-align: center;
             position: relative;
             border-bottom: 1px solid #4a5f7a;
-            display: flex;
-            justify-content: center;
-            align-items: center;
         }
 
         .chat-header h1 {
-            font-size: 1.5rem;
+            font-size: 1.3rem;
             font-weight: 600;
-            flex: 1;
         }
 
         .save-conversation-btn {
             position: absolute;
-            right: 20px;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
             background: transparent;
             color: #7dd3fc;
             border: 1px solid #7dd3fc;
             border-radius: 6px;
-            padding: 8px 16px;
-            font-size: 0.9rem;
+            padding: 6px 12px;
+            font-size: 0.85rem;
             cursor: pointer;
             transition: all 0.2s;
             font-weight: 500;
@@ -320,11 +385,10 @@
         .save-conversation-btn:hover {
             background: #7dd3fc;
             color: #1e2a3a;
-            transform: translateY(-1px);
         }
 
         .save-conversation-btn:active {
-            transform: translateY(0);
+            transform: translateY(-50%) scale(0.95);
         }
 
         .save-conversation-btn:disabled {
@@ -395,67 +459,6 @@
             box-shadow: 0 0 0 2px rgba(125, 211, 252, 0.2);
         }
 
-        .control-select:hover:not(:disabled) {
-            border-color: #5eacdc;
-        }
-
-        .control-select:disabled {
-            background: #34495e;
-            color: #999;
-            cursor: not-allowed;
-            opacity: 0.6;
-        }
-
-        /* Temperature slider styles */
-        input[type="range"] {
-            -webkit-appearance: none;
-            appearance: none;
-            background: transparent;
-            cursor: pointer;
-        }
-
-        input[type="range"]::-webkit-slider-track {
-            background: #4a5f7a;
-            height: 4px;
-            border-radius: 2px;
-        }
-
-        input[type="range"]::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            background: #7dd3fc;
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            margin-top: -6px;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        input[type="range"]::-webkit-slider-thumb:hover {
-            background: #5eacdc;
-        }
-
-        input[type="range"]::-moz-range-track {
-            background: #4a5f7a;
-            height: 4px;
-            border-radius: 2px;
-        }
-
-        input[type="range"]::-moz-range-thumb {
-            background: #7dd3fc;
-            height: 16px;
-            width: 16px;
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-
-        input[type="range"]::-moz-range-thumb:hover {
-            background: #5eacdc;
-        }
-
         .control-toggle {
             display: flex;
             align-items: center;
@@ -521,67 +524,6 @@
             color: #a8c5d9;
         }
 
-        /* Model selector styles moved to control panel */
-
-        /* RAG toggle styles moved to control panel */
-
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 34px;
-            height: 18px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .toggle-slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: .4s;
-            border-radius: 18px;
-        }
-
-        .toggle-slider:before {
-            position: absolute;
-            content: "";
-            height: 14px;
-            width: 14px;
-            left: 2px;
-            bottom: 2px;
-            background-color: white;
-            transition: .4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .toggle-slider {
-            background-color: #2ed573;
-        }
-
-        input:checked + .toggle-slider:before {
-            transform: translateX(16px);
-        }
-
-        .toggle-label {
-            color: white;
-            font-weight: 500;
-        }
-
-        .rag-status {
-            color: rgba(255,255,255,0.8);
-            font-size: 0.7rem;
-        }
-
-        /* Status styles moved to control panel section */
-
         .chat-messages {
             flex: 1;
             padding: 20px;
@@ -604,6 +546,7 @@
             padding: 12px 16px;
             border-radius: 18px;
             line-height: 1.4;
+            word-wrap: break-word;
         }
 
         .message.user .message-content {
@@ -628,6 +571,7 @@
             font-weight: bold;
             color: white;
             flex-shrink: 0;
+            font-size: 0.9rem;
         }
 
         .message.user .message-avatar {
@@ -639,37 +583,35 @@
         }
 
         .chat-input-container {
-            padding: 20px;
+            padding: 15px;
             background: #1e2a3a;
             border-top: 1px solid #4a5f7a;
+            position: relative;
+            z-index: 10;
         }
 
         .chat-input-form {
             display: flex;
-            gap: 12px;
-            align-items: center;
+            gap: 10px;
+            align-items: flex-end;
         }
 
         .chat-input {
             flex: 1;
             border: 2px solid #4a5f7a;
             border-radius: 12px;
-            padding: 12px 16px;
-            font-size: 1rem;
+            padding: 10px 14px;
+            font-size: 16px; /* Prevents zoom on iOS */
             font-family: inherit;
             resize: none;
-            min-height: 50px;
+            min-height: 45px;
             max-height: 120px;
             background: #2c3e50;
             color: #e8f4f8;
             outline: none;
             transition: border-color 0.2s;
-        }
-
-        .chat-input::placeholder {
-            font-family: inherit;
-            font-style: normal;
-            opacity: 0.7;
+            -webkit-appearance: none; /* Prevent iOS styling */
+            appearance: none;
         }
 
         .chat-input:focus {
@@ -681,15 +623,11 @@
             color: white;
             border: none;
             border-radius: 12px;
-            padding: 12px 20px;
+            padding: 10px 18px;
             font-size: 1rem;
             cursor: pointer;
             transition: transform 0.2s;
-            min-width: 80px;
-            height: 50px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            min-width: 70px;
         }
 
         .send-button:hover:not(:disabled) {
@@ -700,112 +638,294 @@
             opacity: 0.6;
             cursor: not-allowed;
         }
-
-        .typing-indicator {
-            display: none;
-            padding: 12px 16px;
-            background: white;
-            border: 1px solid #e1e8ed;
-            border-radius: 18px;
-            max-width: 70px;
-        }
-
-        .typing-dots {
-            display: flex;
-            gap: 4px;
-        }
-
-        .typing-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: #ccc;
-            animation: typing 1.4s infinite ease-in-out;
-        }
-
-        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
-        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
-
-        @keyframes typing {
-            0%, 80%, 100% { transform: scale(0.8); opacity: 0.5; }
-            40% { transform: scale(1); opacity: 1; }
-        }
-
-        .error-message {
+        
+        .stop-button {
             background: #e74c3c;
             color: white;
-            padding: 12px 16px;
-            border-radius: 8px;
-            margin: 10px 0;
-            text-align: center;
+            border: none;
+            border-radius: 12px;
+            padding: 10px 18px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: transform 0.2s;
+            min-width: 70px;
+        }
+        
+        .stop-button:hover {
+            background: #c0392b;
+            transform: translateY(-2px);
         }
 
-        /* Basic markdown styling for assistant messages */
-        .message.assistant .message-content h1,
-        .message.assistant .message-content h2,
-        .message.assistant .message-content h3 {
-            margin: 16px 0 8px 0;
-            color: #2c3e50;
-            font-weight: 600;
+        /* Mobile-specific styles */
+        @media (max-width: 768px) {
+            .app-container {
+                height: 100vh;
+                height: 100dvh;
+            }
+
+            .chat-container {
+                width: 100%;
+                height: 100%;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .control-toggle-btn {
+                top: 10px;
+                right: 10px;
+                width: 40px;
+                height: 40px;
+            }
+
+            .control-toggle-btn svg {
+                width: 20px;
+                height: 20px;
+            }
+            
+            .figure-toggle-btn svg {
+                width: 20px;
+                height: 20px;
+            }
+
+            .chat-header {
+                padding: 12px 50px 12px 15px;
+                flex-shrink: 0;
+            }
+
+            .chat-header h1 {
+                font-size: 1.1rem;
+            }
+
+            .control-panel {
+                width: 100%;
+                max-width: 100%;
+            }
+
+            .chat-messages {
+                padding: 15px;
+                flex: 1;
+                overflow-y: auto;
+                min-height: 0; /* Important for flex children */
+            }
+
+            .chat-input-container {
+                padding: 12px;
+                flex-shrink: 0;
+                background: #1e2a3a;
+                border-top: 1px solid #4a5f7a;
+            }
+
+            .message-content {
+                max-width: 85%;
+                font-size: 0.95rem;
+            }
+
+            .message-avatar {
+                width: 35px;
+                height: 35px;
+                font-size: 0.8rem;
+            }
+
+            .chat-input {
+                font-size: 16px; /* Prevents zoom on iOS */
+                padding: 8px 12px;
+                min-height: 40px;
+                width: 100%;
+                box-sizing: border-box;
+            }
+
+            .send-button {
+                padding: 8px 15px;
+                font-size: 0.9rem;
+                min-width: 60px;
+                flex-shrink: 0;
+            }
+
+            .control-section-header {
+                font-size: 0.85rem;
+                padding: 10px 12px;
+            }
+
+            .control-label {
+                font-size: 0.8rem;
+            }
+
+            .control-select {
+                font-size: 16px; /* Prevents zoom on iOS */
+            }
         }
 
-        .message.assistant .message-content h1 { font-size: 1.5em; }
-        .message.assistant .message-content h2 { font-size: 1.3em; }
-        .message.assistant .message-content h3 { font-size: 1.1em; }
+        /* Landscape mode adjustments */
+        @media (max-width: 768px) and (orientation: landscape) {
+            .chat-header {
+                padding: 8px 50px 8px 15px;
+            }
 
-        .message.assistant .message-content p {
-            margin: 8px 0;
-            line-height: 1.6;
+            .chat-header h1 {
+                font-size: 1rem;
+            }
+
+            .chat-messages {
+                padding: 10px;
+            }
+
+            .chat-input-container {
+                padding: 10px;
+            }
         }
 
-        .message.assistant .message-content ul,
-        .message.assistant .message-content ol {
-            margin: 8px 0;
-            padding-left: 20px;
+        /* Tablet styles */
+        @media (min-width: 769px) and (max-width: 1024px) {
+            .control-panel {
+                width: 350px;
+            }
+
+            .message-content {
+                max-width: 75%;
+            }
         }
 
-        .message.assistant .message-content li {
-            margin: 4px 0;
+        /* Desktop styles */
+        @media (min-width: 1025px) {
+            .app-container {
+                padding: 20px;
+                gap: 20px;
+                display: flex;
+                justify-content: center;
+                max-width: 1600px;
+                margin: 0 auto;
+            }
+
+            /* Figure panel always visible on desktop */
+            .figure-panel {
+                position: relative !important;
+                left: 0 !important;
+                top: auto !important;
+                width: 350px;
+                height: auto !important;
+                border-radius: 20px;
+                border: 1px solid #4a5f7a;
+                order: 1;
+                z-index: auto !important;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+                border-right: none;
+                transition: none !important;
+                transform: translateX(0) !important;
+                display: flex !important;
+                visibility: visible !important;
+                opacity: 1 !important;
+            }
+            
+            /* Override the closed/open classes on desktop */
+            .figure-panel.closed,
+            .figure-panel.open {
+                left: 0 !important;
+                transform: translateX(0) !important;
+                display: flex !important;
+            }
+
+            .figure-panel .figure-header {
+                border-radius: 20px 20px 0 0;
+            }
+
+            .chat-container {
+                flex: 1;
+                max-width: 900px;
+                border-radius: 20px;
+                transition: margin-right 0.3s ease;
+                order: 2;
+            }
+
+            /* Control panel always visible on desktop */
+            .control-panel {
+                position: relative;
+                width: 380px;
+                height: auto;
+                border-radius: 20px;
+                border: 1px solid #4a5f7a;
+                transition: none;
+                z-index: auto;
+                order: 3;
+            }
+
+            .control-panel.open {
+                right: auto;
+            }
+
+            .control-toggle-btn {
+                display: none; /* Hide toggle button on desktop */
+            }
+            
+            .figure-toggle-btn {
+                display: none; /* Hide figure toggle button on desktop */
+            }
+
+            .control-header {
+                border-radius: 20px 20px 0 0;
+            }
+
+            .control-close-btn {
+                display: none;
+            }
+
+            .overlay {
+                display: none !important;
+            }
+
+            .chat-header {
+                border-radius: 20px 20px 0 0;
+            }
+
+            .chat-input-container {
+                border-radius: 0 0 20px 20px;
+            }
         }
 
-        .message.assistant .message-content code {
-            background: #f4f4f4;
-            padding: 2px 4px;
-            border-radius: 3px;
-            font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
-            font-size: 0.9em;
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
         }
 
-        .message.assistant .message-content pre {
-            background: #f4f4f4;
-            padding: 12px;
-            border-radius: 8px;
-            overflow-x: auto;
-            margin: 8px 0;
+        ::-webkit-scrollbar-track {
+            background: #1e2a3a;
         }
 
-        .message.assistant .message-content pre code {
-            background: none;
-            padding: 0;
+        ::-webkit-scrollbar-thumb {
+            background: #4a5f7a;
+            border-radius: 4px;
         }
 
-        .message.assistant .message-content blockquote {
-            border-left: 4px solid #3498db;
-            margin: 8px 0;
+        ::-webkit-scrollbar-thumb:hover {
+            background: #5a6f8a;
+        }
+
+        /* Thinking content styling */
+        .thinking-content {
+            background: #243447;
+            border-left: 3px solid #7dd3fc;
             padding: 8px 12px;
-            background: #f8f9fa;
+            margin: 8px 0;
             border-radius: 0 4px 4px 0;
+            border: 1px solid #4a5f7a;
+            font-size: 0.9rem;
         }
-
-        .message.assistant .message-content strong {
-            font-weight: 600;
-        }
-
-        .message.assistant .message-content em {
+        
+        .thinking-indicator {
+            color: #7dd3fc;
             font-style: italic;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        
+        .thinking-text {
+            color: #7dd3fc;
+            font-style: italic;
+            white-space: pre-wrap;  /* Preserve formatting and line breaks */
+            word-wrap: break-word;  /* Break long words if needed */
         }
 
-        /* Document citation link styling */
+        /* Document citation styling */
         .doc-citation {
             display: inline-block;
             background: #3498db;
@@ -826,107 +946,11 @@
             box-shadow: 0 2px 4px rgba(52, 152, 219, 0.3);
         }
 
-        .doc-citation:active {
-            transform: translateY(0);
-        }
-
-        /* Thinking content styling */
-        .thinking-content {
-            font-style: italic;
-            color: #7dd3fc;
-            background: #243447;
-            border-left: 3px solid #7dd3fc;
-            padding: 8px 12px;
-            margin: 8px 0;
-            border-radius: 0 4px 4px 0;
-            border: 1px solid #4a5f7a;
-            font-size: 0.9rem;
-        }
-
-        /* Response text styling during streaming */
-        .response-text {
-            margin-top: 8px;
-            white-space: pre-wrap;
-            line-height: 1.6;
-        }
-
-        /* Final response styling after markdown processing */
-        .final-response {
-            margin-top: 8px;
-        }
-
-        /* Source references styling */
-        .sources-container {
-            margin-top: 15px;
-            padding: 12px;
-            background: #f8f9fa;
-            border-radius: 8px;
-            border-left: 4px solid #3498db;
-        }
-
-        .sources-header {
-            font-weight: 600;
-            color: #2c3e50;
-            margin-bottom: 8px;
-            font-size: 0.9em;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .sources-header::before {
-            content: "📄";
-            font-size: 0.8em;
-        }
-
-        .source-item {
-            margin: 8px 0;
-            padding: 10px;
-            background: white;
-            border-radius: 6px;
-            border: 1px solid #e1e8ed;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .source-item:hover {
-            border-color: #3498db;
-            box-shadow: 0 2px 4px rgba(52, 152, 219, 0.1);
-        }
-
-        .source-filename {
-            font-weight: 600;
-            color: #3498db;
-            font-size: 0.85em;
-            margin-bottom: 4px;
-        }
-
-        .source-preview {
-            color: #7f8c8d;
-            font-size: 0.8em;
-            line-height: 1.3;
-            margin-bottom: 6px;
-        }
-
-        .source-meta {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            font-size: 0.75em;
-            color: #95a5a6;
-        }
-
-        .source-similarity {
-            background: #ecf0f1;
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 500;
-        }
-
+        /* Source modal */
         .source-modal {
             display: none;
             position: fixed;
-            z-index: 1000;
+            z-index: 1001;
             left: 0;
             top: 0;
             width: 100%;
@@ -935,14 +959,15 @@
         }
 
         .source-modal-content {
-            background-color: white;
+            background-color: #2c3e50;
             margin: 5% auto;
             padding: 20px;
             border-radius: 12px;
-            width: 80%;
+            width: 90%;
             max-width: 700px;
             max-height: 80vh;
             overflow-y: auto;
+            border: 1px solid #4a5f7a;
         }
 
         .source-modal-header {
@@ -951,12 +976,12 @@
             align-items: center;
             margin-bottom: 15px;
             padding-bottom: 10px;
-            border-bottom: 2px solid #ecf0f1;
+            border-bottom: 2px solid #4a5f7a;
         }
 
         .source-modal-title {
             font-weight: 600;
-            color: #2c3e50;
+            color: #7dd3fc;
             font-size: 1.1em;
         }
 
@@ -965,1594 +990,268 @@
             border: none;
             font-size: 1.5em;
             cursor: pointer;
-            color: #7f8c8d;
+            color: #7dd3fc;
         }
 
         .source-modal-close:hover {
-            color: #2c3e50;
+            color: #e8f4f8;
         }
 
         .source-modal-text {
             line-height: 1.6;
-            color: #2c3e50;
+            color: #e8f4f8;
             white-space: pre-wrap;
         }
 
-        /* Responsive design */
-        @media (max-width: 1024px) {
-            .app-container {
-                flex-direction: column;
-                height: auto;
-                min-height: 90vh;
-            }
-
-            .figure-panel {
-                width: 100%;
-                height: 300px;
-                order: -1;
-            }
-
-            .figure-panel.hidden {
-                display: none;
-            }
-
-            .documents-panel {
-                width: 100%;
-                height: 300px;
-                order: -1;
-            }
-
-            .documents-panel.visible {
-                display: flex;
-            }
-
-            .chat-container {
-                min-width: auto;
-                flex: 1;
-            }
-
-            .control-panel {
-                width: 100%;
-                order: 2;
-            }
-        }
-
         @media (max-width: 768px) {
-            .app-container {
-                width: 98%;
-                gap: 10px;
+            .source-modal-content {
+                margin: 10% auto;
+                width: 95%;
+                padding: 15px;
             }
-
-            .documents-panel {
-                height: 250px;
-            }
-
-            .chat-header h1 {
-                font-size: 1.2rem;
-            }
-
-            .save-conversation-btn {
-                padding: 6px 10px;
-                min-width: 35px;
-                height: 35px;
-                font-size: 1rem;
-            }
-
-            .figure-selector-container {
-                position: static;
-                transform: none;
-                margin-bottom: 10px;
-                justify-content: center;
-            }
-
-            .figure-selector {
-                min-width: 180px;
-                font-size: 0.8rem;
-            }
-
-            /* Model selector is now in control panel - no mobile overrides needed */
-
-            .thinking-toggle {
-                justify-content: center;
-            }
-
-            /* Status indicator is now in control panel - no mobile overrides needed */
-
-            /* RAG toggle is now in control panel - no mobile overrides needed */
         }
     </style>
 </head>
 <body>
-  <div class="app-container">
-    <!-- Figure Description Panel -->
-    <div class="figure-panel" id="figure-panel">
-      <div class="figure-header">
-        <h2>Historical Figure</h2>
-      </div>
-      <div class="figure-content">
-        <div class="figure-empty" id="figure-empty">
-          <p>No figure selected</p>
-          <p style="font-size: 0.8rem; margin-top: 10px; opacity: 0.7;">Select a historical figure from the settings panel to see their information here.</p>
-        </div>
-        <div class="figure-info" id="figure-info">
-          <img class="figure-image" id="figure-image" src="" alt="Figure Portrait" style="display: none;">
-          <div class="figure-name" id="figure-display-name"></div>
-          <div class="figure-years" id="figure-years"></div>
-          <div class="figure-nationality" id="figure-nationality" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 5px;"></div>
-          <div class="figure-occupation" id="figure-occupation" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 15px;"></div>
-          <div class="figure-description" id="figure-display-description"></div>
-          <div class="figure-personality" id="figure-display-personality"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="chat-container">
-            <div class="chat-header">
-        <h1>Historical Figures Chat</h1>
-        <button class="save-conversation-btn" id="save-conversation-btn" title="Save conversation as PDF">
-          Save
+    <div class="app-container">
+        <!-- Toggle button for figure panel -->
+        <button class="figure-toggle-btn" id="figure-toggle-btn" aria-label="Toggle Figure Panel">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
         </button>
-      </div>
 
-      <div class="chat-messages" id="chat-messages">
-      </div>
+        <!-- Toggle button for control panel -->
+        <button class="control-toggle-btn" id="control-toggle-btn" aria-label="Toggle Control Panel">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </button>
 
-      <div class="chat-input-container">
-        <form class="chat-input-form" id="chat-form">
-          <textarea
-            class="chat-input"
-            id="message-input"
-            placeholder="Type your message here..."
-            rows="1"
-          ></textarea>
-          <button type="submit" class="send-button" id="send-button">Send</button>
-        </form>
-      </div>
-    </div>
+        <!-- Overlay for mobile -->
+        <div class="overlay" id="overlay"></div>
 
-    <div class="control-panel" id="control-panel">
-      <div class="control-header">
-        <h2>Settings</h2>
-      </div>
-      <div class="control-content">
-        <!-- Figure Selection -->
-        <div class="control-section">
-          <div class="control-section-header">Historical Figure</div>
-          <div class="control-section-content">
-            <div class="control-item">
-              <label class="control-label">Select Figure</label>
-              <select id="figure-select" class="control-select">
-                <option value="">Loading figures...</option>
-              </select>
+        <!-- Figure panel -->
+        <div class="figure-panel" id="figure-panel">
+            <div class="figure-header">
+                <h2>Historical Figure</h2>
             </div>
-            <div class="control-item" id="figure-info" style="display: none;">
-              <div style="padding: 10px; background: #1e2a3a; border-radius: 6px; border: 1px solid #4a5f7a;">
-                <div style="color: #7dd3fc; font-weight: 600; margin-bottom: 4px;" id="figure-name">Figure Name</div>
-                <div style="color: #a8c5d9; font-size: 0.8rem;" id="figure-description">Figure description</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Model Selection -->
-        <div class="control-section">
-          <div class="control-section-header">AI Model</div>
-          <div class="control-section-content">
-            <div class="control-item">
-              <label class="control-label">Select Model</label>
-              <select id="model-select" class="control-select">
-                <option value="llama2">llama2</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <!-- Connection Status -->
-        <div class="control-section">
-          <div class="control-section-header">Connection Status</div>
-          <div class="control-section-content">
-            <div class="control-item">
-              <div class="status-indicator">
-                <div class="status-dot" id="status-dot"></div>
-                <span class="status-text" id="status-text">Connecting...</span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Display Options -->
-        <div class="control-section">
-          <div class="control-section-header">Display Options</div>
-          <div class="control-section-content">
-            <div class="control-item">
-              <div class="control-toggle" id="rag-toggle-container">
-                <div class="toggle-switch" id="rag-toggle-switch">
-                  <div class="toggle-slider"></div>
+            <div class="figure-content">
+                <div class="figure-empty" id="figure-empty">
+                    <p>No figure selected</p>
+                    <p style="font-size: 0.8rem; margin-top: 10px; opacity: 0.7;">Select a historical figure from the settings panel to see their information here.</p>
                 </div>
-                <span class="toggle-label">Enable RAG</span>
-              </div>
-              <div style="margin-top: 5px;">
-                <span style="font-size: 0.75rem; color: #a8c5d9;" id="rag-status">0 docs</span>
-              </div>
-            </div>
-            <div class="control-item">
-              <div class="control-toggle" id="thinking-toggle-container">
-                <div class="toggle-switch active" id="thinking-toggle-switch">
-                  <div class="toggle-slider"></div>
+                <div class="figure-info" id="figure-info">
+                <img class="figure-image" id="figure-image" src="" alt="Figure Portrait" style="display: none;">
+                <div class="figure-name" id="figure-display-name"></div>
+                <div class="figure-years" id="figure-years"></div>
+                <div class="figure-nationality" id="figure-nationality" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 5px;"></div>
+                <div class="figure-occupation" id="figure-occupation" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 15px;"></div>
+                <div class="figure-description" id="figure-display-description"></div>
+                <div class="figure-personality" id="figure-display-personality"></div>
                 </div>
-                <span class="toggle-label">Show Thinking</span>
-              </div>
             </div>
-            <div class="control-item">
-              <label class="control-label">Thinking Intensity</label>
-              <select id="thinking-intensity-select" class="control-select">
-                <option value="none">None</option>
-                <option value="low">Low</option>
-                <option value="normal" selected>Medium</option>
-                <option value="high">High</option>
-              </select>
-            </div>
-            <div class="control-item">
-              <div class="control-toggle" id="documents-toggle-container">
-                <div class="toggle-switch active" id="documents-toggle-switch">
-                  <div class="toggle-slider"></div>
+        </div>
+
+        <!-- Main chat container -->
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>Historical Figures Chat</h1>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div class="status-indicator" style="display: none;">
+                        <div class="status-dot" id="status-dot"></div>
+                        <span class="status-text" id="status-text">Connecting...</span>
+                    </div>
+                    <button class="save-conversation-btn" id="save-conversation-btn" title="Save conversation as PDF">
+                        Save
+                    </button>
                 </div>
-                <span class="toggle-label">Show Retrieved Documents</span>
-              </div>
             </div>
-            <div class="control-item">
-              <label class="control-label">Documents to Retrieve</label>
-              <select id="docs-count-select" class="control-select">
-                <option value="3">3 documents</option>
-                <option value="5" selected>5 documents</option>
-                <option value="7">7 documents</option>
-                <option value="10">10 documents</option>
-                <option value="15">15 documents</option>
-              </select>
+
+            <div class="chat-messages" id="chat-messages">
             </div>
-          </div>
+
+            <div class="chat-input-container">
+            <form class="chat-input-form" id="chat-form">
+                <textarea
+                    class="chat-input"
+                    id="message-input"
+                    placeholder="Type your message here..."
+                    rows="1"
+                ></textarea>
+                <button type="submit" class="send-button" id="send-button">Send</button>
+                <button type="button" class="stop-button" id="stop-button" style="display: none;">Stop</button>
+            </form>
+            </div>
         </div>
 
-        <!-- Temperature Control -->
-        <div class="control-section">
-          <div class="control-section-header">Response Temperature</div>
-          <div class="control-section-content">
-            <div class="control-item">
-              <label class="control-label">Response Creativity</label>
-              <div style="display: flex; align-items: center; gap: 10px;">
-                <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="1.0" style="flex: 1;">
-                <span id="temperature-value" style="min-width: 35px; text-align: right; color: #7dd3fc; font-weight: 600;">1.0</span>
-              </div>
-              <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.75rem; color: #a8c5d9;">
-                <span>Focused</span>
-                <span>Balanced</span>
-                <span>Creative</span>
-              </div>
+        <!-- Control panel -->
+        <div class="control-panel" id="control-panel">
+            <div class="control-header">
+                <h2>Settings</h2>
+                <button class="control-close-btn" id="control-close-btn" aria-label="Close">×</button>
             </div>
-          </div>
-        </div>
+            <div class="control-content">
+                <!-- Figure Selection -->
+                <div class="control-section">
+                    <div class="control-section-header">Historical Figure</div>
+                    <div class="control-section-content">
+                        <div class="control-item">
+                            <label class="control-label">Select Figure</label>
+                            <select id="figure-select" class="control-select">
+                                <option value="">Loading figures...</option>
+                            </select>
+                        </div>
+                        <div class="control-item" id="figure-info" style="display: none;">
+                            <div style="padding: 10px; background: #1e2a3a; border-radius: 6px; border: 1px solid #4a5f7a;">
+                                <div style="color: #7dd3fc; font-weight: 600; margin-bottom: 4px;" id="figure-name">Figure Name</div>
+                                <div style="color: #a8c5d9; font-size: 0.8rem;" id="figure-description">Figure description</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-        <!-- Retrieved Documents -->
-        <div class="documents-panel visible" id="documents-panel">
-          <div class="documents-header">
-            <h3>Retrieved Documents</h3>
-          </div>
-          <div class="documents-content" id="documents-content">
-            <div class="documents-empty" id="documents-empty" style="color: #a8c5d9; font-size: 0.85rem; text-align: center; padding: 20px;">
-              No documents retrieved yet. Send a message with RAG enabled to see relevant documents here.
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    </div></body>
-
-  <!-- Source Modal -->
-  <div id="source-modal" class="source-modal">
-    <div class="source-modal-content">
-      <div class="source-modal-header">
-        <div class="source-modal-title" id="source-modal-title"></div>
-        <button class="source-modal-close" id="source-modal-close">&times;</button>
-      </div>
-      <div class="source-modal-text" id="source-modal-text"></div>
-    </div>
-  </div>
-
-    <script>
-    console.log('Loading ChatApp v2.10 - new stuff');
-
-    class ChatApp {
-        constructor() {
-            this.chatMessages = document.getElementById('chat-messages');
-            this.messageInput = document.getElementById('message-input');
-            this.chatForm = document.getElementById('chat-form');
-            this.sendButton = document.getElementById('send-button');
-            this.modelSelect = document.getElementById('model-select');
-            this.statusDot = document.getElementById('status-dot');
-            this.statusText = document.getElementById('status-text');
-            this.ragToggle = document.getElementById('rag-toggle');
-            this.ragStatus = document.getElementById('rag-status');
-            this.documentsPanel = document.getElementById('documents-panel');
-            this.documentsContent = document.getElementById('documents-content');
-            this.documentsEmpty = document.getElementById('documents-empty');
-            this.sourceModal = document.getElementById('source-modal');
-            this.sourceModalTitle = document.getElementById('source-modal-title');
-            this.sourceModalText = document.getElementById('source-modal-text');
-            this.sourceModalClose = document.getElementById('source-modal-close');
-            this.figureSelect = document.getElementById('figure-select');
-            this.figureInfo = document.getElementById('figure-info');
-            this.figureName = document.getElementById('figure-name');
-            this.figureDescription = document.getElementById('figure-description');
-            this.figurePanel = document.getElementById('figure-panel');
-            this.figureEmpty = document.getElementById('figure-empty');
-            this.figureDisplayInfo = document.getElementById('figure-info');
-            this.figureImage = document.getElementById('figure-image');
-            this.figureDisplayName = document.getElementById('figure-display-name');
-            this.figureYears = document.getElementById('figure-years');
-            this.figureDisplayDescription = document.getElementById('figure-display-description');
-            this.figureDisplayPersonality = document.getElementById('figure-display-personality');
-            this.ragToggleContainer = document.getElementById('rag-toggle-container');
-            this.ragToggleSwitch = document.getElementById('rag-toggle-switch');
-            this.thinkingToggleContainer = document.getElementById('thinking-toggle-container');
-            this.thinkingToggleSwitch = document.getElementById('thinking-toggle-switch');
-            this.documentsToggleContainer = document.getElementById('documents-toggle-container');
-            this.documentsToggleSwitch = document.getElementById('documents-toggle-switch');
-            this.docsCountSelect = document.getElementById('docs-count-select');
-            this.saveConversationBtn = document.getElementById('save-conversation-btn');
-            this.temperatureSlider = document.getElementById('temperature-slider');
-            this.temperatureValue = document.getElementById('temperature-value');
-            this.thinkingIntensitySelect = document.getElementById('thinking-intensity-select');
-            this.isStreaming = false;
-            this.currentMessageElement = null;
-            this.currentSourcesElement = null;
-            this.isInThinking = false;
-            this.thinkingContent = '';
-            this.currentThinkingElement = null;
-            this.currentResponseElement = null;
-            this.currentSources = {}; // Store sources by doc_id
-            this.paragraphBuffer = ''; // Buffer for building paragraphs
-            this.responseContentElement = null; // Element where we append processed content
-            this.currentFigure = null; // Currently selected figure
-            this.ragEnabled = true; // RAG enabled by default
-            this.thinkingVisible = true; // Thinking shown by default
-            this.documentsVisible = true; // Documents visible by default
-            this.temperature = 1.0; // Default temperature
-            this.thinkingIntensity = 'normal'; // Default thinking intensity (mapped to Medium in UI)
-            this.allRetrievedDocuments = new Map(); // Track all documents retrieved during conversation
-            this.init();
-        }
-
-        async init() {
-            this.setupEventListeners();
-            this.checkHealth();
-            this.loadModels();
-            this.loadFigures();
-            await this.loadCurrentFigure(); // Wait for current figure to load
-            this.autoResizeTextarea();
-            this.updateRagStatus(); // Update RAG status after figure is loaded
-            this.initializeToggles(); // Initialize toggle states
-        }
-
-        setupEventListeners() {
-            this.chatForm.addEventListener('submit', (e) => this.handleSubmit(e));
-            this.messageInput.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    this.handleSubmit(e);
-                }
-            });
-            this.messageInput.addEventListener('input', () => this.autoResizeTextarea());
-
-            this.ragToggleContainer.addEventListener('click', () => this.toggleRAG());
-            this.thinkingToggleContainer.addEventListener('click', () => this.toggleThinking());
-            this.documentsToggleContainer.addEventListener('click', () => this.toggleDocuments());
-            this.figureSelect.addEventListener('change', (e) => this.handleFigureChange(e));
-            this.saveConversationBtn.addEventListener('click', () => this.saveConversation());
-            
-            // Temperature slider
-            if (this.temperatureSlider) {
-                this.temperatureSlider.addEventListener('input', (e) => {
-                    this.temperature = parseFloat(e.target.value);
-                    if (this.temperatureValue) {
-                        this.temperatureValue.textContent = this.temperature.toFixed(1);
-                    }
-                });
-            }
-            
-            // Thinking intensity selector
-            if (this.thinkingIntensitySelect) {
-                this.thinkingIntensitySelect.addEventListener('change', (e) => {
-                    this.thinkingIntensity = e.target.value;
-                });
-            }
-
-            this.sourceModalClose.addEventListener('click', () => this.closeSourceModal());
-            this.sourceModal.addEventListener('click', (e) => {
-                if (e.target === this.sourceModal) {
-                    this.closeSourceModal();
-                }
-            });
-
-            document.addEventListener('keydown', (e) => {
-                if (e.key === 'Escape' && this.sourceModal.style.display === 'block') {
-                    this.closeSourceModal();
-                }
-            });
-        }
-
-        toggleDocumentsPanel() {
-            if (this.ragToggle.checked) {
-                this.documentsPanel.classList.add('visible');
-            } else {
-                this.documentsPanel.classList.remove('visible');
-                this.clearDocuments();
-            }
-        }
-
-        autoResizeTextarea() {
-            this.messageInput.style.height = 'auto';
-            this.messageInput.style.height = Math.min(this.messageInput.scrollHeight, 120) + 'px';
-        }
-
-        async checkHealth() {
-            try {
-                const response = await fetch('/api/health');
-                const data = await response.json();
-                    
-                if (data.status === 'healthy') {
-                    this.statusDot.classList.add('connected');
-                    this.statusText.textContent = 'Connected';
-                } else {
-                    this.statusDot.classList.remove('connected');
-                    this.statusText.textContent = 'Disconnected';
-                }
-            } 
-            catch (error) {
-                this.statusDot.classList.remove('connected');
-                this.statusText.textContent = 'Error';
-            }
-        }
-
-        async loadModels() {
-            try {
-                const response = await fetch('/api/models');
-                const models = await response.json();
-                    
-                this.modelSelect.innerHTML = '';
-                let defaultModelFound = false;
-                
-                models.forEach(model => {
-                    const option = document.createElement('option');
-                    option.value = model;
-                    option.textContent = model;
-                    this.modelSelect.appendChild(option);
-                    
-                    // Check for preferred default model (exactly gpt-oss:20b)
-                    if (model === 'gpt-oss:20b') {
-                        this.modelSelect.value = model;
-                        defaultModelFound = true;
-                    }
-                });
-                
-                // If gpt-oss:20b not found, just use the first available model
-                if (!defaultModelFound && models.length > 0) {
-                    this.modelSelect.value = models[0];
-                }
-            } catch (error) {
-                console.error('Failed to load models:', error);
-            }
-        }
-
-        async loadFigures() {
-            try {
-                // Set loading state
-                this.figureSelect.innerHTML = '<option value="">Loading figures...</option>';
-                this.figureSelect.disabled = true;
-                
-                const response = await fetch('/api/figures');
-                const figures = await response.json();
-                
-                // Clear loading option and add General Chat
-                this.figureSelect.innerHTML = '<option value="">General Chat</option>';
-                
-                // Add figure options
-                figures.forEach(figure => {
-                    const option = document.createElement('option');
-                    option.value = figure.figure_id;
-                    option.textContent = `${figure.name} (${figure.document_count || 0} docs)`;
-                    this.figureSelect.appendChild(option);
-                });
-                
-                // Re-enable selector
-                this.figureSelect.disabled = false;
-                
-            } catch (error) {
-                console.error('Failed to load figures:', error);
-                // Show error state
-                this.figureSelect.innerHTML = '<option value="">Error loading figures</option>';
-                this.figureSelect.disabled = false;
-            }
-        }
-
-        async loadCurrentFigure() {
-            try {
-                const response = await fetch('/api/figure/current');
-                const current = await response.json();
-                
-                if (current.figure_id) {
-                    this.figureSelect.value = current.figure_id;
-                    this.currentFigure = current;
-                    // Update figure panel
-                    this.updateFigurePanel();
-                    // Update RAG status now that we have a figure
-                    this.updateRagStatus();
-                } else {
-                    this.figureSelect.value = '';
-                    this.currentFigure = null;
-                    this.updateFigurePanel();
-                }
-            } catch (error) {
-                console.error('Failed to load current figure:', error);
-            }
-        }
-
-        async handleFigureChange(e) {
-            const figureId = e.target.value;
-            
-            try {
-                const response = await fetch('/api/figure/select', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({ figure_id: figureId || null })
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    this.currentFigure = result.current_figure;
-                    
-                    // Update figure description panel
-                    this.updateFigurePanel();
-                    
-                    // Update RAG status to show current figure's document count
-                    this.updateRagStatus();
-                } else {
-                    console.error('Failed to select figure:', result.error);
-                }
-            } catch (error) {
-                console.error('Error selecting figure:', error);
-            }
-        }
-
-        updateFigurePanel() {
-            if (!this.currentFigure) {
-                // No figure selected - show empty state
-                this.figureEmpty.style.display = 'block';
-                this.figureDisplayInfo.classList.remove('visible');
-                return;
-            }
-
-            // Hide empty state and show figure info
-            this.figureEmpty.style.display = 'none';
-            this.figureDisplayInfo.classList.add('visible');
-
-            // Update figure information
-            const figure = this.currentFigure;
-            
-            // Set figure name
-            if (figure.name) {
-                this.figureDisplayName.textContent = figure.name;
-            }
-
-            // Set birth and death years
-            if (figure.birth_year || figure.death_year) {
-                const birthYear = figure.birth_year || '?';
-                const deathYear = figure.death_year || '?';
-                this.figureYears.textContent = `(${birthYear} - ${deathYear})`;
-            } else {
-                this.figureYears.textContent = '';
-            }
-
-            // Set description
-            if (figure.description) {
-                this.figureDisplayDescription.textContent = figure.description;
-            } else {
-                this.figureDisplayDescription.textContent = '';
-            }
-
-            // Set personality prompt
-            if (figure.personality_prompt) {
-                this.figureDisplayPersonality.textContent = figure.personality_prompt;
-            } else {
-                this.figureDisplayPersonality.textContent = '';
-            }
-
-            // Set image if available
-            if (figure.image) {
-                this.figureImage.src = `/figure_images/${figure.image}`;
-                this.figureImage.style.display = 'block';
-                this.figureImage.onerror = () => {
-                    this.figureImage.style.display = 'none';
-                };
-            } else {
-                this.figureImage.style.display = 'none';
-            }
-        }
-
-        toggleRAG() {
-            this.ragEnabled = !this.ragEnabled;
-            if (this.ragEnabled) {
-                this.ragToggleSwitch.classList.add('active');
-            } else {
-                this.ragToggleSwitch.classList.remove('active');
-            }
-            this.updateDocumentsVisibility();
-        }
-
-        toggleThinking() {
-            this.thinkingVisible = !this.thinkingVisible;
-            if (this.thinkingVisible) {
-                this.thinkingToggleSwitch.classList.add('active');
-            } else {
-                this.thinkingToggleSwitch.classList.remove('active');
-            }
-            this.updateThinkingVisibility();
-        }
-
-        toggleDocuments() {
-            this.documentsVisible = !this.documentsVisible;
-            if (this.documentsVisible) {
-                this.documentsToggleSwitch.classList.add('active');
-                this.documentsPanel.classList.add('visible');
-            } else {
-                this.documentsToggleSwitch.classList.remove('active');
-                this.documentsPanel.classList.remove('visible');
-            }
-        }
-
-        updateThinkingVisibility() {
-            // Update all existing thinking elements
-            const thinkingElements = document.querySelectorAll('.thinking-content');
-            thinkingElements.forEach(element => {
-                if (this.thinkingVisible) {
-                    element.style.display = 'block';
-                } else {
-                    element.style.display = 'none';
-                }
-            });
-        }
-
-        updateDocumentsVisibility() {
-            if (this.ragEnabled) {
-                // Show documents panel only if documents toggle is on
-                if (this.documentsVisible) {
-                    this.documentsPanel.classList.add('visible');
-                }
-            } else {
-                // Hide documents panel if RAG is disabled
-                this.documentsPanel.classList.remove('visible');
-            }
-        }
-
-        initializeToggles() {
-            // Set initial toggle states
-            if (this.ragEnabled) {
-                this.ragToggleSwitch.classList.add('active');
-            }
-            if (this.thinkingVisible) {
-                this.thinkingToggleSwitch.classList.add('active');
-            }
-            if (this.documentsVisible) {
-                this.documentsToggleSwitch.classList.add('active');
-                this.documentsPanel.classList.add('visible');
-            }
-        }
-
-        handleSubmit(e) {
-            e.preventDefault(); 
-            if (this.isStreaming) return;
-                const message = this.messageInput.value.trim();
-                if (!message) return;
-                this.addMessage(message, 'user');
-                this.messageInput.value = '';
-                this.autoResizeTextarea();
-                this.sendMessage(message);
-        }
-
-        addMessage(content, sender) {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = `message ${sender}`;
-                
-            const avatar = document.createElement('div');
-            avatar.className = 'message-avatar';
-            
-            if (sender === 'user') {
-                avatar.textContent = 'You';
-            } else {
-                // For AI messages, use figure image if available
-                if (this.currentFigure && this.currentFigure.metadata && this.currentFigure.metadata.image) {
-                    const img = document.createElement('img');
-                    img.src = `/figure_images/${this.currentFigure.metadata.image}`;
-                    img.alt = this.currentFigure.name || 'AI';
-                    img.style.width = '100%';
-                    img.style.height = '100%';
-                    img.style.borderRadius = '50%';
-                    img.style.objectFit = 'cover';
-                    img.onerror = () => {
-                        // Fallback to text if image fails to load
-                        avatar.innerHTML = '';
-                        avatar.textContent = 'AI';
-                    };
-                    avatar.appendChild(img);
-                } else {
-                    avatar.textContent = 'AI';
-                }
-            }
-                
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content';
-                
-            // For user messages, set text content directly
-            // For assistant messages, leave empty to be populated by streaming
-            if (sender === 'user') {
-                contentDiv.textContent = content;
-            } 
-            else {
-                // For assistant messages, content will be added via streaming
-                if (content) {
-                    contentDiv.textContent = content;
-                    }
-            }
-                
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(contentDiv);
-                
-            this.chatMessages.appendChild(messageDiv);
-            this.scrollToBottom();
-                
-            return contentDiv;
-        }
-
-        async updateStreamingContent(newChunk, fullContent) {
-            // Process thinking tags in the new chunk (synchronous)
-            this.processThinkingContent(newChunk);
-                
-            // Show words immediately for streaming effect
-            this.updateLiveDisplay();
-                
-            // Process paragraphs ending with newline
-            await this.processNewlines();
-        }
-
-        processThinkingContent(chunk) {
-            let remainingChunk = chunk;
-            let iterations = 0;
-            const maxIterations = 100; // Safety valve to prevent infinite loops
-                
-            while (remainingChunk.length > 0 && iterations < maxIterations) {
-                iterations++;
-                    
-                if (!this.isInThinking) {
-                    // Look for opening thinking tag
-                    const thinkStartIndex = remainingChunk.indexOf('<think>');
-                            
-                    if (thinkStartIndex !== -1) {
-                        // Add content before thinking tag to current response
-                        if (thinkStartIndex > 0) {
-                            const beforeThink = remainingChunk.substring(0, thinkStartIndex);
-                            this.addToCurrentResponse(beforeThink);
-                        }
-                                
-                                // Start thinking mode
-                        this.isInThinking = true;
-                        this.thinkingContent = '';
-                        this.createThinkingElement();
-                        remainingChunk = remainingChunk.substring(thinkStartIndex + 7); // 7 = '<think>'.length
-                    } 
-                    else {
-                        // No thinking tag, add all to response
-                        this.addToCurrentResponse(remainingChunk);
-                        remainingChunk = '';
-                    }
-                } 
-                else {
-                    // Look for closing thinking tag
-                    const thinkEndIndex = remainingChunk.indexOf('</think>');
-                            
-                    if (thinkEndIndex !== -1) {
-                        // Add content before closing tag to thinking
-                        if (thinkEndIndex > 0) {
-                            const thinkingPart = remainingChunk.substring(0, thinkEndIndex);
-                            this.addToThinkingContent(thinkingPart);
-                        }
-                                
-                    // End thinking mode
-                    this.isInThinking = false;
-                    
-                    // Handle thinking visibility when thinking ends
-                    if (this.currentThinkingElement) {
-                        if (!this.thinkingVisible) {
-                            // Hide thinking content but keep element for toggle functionality
-                            this.currentThinkingElement.style.display = 'none';
-                        }
-                    }
-                    
-                    this.currentThinkingElement = null;
-                    remainingChunk = remainingChunk.substring(thinkEndIndex + 8); // 8 = '</think>'.length
-                    } 
-                    else {
-                        // No closing tag yet, add all to thinking content
-                        this.addToThinkingContent(remainingChunk);
-                        remainingChunk = '';
-                    }
-                }
-            }
-                
-            if (iterations >= maxIterations) {
-                console.error('Maximum iterations reached in processThinkingContent - potential infinite loop!');
-            }
-        }
-
-        addToCurrentResponse(content) {
-            if (!this.currentResponseElement) {
-                this.createResponseElement();
-            }
-            this.currentResponseContent = (this.currentResponseContent || '') + content;
-            this.paragraphBuffer += content; // Add to paragraph buffer for processing
-        }
-
-        updateLiveDisplay() {
-            // Show current paragraph buffer content immediately as raw text
-            if (!this.responseContentElement) {
-                this.createResponseContentElement();
-            }
-            
-            // Find or create the live display element
-            let liveElement = this.responseContentElement.querySelector('.live-text');
-            if (!liveElement) {
-                liveElement = document.createElement('span');
-                liveElement.className = 'live-text';
-                this.responseContentElement.appendChild(liveElement);
-            }
-            
-            // Apply citations to the live content and display
-            const liveContentWithCitations = this.parseDocumentCitations(this.paragraphBuffer);
-            liveElement.innerHTML = liveContentWithCitations;
-            this.scrollToBottom();
-        }
-
-        async processNewlines() {
-            // Look for any newline in the buffer
-            const newlineIndex = this.paragraphBuffer.indexOf('\n');
-            if (newlineIndex !== -1) {
-                // Found newline - process everything up to it as a paragraph
-                const paragraph = this.paragraphBuffer.substring(0, newlineIndex).trim();
-                
-                if (paragraph) {
-                    // Clear the live display before processing
-                    this.clearLiveDisplay();
-                    // Process this paragraph with markdown
-                    await this.processParagraph(paragraph);
-                    // Remove processed paragraph from buffer
-                    this.paragraphBuffer = this.paragraphBuffer.substring(newlineIndex + 1);
-                } else {
-                    // Empty line, just remove the newline
-                    this.paragraphBuffer = this.paragraphBuffer.substring(newlineIndex + 1);
-                }
-            }
-        }
-
-        clearLiveDisplay() {
-            if (this.responseContentElement) {
-                const liveElement = this.responseContentElement.querySelector('.live-text');
-                if (liveElement) {
-                    liveElement.remove();
-                }
-            }
-        }
-            
-        async processParagraph(paragraph) {
-            try {
-                const response = await fetch('/api/markdown', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: paragraph })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    // Apply citations to the markdown result and append directly
-                    const htmlWithCitations = this.parseDocumentCitations(data.html);
-                    this.appendToResponseContent(htmlWithCitations);
-                } else {
-                    // Fallback to plain text with citations if markdown processing fails
-                    const textWithCitations = this.parseDocumentCitations(paragraph);
-                    this.appendToResponseContent(textWithCitations);
-                }
-            } catch (error) {
-                // Fallback to plain text with citations if markdown processing fails
-                const textWithCitations = this.parseDocumentCitations(paragraph);
-                this.appendToResponseContent(textWithCitations);
-            }
-        }
-            
-        appendToResponseContent(htmlContent) {
-            if (!this.responseContentElement) {
-                this.createResponseContentElement();
-            }
-            
-            // Create a paragraph element
-            const paragraphDiv = document.createElement('div');
-            paragraphDiv.innerHTML = htmlContent;
-            paragraphDiv.style.marginBottom = '0.5em';
-            
-            this.responseContentElement.appendChild(paragraphDiv);
-            this.scrollToBottom();
-        }
-
-        createResponseContentElement() {
-            // Only create if it doesn't exist to avoid ordering issues
-            if (!this.responseContentElement) {
-                this.responseContentElement = document.createElement('div');
-                this.responseContentElement.className = 'response-text';
-                
-                // Always append at the end of the message element (after any existing content)
-                this.currentMessageElement.appendChild(this.responseContentElement);
-            }
-        }
-
-        createThinkingElement() {
-            if (!this.currentThinkingElement) {
-                this.currentThinkingElement = document.createElement('div');
-                this.currentThinkingElement.className = 'thinking-content';
-                
-                // Always show "Thinking..." initially, will be replaced with actual content if visible
-                this.currentThinkingElement.textContent = 'Thinking...';
-                
-                // Set initial visibility based on toggle state
-                if (!this.thinkingVisible) {
-                    this.currentThinkingElement.style.display = 'block'; // Show "Thinking..." even when toggle is off
-                } else {
-                    this.currentThinkingElement.style.display = 'block';
-                }
-                
-                // Always insert thinking content at the beginning of the message
-                // This ensures thinking stays on top regardless of when it's created
-                if (this.currentMessageElement.firstChild) {
-                    this.currentMessageElement.insertBefore(this.currentThinkingElement, this.currentMessageElement.firstChild);
-                } 
-                else {
-                    this.currentMessageElement.appendChild(this.currentThinkingElement);
-                }
-            }
-        }
-
-        addToThinkingContent(content) {
-            this.thinkingContent += content;
-            
-            if (this.thinkingVisible) {
-                const thinkingElement = this.currentThinkingElement;
-                
-                // Apply markdown to thinking content with line breaks
-                if (thinkingElement && thinkingElement.parentNode) {
-                    // Convert newlines to <br> tags for proper display
-                    const formattedThinking = this.thinkingContent.replace(/\n/g, '<br>');
-                    thinkingElement.innerHTML = formattedThinking;
-                    this.scrollToBottom();
-                }
-            }
-        }
-
-
-
-        createResponseElement() {
-            if (!this.currentResponseElement) {
-                // Use the message content div itself as the response element
-                this.currentResponseElement = this.currentMessageElement;
-                this.currentResponseContent = '';
-            }
-        }
-            
-
-            
-        async processFinalContent() {
-            // Process any remaining content in buffer (final paragraph without newline)
-            if (this.paragraphBuffer.trim()) {
-                this.clearLiveDisplay();
-                await this.processParagraph(this.paragraphBuffer.trim());
-                this.paragraphBuffer = '';
-            }
-            this.scrollToBottom();
-        }
-            
-        parseDocumentCitations(content) {
-            if (!content) return '';
-            
-            try {
-                // Replace [DOC1], [DOC2], etc. with clickable links
-                const result = content.replace(/\[DOC(\d+)\]/g, (match, docNum) => {
-                    const docId = `DOC${docNum}`;
-                    console.log(`Replacing citation ${match} with interactive link for ${docId}`);
-                    return `<span class="doc-citation" onclick="window.chatApp.showDocumentModal('${docId}')">${docId}</span>`;
-                });
-                
-                if (result !== content) {
-                    console.log('Citations processed:', content, '->', result);
-                }
-                
-                return result;
-            } catch (error) {
-                console.warn('Error parsing document citations:', error);
-                return content; // Return original content if parsing fails
-            }
-        }
-
-        showDocumentModal(docId) {
-            const source = this.currentSources[docId];
-            if (source) {
-                this.showSourceModal(source);
-            } else {
-                console.warn(`Document ${docId} not found in current sources`);
-            }
-        }
-            
-            // Removed all complex content processing functions
-
-        addTypingIndicator() {
-            const messageDiv = document.createElement('div');
-            messageDiv.className = 'message assistant';
-            messageDiv.id = 'typing-indicator';
-            
-            const avatar = document.createElement('div');
-            avatar.className = 'message-avatar';
-            
-            // For typing indicator, use figure image if available
-            if (this.currentFigure && this.currentFigure.metadata && this.currentFigure.metadata.image) {
-                const img = document.createElement('img');
-                img.src = `/figure_images/${this.currentFigure.metadata.image}`;
-                img.alt = this.currentFigure.name || 'AI';
-                img.style.width = '100%';
-                img.style.height = '100%';
-                img.style.borderRadius = '50%';
-                img.style.objectFit = 'cover';
-                img.onerror = () => {
-                    // Fallback to text if image fails to load
-                    avatar.innerHTML = '';
-                    avatar.textContent = 'AI';
-                };
-                avatar.appendChild(img);
-            } else {
-                avatar.textContent = 'AI';
-            }
-            
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'typing-indicator';
-            typingDiv.style.display = 'block';
-            
-            const dotsDiv = document.createElement('div');
-            dotsDiv.className = 'typing-dots';
-                
-            for (let i = 0; i < 3; i++) {
-                const dot = document.createElement('div');
-                dot.className = 'typing-dot';
-                dotsDiv.appendChild(dot);
-            }
-                
-            typingDiv.appendChild(dotsDiv);
-            messageDiv.appendChild(avatar);
-            messageDiv.appendChild(typingDiv);
-            
-            this.chatMessages.appendChild(messageDiv);
-            this.scrollToBottom();
-            return messageDiv;
-        }
-
-        removeTypingIndicator() {
-            const indicator = document.getElementById('typing-indicator');
-            if (indicator) {
-                indicator.remove();
-            }
-        }
-        
-        async sendMessage(message) {
-            this.isStreaming = true;
-            this.sendButton.disabled = true;
-            this.sendButton.textContent = 'Sending...';
-                
-            const typingIndicator = this.addTypingIndicator();
-                
-            try {
-                const response = await fetch('/api/chat', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        message: message,
-                        model: this.modelSelect.value,
-                        use_rag: this.ragEnabled,
-                        k: parseInt(this.docsCountSelect.value),
-                        temperature: this.temperature,
-                        thinking_intensity: this.thinkingIntensity
-                    })
-                });
-                    
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                    
-                this.removeTypingIndicator();
-                this.currentMessageElement = this.addMessage('', 'assistant');
-                    
-                    // Reset all streaming state
-                this.currentResponseElement = null;
-                this.currentResponseContent = '';
-                this.paragraphBuffer = '';
-                this.responseContentElement = null;
-                this.createResponseElement();
-    
-                this.isInThinking = false;
-                this.thinkingContent = '';
-                this.currentThinkingElement = null;
-                    
-                const reader = response.body.getReader();
-                const decoder = new TextDecoder();
-                let fullContent = '';
-                let chunkCount = 0;
-                const maxChunks = 2000; // Safety limit
-                const startTime = Date.now();
-                    
-                while (true) {
-                    const { done, value } = await reader.read();
-                            
-                    if (done) {
-                        break;
-                    }
-                            
-                    chunkCount++;
-                            
-                    // Safety checks
-                    if (chunkCount > maxChunks) {
-                        console.error('Maximum chunks exceeded, stopping stream');
-                        break;
-                    }
-                            
-                    const elapsed = Date.now() - startTime;
-                    if (elapsed > 60000) { // 60 seconds max
-                        console.error('Stream timeout, stopping');
-                        break;
-                    }
-                            
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n');
-                            
-                    for (const line of lines) {
-                        if (line.startsWith('data: ')) {
-                            try {
-                                const data = JSON.parse(line.slice(6)); 
-                                if (data.error) {
-                                    throw new Error(data.error);
-                                }
-                                
-                                if (data.sources) {
-                                    this.addSources(data.sources);
-                                }
-                                            
-                                if (data.content) {
-                                    fullContent += data.content;
-                                    
-                                    try {
-                                        await this.updateStreamingContent(data.content, fullContent);
-                                    } catch (streamError) {
-                                        console.error('Error in updateStreamingContent:', streamError);
-                                    }
-                                    
-                                    this.scrollToBottom();
-                                }
-                                            
-                                if (data.done) {
-                                                                    // Auto-close any unclosed thinking tags
-                                if (this.isInThinking) {
-                                    this.isInThinking = false;
-                                    
-                                    // Remove "Thinking..." placeholder if toggle is off
-                                    if (!this.thinkingToggle.checked && this.currentThinkingElement) {
-                                        this.currentThinkingElement.remove();
-                                    }
-                                    
-                                    this.currentThinkingElement = null;
-                                }
-                                    
-                                    // Final processing
-                                    try {
-                                        await this.processFinalContent();
-                                    } catch (error) {
-                                        console.error('Error in final processing:', error);
-                                    }
-                                    
-                                    break;
-                                }
-                            } 
-                            catch (e) {
-                                console.error('Error parsing SSE data:', e, 'Line:', line);
-                            }
-                        }
-                    }
-                } 
-            } 
-            catch (error) {
-                console.error('Error in sendMessage:', error);
-                this.removeTypingIndicator();
-                this.showError(`Error: ${error.message}`);
-            } 
-            finally {
-                this.isStreaming = false;
-                this.sendButton.disabled = false;
-                this.sendButton.textContent = 'Send';
-                    
-                // Auto-close any unclosed thinking tags during cleanup
-                if (this.isInThinking) {
-                    this.isInThinking = false;
-                    
-                    // Handle thinking visibility when thinking ends
-                    if (this.currentThinkingElement) {
-                        if (!this.thinkingVisible) {
-                            // Hide thinking content but keep element for toggle functionality
-                            this.currentThinkingElement.style.display = 'none';
-                        }
-                    }
-                }
-                
-                // Reset all streaming state
-                this.currentMessageElement = null;
-                this.currentResponseElement = null;
-                this.currentResponseContent = '';
-                this.paragraphBuffer = '';
-                this.responseContentElement = null;
-                this.isInThinking = false;
-                this.thinkingContent = '';
-                this.currentThinkingElement = null;
-            }
-        }
-            
-        showError(message) {
-            const errorDiv = document.createElement('div');
-            errorDiv.className = 'error-message';
-            errorDiv.textContent = message;
-            this.chatMessages.appendChild(errorDiv);
-            this.scrollToBottom();
-        }
-
-        scrollToBottom() {
-            this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
-        }
-
-        async updateRagStatus() {
-            try {
-                // Only show RAG status when a figure is selected
-                if (this.currentFigure) {
-                    const response = await fetch(`/api/figure/${this.currentFigure}`);
-                    if (response.ok) {
-                        const figure = await response.json();
-                        const docCount = figure.document_count || 0;
-                        this.ragStatus.textContent = `${docCount} docs`;
-                        this.ragStatus.style.color = docCount > 0 ? '#27ae60' : '#a8c5d9';
-                    } else {
-                        this.ragStatus.textContent = '0 docs';
-                        this.ragStatus.style.color = '#a8c5d9';
-                    }
-                } else {
-                    // No figure selected - no RAG available
-                    this.ragStatus.textContent = 'No Figure';
-                    this.ragStatus.style.color = '#a8c5d9';
-                }
-            } catch (error) {
-                console.error('Error fetching RAG stats:', error);
-                this.ragStatus.textContent = 'Error';
-                this.ragStatus.style.color = '#e74c3c';
-            }
-        }
-            
-        addSources(sources) {
-            if (!sources || sources.length === 0) return;
-            
-            // Store sources by doc_id for citation links
-            this.currentSources = {};
-            sources.forEach(source => {
-                this.currentSources[source.doc_id] = source;
-                
-                // Store document in our global tracking Map with a unique key
-                const uniqueKey = `${source.filename}_${source.chunk_id || source.document_id || source.doc_id}`;
-                if (!this.allRetrievedDocuments.has(uniqueKey)) {
-                    this.allRetrievedDocuments.set(uniqueKey, {
-                        ...source,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            });
-            
-            // Clear previous documents
-            this.clearDocuments();
-            
-            // Update documents visibility based on current settings
-            this.updateDocumentsVisibility();
-            
-            // Hide empty message when adding documents
-            this.documentsEmpty.style.display = 'none';
-            
-            sources.forEach((source, index) => {
-                const documentItem = document.createElement('div');
-                documentItem.className = 'document-item';
-                documentItem.onclick = () => this.showSourceModal(source);
-                
-                const filename = document.createElement('div');
-                filename.className = 'document-filename';
-                const docId = source.document_id || source.doc_id || source.chunk_id || 'unknown';
-                filename.textContent = `${docId}: ${source.filename}`;
-                
-                const preview = document.createElement('div');
-                preview.className = 'document-preview';
-                preview.textContent = source.text;
-                
-                const meta = document.createElement('div');
-                meta.className = 'document-meta';
-                
-                const chunkInfo = document.createElement('span');
-                const chunkId = source.document_id || source.chunk_id || 'unknown';
-                chunkInfo.textContent = `Chunk ${chunkId}`;  
-                
-                const similarity = document.createElement('span');
-                similarity.className = 'document-similarity';
-                const similarityPercent = Math.round(source.similarity * 100);
-                similarity.textContent = `${similarityPercent}% match`;
-                
-                // Add similarity classes for color coding
-                if (similarityPercent >= 80) {
-                    similarity.classList.add('high');
-                } else if (similarityPercent >= 60) {
-                    similarity.classList.add('medium');
-                }
-                
-                meta.appendChild(chunkInfo);
-                meta.appendChild(similarity);
-                
-                documentItem.appendChild(filename);
-                documentItem.appendChild(preview);
-                documentItem.appendChild(meta);
-                
-                this.documentsContent.appendChild(documentItem);
-            });
-        }
-            
-        clearDocuments() {
-            // Remove all document items, keep only the empty message
-            const documentItems = this.documentsContent.querySelectorAll('.document-item');
-            documentItems.forEach(item => item.remove());
-            
-            // Show empty message if no documents
-            if (this.documentsContent.children.length === 1) {
-                this.documentsEmpty.style.display = 'block';
-            } else {
-                this.documentsEmpty.style.display = 'none';
-            }
-        }
-        
-        showSourceModal(source) {
-            const chunkId = source.document_id || source.chunk_id || 'unknown';
-            this.sourceModalTitle.textContent = `${source.filename} - Chunk ${chunkId}`;
-            this.sourceModalText.textContent = source.full_text;
-            this.sourceModal.style.display = 'block';
-        }
-        
-        closeSourceModal() {
-            this.sourceModal.style.display = 'none';
-        }
-
-        async saveConversation() {
-            try {
-                // Disable button while saving
-                this.saveConversationBtn.disabled = true;
-                this.saveConversationBtn.textContent = '⏳';
-                
-                // Collect all messages
-                const messages = [];
-                const messageElements = this.chatMessages.querySelectorAll('.message');
-                
-                messageElements.forEach(msgElement => {
-                    const isUser = msgElement.classList.contains('user');
-                    const contentElement = msgElement.querySelector('.message-content');
-                    
-                    if (contentElement) {
-                        // Get text content, preserving line breaks
-                        let content;
-                        if (isUser) {
-                            content = contentElement.textContent.trim();
-                        } else {
-                            // For assistant messages, get HTML and convert <br> tags to newlines
-                            const htmlContent = contentElement.innerHTML;
-                            content = htmlContent
-                                .replace(/<br\s*\/?>/gi, '\n')  // Convert <br> tags to newlines
-                                .replace(/<[^>]*>/g, '')        // Strip other HTML tags
-                                .replace(/&amp;/g, '&')        // Decode HTML entities
-                                .replace(/&lt;/g, '<')
-                                .replace(/&gt;/g, '>')
-                                .replace(/&quot;/g, '"')
-                                .replace(/&#x27;/g, "'")
-                                .trim();
-                        }
+                <!-- Model Selection -->
+                <div class="control-section">
+                    <div class="control-section-header">AI Model</div>
+                    <div class="control-section-content">
+                        <div class="control-item">
+                            <label class="control-label">Select Model</label>
+                            <select id="model-select" class="control-select">
+                                <option value="llama2">llama2</option>
+                                <option value="external">External API</option>
+                            </select>
+                        </div>
                         
-                        if (content) {
-                            messages.push({
-                                role: isUser ? 'user' : 'assistant',
-                                content: content,
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                    }
-                });
-                
-                // Get current figure name if selected
-                const figureNameWithDocs = this.figureSelect.selectedOptions[0]?.text || 'General Chat';
-                
-                // Extract clean figure name without document count
-                const cleanFigureName = figureNameWithDocs.split(' (')[0];
-                
-                // Extract document count if present
-                const docCountMatch = figureNameWithDocs.match(/\((\d+) docs?\)/);
-                const documentCount = docCountMatch ? docCountMatch[1] : '0';
-                
-                // Convert Map to array for sending
-                const retrievedDocuments = Array.from(this.allRetrievedDocuments.values());
-                
-                // Get figure description data if available
-                let figureData = null;
-                if (this.currentFigure) {
-                    figureData = {
-                        name: this.currentFigure.name,
-                        birth_year: this.currentFigure.birth_year,
-                        death_year: this.currentFigure.death_year,
-                        nationality: this.currentFigure.nationality,
-                        occupation: this.currentFigure.occupation,
-                        description: this.currentFigure.description,
-                        personality_prompt: this.currentFigure.personality_prompt
-                    };
-                }
+                        <!-- External API Configuration (hidden by default) -->
+                        <div id="external-api-config" style="display: none; margin-top: 15px;">
+                            <div class="control-item">
+                                <label class="control-label">API Endpoint</label>
+                                <input type="text" id="external-api-url" class="control-input" 
+                                       placeholder="https://api.poe.com/v1" 
+                                       value="https://api.poe.com/v1">
+                            </div>
+                            <div class="control-item">
+                                <label class="control-label">Model Name</label>
+                                <input type="text" id="external-model-name" class="control-input" 
+                                       placeholder="GPT-5-mini" 
+                                       value="GPT-5-mini">
+                            </div>
+                            <div class="control-item">
+                                <label class="control-label">API Key</label>
+                                <input type="password" id="external-api-key" class="control-input" 
+                                       placeholder="Enter your API key">
+                                <div id="api-key-status" style="margin-top: 5px; font-size: 11px; display: none;">
+                                    <span style="color: #e74c3c;">⚠️ API key is required to use External API</span>
+                                </div>
+                                <small style="color: #95a5a6; font-size: 11px; display: block; margin-top: 5px;">
+                                    Your API key is sent directly to the external API and not stored.
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
-                // Create conversation data
-                const conversationData = {
-                    title: `Chat with ${cleanFigureName}`,
-                    date: new Date().toLocaleString(),
-                    messages: messages,
-                    figure: cleanFigureName,
-                    figure_name: cleanFigureName,
-                    figure_data: figureData,
-                    document_count: documentCount,
-                    model: this.modelSelect.value,
-                    temperature: this.temperature.toString(),
-                    thinking_enabled: this.thinkingVisible,
-                    rag_enabled: this.ragEnabled,
-                    retrieved_documents: retrievedDocuments  // Include all retrieved documents
-                };
-                
-                // Send to server to generate PDF
-                const response = await fetch('/api/export/pdf', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(conversationData)
-                });
-                
-                if (response.ok) {
-                    // Get the PDF blob
-                    const blob = await response.blob();
-                    
-                    // Create download link
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `chat_${cleanFigureName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                    
-                    // Show success feedback
-                    this.saveConversationBtn.textContent = '✅';
-                    setTimeout(() => {
-                        this.saveConversationBtn.textContent = '💾';
-                    }, 2000);
-                } else {
-                    throw new Error('Failed to generate PDF');
-                }
-                
-            } catch (error) {
-                console.error('Error saving conversation:', error);
-                
-                // Fallback: save as JSON
-                this.saveConversationAsJSON();
-                
-                // Show error feedback
-                this.saveConversationBtn.textContent = '⚠️';
-                setTimeout(() => {
-                    this.saveConversationBtn.textContent = '💾';
-                }, 2000);
-            } finally {
-                this.saveConversationBtn.disabled = false;
-            }
-        }
-        
-        saveConversationAsJSON() {
-            try {
-                // Collect all messages
-                const messages = [];
-                const messageElements = this.chatMessages.querySelectorAll('.message');
-                
-                messageElements.forEach(msgElement => {
-                    const isUser = msgElement.classList.contains('user');
-                    const contentElement = msgElement.querySelector('.message-content');
-                    
-                    if (contentElement) {
-                        let content = '';
-                        const responseText = contentElement.querySelector('.response-text');
-                        if (responseText) {
-                            content = responseText.textContent.trim();
-                        } else {
-                            content = contentElement.textContent.trim();
-                        }
-                        
-                        if (content) {
-                            messages.push({
-                                role: isUser ? 'user' : 'assistant',
-                                content: content,
-                                timestamp: new Date().toISOString()
-                            });
-                        }
-                    }
-                });
-                
-                const figureName = this.figureSelect.selectedOptions[0]?.text || 'General Chat';
-                
-                // Create JSON data
-                const conversationData = {
-                    title: `Chat with ${figureName}`,
-                    date: new Date().toLocaleString(),
-                    messages: messages,
-                    figure: figureName,
-                    model: this.modelSelect.value
-                };
-                
-                // Create and download JSON file
-                const jsonStr = JSON.stringify(conversationData, null, 2);
-                const blob = new Blob([jsonStr], { type: 'application/json' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `chat_${cleanFigureName.replace(/[^a-z0-9]/gi, '_')}_${Date.now()}.json`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                window.URL.revokeObjectURL(url);
-            } catch (error) {
-                console.error('Error saving conversation as JSON:', error);
-                this.showError('Failed to save conversation');
-            }
-        }
-    }
-        
-    // Global error handling for unhandled promise rejections
-    window.addEventListener('unhandledrejection', event => {
-        console.error('Unhandled promise rejection:', event.reason);
-        // Prevent the default behavior (which would crash the app)
-        event.preventDefault();
-    });
+                <!-- Display Options -->
+                <div class="control-section">
+                    <div class="control-section-header">Display Options</div>
+                    <div class="control-section-content">
+                        <div class="control-item">
+                            <div class="control-toggle" id="rag-toggle-container">
+                                <div class="toggle-switch active" id="rag-toggle-switch">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                                <span class="toggle-label">Enable RAG</span>
+                            </div>
+                            <div style="margin-top: 5px;">
+                                <span style="font-size: 0.75rem; color: #a8c5d9;" id="rag-status">0 docs</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-toggle" id="thinking-toggle-container">
+                                <div class="toggle-switch active" id="thinking-toggle-switch">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                                <span class="toggle-label">Show Thinking</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <label class="control-label">Thinking Intensity</label>
+                            <select id="thinking-intensity-select" class="control-select">
+                                <option value="none">None</option>
+                                <option value="low">Low</option>
+                                <option value="normal" selected>Medium</option>
+                                <option value="high">High</option>
+                            </select>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-toggle" id="documents-toggle-container">
+                                <div class="toggle-switch active" id="documents-toggle-switch">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                                <span class="toggle-label">Show Retrieved Documents</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <label class="control-label">Documents to Retrieve</label>
+                            <select id="docs-count-select" class="control-select">
+                                <option value="3">3 documents</option>
+                                <option value="5" selected>5 documents</option>
+                                <option value="7">7 documents</option>
+                                <option value="10">10 documents</option>
+                                <option value="15">15 documents</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
 
-    // Initialize the chat app when DOM is loaded
-    document.addEventListener('DOMContentLoaded', () => {
-        window.chatApp = new ChatApp();
-    });
-  </script>
+                <!-- Temperature Control -->
+                <div class="control-section">
+                    <div class="control-section-header">Response Temperature</div>
+                    <div class="control-section-content">
+                        <div class="control-item">
+                            <label class="control-label">Response Creativity</label>
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="1.0" style="flex: 1;">
+                                <span id="temperature-value" style="min-width: 35px; text-align: right; color: #7dd3fc; font-weight: 600;">1.0</span>
+                            </div>
+                            <div style="display: flex; justify-content: space-between; margin-top: 5px; font-size: 0.75rem; color: #a8c5d9;">
+                                <span>Focused</span>
+                                <span>Balanced</span>
+                                <span>Creative</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Retrieved Documents -->
+                <div class="documents-panel visible" id="documents-panel">
+                    <div class="documents-header">
+                        <h3>Retrieved Documents</h3>
+                    </div>
+                    <div class="documents-content" id="documents-content">
+                        <div class="documents-empty" id="documents-empty" style="color: #a8c5d9; font-size: 0.85rem; text-align: center; padding: 20px;">
+                            No documents retrieved yet. Send a message with RAG enabled to see relevant documents here.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Source Modal -->
+    <div id="source-modal" class="source-modal">
+        <div class="source-modal-content">
+            <div class="source-modal-header">
+                <div class="source-modal-title" id="source-modal-title"></div>
+                <button class="source-modal-close" id="source-modal-close">&times;</button>
+            </div>
+            <div class="source-modal-text" id="source-modal-text"></div>
+        </div>
+    </div>
+
+    <!-- Include the chat application JavaScript -->
+    <script src="/static/chat-app.js"></script>
 </body>
 </html>

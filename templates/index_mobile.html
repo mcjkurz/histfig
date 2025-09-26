@@ -1120,7 +1120,35 @@
                             <label class="control-label">Select Model</label>
                             <select id="model-select" class="control-select">
                                 <option value="llama2">llama2</option>
+                                <option value="external">External API</option>
                             </select>
+                        </div>
+                        
+                        <!-- External API Configuration (hidden by default) -->
+                        <div id="external-api-config" style="display: none; margin-top: 15px;">
+                            <div class="control-item">
+                                <label class="control-label">API Endpoint</label>
+                                <input type="text" id="external-api-url" class="control-input" 
+                                       placeholder="https://api.poe.com/v1" 
+                                       value="https://api.poe.com/v1">
+                            </div>
+                            <div class="control-item">
+                                <label class="control-label">Model Name</label>
+                                <input type="text" id="external-model-name" class="control-input" 
+                                       placeholder="GPT-5-mini" 
+                                       value="GPT-5-mini">
+                            </div>
+                            <div class="control-item">
+                                <label class="control-label">API Key</label>
+                                <input type="password" id="external-api-key" class="control-input" 
+                                       placeholder="Enter your API key">
+                                <div id="api-key-status" style="margin-top: 5px; font-size: 11px; display: none;">
+                                    <span style="color: #e74c3c;">⚠️ API key is required to use External API</span>
+                                </div>
+                                <small style="color: #95a5a6; font-size: 11px; display: block; margin-top: 5px;">
+                                    Your API key is sent directly to the external API and not stored.
+                                </small>
+                            </div>
                         </div>
                     </div>
                 </div>

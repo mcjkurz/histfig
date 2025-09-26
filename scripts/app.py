@@ -17,7 +17,8 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import OLLAMA_URL, DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR
+from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER
+from model_provider import get_model_provider, ExternalProvider
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
@@ -133,37 +134,37 @@ def add_to_conversation_history(role, content):
         if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:  # 2 messages per exchange
             user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
 
-def build_conversation_context():
-    """Build conversation context string for current session"""
+def build_conversation_messages():
+    """Build conversation messages list for current session"""
     user_session = get_session_data()
     conversation_history = user_session['conversation_history']
     
-    if not conversation_history:
-        return ""
-    
-    context_parts = []
+    # Return messages in the format expected by model providers
+    messages = []
     for msg in conversation_history:
-        if msg["role"] == "user":
-            context_parts.append(f"User: {msg['content']}")
-        else:
-            context_parts.append(f"Assistant: {msg['content']}")
+        # Clean thinking content from assistant messages
+        content = clean_thinking_content(msg['content']) if msg['role'] == 'assistant' else msg['content']
+        if content.strip():
+            messages.append({
+                "role": msg["role"],
+                "content": content
+            })
     
-    return "\n".join(context_parts)
+    return messages
 
 @app.route('/')
 def index():
     """Serve the main chat interface - responsive version with three panels"""
-    # Use the mobile-optimized template which handles both mobile and desktop
-    return render_template('index_mobile.html')
+    return render_template('index.html')
 
 @app.route('/api/models')
 def get_models():
-    """Get list of available Ollama models"""
+    """Get list of available models from current provider"""
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags")
-        if response.status_code == 200:
-            models = response.json().get('models', [])
-            return jsonify([model['name'] for model in models])
+        provider = get_model_provider()
+        models = provider.get_available_models()
+        if models:
+            return jsonify(models)
         else:
             return jsonify([DEFAULT_MODEL])
     except Exception as e:
@@ -172,7 +173,7 @@ def get_models():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
-    """Handle chat requests and stream responses from Ollama with RAG"""
+    """Handle chat requests and stream responses using messages format"""
     try:
         data = request.json
         message = data.get('message', '')
@@ -182,19 +183,26 @@ def chat():
         thinking_intensity = data.get('thinking_intensity', 'normal')  # Thinking intensity level
         temperature = data.get('temperature', 1.0)  # Temperature for response generation
         
+        # External API configuration
+        external_config = data.get('external_config', None)
+        
         if not message:
             return jsonify({'error': 'Message is required'}), 400
         
-        # Build conversation context BEFORE adding current message
-        conversation_context = build_conversation_context()
+        # Get conversation messages BEFORE adding current message
+        conversation_messages = build_conversation_messages()
         
         # Add user message to conversation history AFTER building context
         add_to_conversation_history("user", message)
         
-        # Enhance prompt with RAG if enabled
-        enhanced_prompt = message
+        # Build messages list for the model
+        messages = []
         search_results = None
-        figure_context = ""
+        system_content = ""
+        user_content = message
+        
+        # Get thinking instruction based on intensity
+        thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
         
         if use_rag:
             try:
@@ -210,155 +218,93 @@ def chat():
                         # Search in figure's documents
                         search_results = figure_manager.search_figure_documents(current_figure, message, n_results=k)
                         
+                        # Get personality prompt if available
+                        personality_prompt = figure_metadata.get('personality_prompt', '')
+                        figure_name = figure_metadata.get('name', current_figure)
+                        
+                        # Build system message
+                        base_instruction = f"You are responding as {figure_name}." if not personality_prompt else personality_prompt
+                        system_content = f"""{base_instruction}
+
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
+
+Answer as {figure_name} would, drawing from the provided documents when relevant."""
+                        
                         if search_results:
                             # Build context from figure's documents
                             context_parts = []
                             for result in search_results:
-                                doc_id = result.get('document_id', 'UNKNOWN')
                                 filename = result['metadata'].get('filename', 'Unknown')
                                 context_parts.append(f"[{filename}]:\n{result['text']}")
                             
                             rag_context = "\n\n".join(context_parts)
                             
-                            # Get personality prompt if available
-                            personality_prompt = figure_metadata.get('personality_prompt', '')
-                            figure_name = figure_metadata.get('name', current_figure)
-                            
-                            # Create figure-specific prompt
-                            base_instruction = f"You are responding as {figure_name}." if not personality_prompt else personality_prompt
-                            
-                            # Get thinking instruction based on intensity
-                            thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
-                            
-                            enhanced_prompt = f"""{base_instruction}
-
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
-
-Based on the following context from your writings and documents, please answer the user's current question:
+                            # Add RAG context to user message
+                            user_content = f"""Based on the following context from your writings and documents:
 
 Your Documents:
 {rag_context}
 
-{f'Conversation history:' + chr(10) + conversation_context + chr(10) if conversation_context else ''}User's Current Question: {message}{thinking_instruction}
-
-Answer as {figure_name} would, drawing from the provided documents:{response_start}"""
-                        else:
-                            # No relevant documents found for figure
-                            figure_name = figure_metadata.get('name', current_figure)
-                            personality_prompt = figure_metadata.get('personality_prompt', '')
-                            base_instruction = f"You are responding as {figure_name}." if not personality_prompt else personality_prompt
-                            
-                            # Get thinking instruction based on intensity
-                            thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
-                            
-                            enhanced_prompt = f"""{base_instruction}
-
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
-
-{f'Conversation history:' + chr(10) + conversation_context + chr(10) + chr(10) if conversation_context else ''}User's Current Question: {message}{thinking_instruction}
-
-{response_start}Answer as {figure_name} would (no specific documents available for this query):"""
-                else:
-                    # No figure selected - no RAG available
-                    # Get thinking instruction based on intensity
-                    thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
-                    
-                    if conversation_context:
-                        enhanced_prompt = f"""You are a helpful AI assistant.
-
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-Here is the conversation history:
-
-{conversation_context}
-
 User's Current Question: {message}{thinking_instruction}
 
-{response_start}Answer:"""
-                    else:
-                        enhanced_prompt = f"""You are a helpful AI assistant.
+{response_start}"""
+                        else:
+                            # No relevant documents found
+                            user_content = f"{message}{thinking_instruction}\n\n{response_start}"
+                else:
+                    # No figure selected - use generic assistant
+                    system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-User's Question: {message}{thinking_instruction}
-
-{response_start}Answer:"""
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+                    user_content = f"{message}{thinking_instruction}\n\n{response_start}"
+                    
             except Exception as e:
                 logging.error(f"Error in RAG enhancement: {e}")
-                # Use conversation context only
-                # Get thinking instruction based on intensity
-                thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
-                
-                if conversation_context:
-                    enhanced_prompt = f"""You are a helpful AI assistant.
+                # Fallback to generic assistant
+                system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-Here is the conversation history:
-
-{conversation_context}
-
-User's Current Question: {message}{thinking_instruction}
-
-{response_start}Answer:"""
-                else:
-                    enhanced_prompt = f"""You are a helpful AI assistant.
-
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-User's Question: {message}{thinking_instruction}
-
-{response_start}Answer:"""
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+                user_content = f"{message}{thinking_instruction}\n\n{response_start}"
         else:
-            # RAG disabled - use conversation context only
-            # Get thinking instruction based on intensity
-            thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
-            
-            if conversation_context:
-                enhanced_prompt = f"""You are a helpful AI assistant.
+            # RAG disabled - use generic assistant
+            system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-Here is the conversation history:
-
-{conversation_context}
-
-User's Current Question: {message}{thinking_instruction}
-
-{response_start}Answer:"""
-            else:
-                enhanced_prompt = f"""You are a helpful AI assistant.
-
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc.
-
-User's Question: {message}{thinking_instruction}
-
-{response_start}Answer:"""
+IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+            user_content = f"{message}{thinking_instruction}\n\n{response_start}"
+        
+        # Build final messages list
+        if system_content:
+            messages.append({"role": "system", "content": system_content})
+        
+        # Add conversation history
+        messages.extend(conversation_messages)
+        
+        # Add current user message
+        messages.append({"role": "user", "content": user_content})
         
         # Get the session data before entering the generator (while we still have request context)
         session_id = get_session_id()
-        
-        # Prepare request for Ollama
-        ollama_request = {
-            "model": model,
-            "prompt": enhanced_prompt,
-            "stream": True,
-            "options": {
-                "temperature": temperature
-            }
-        }
+        user_session = get_session_data()
+        current_figure = user_session.get('current_figure')
         
         def generate():
             try:
-                response = requests.post(
-                    f"{OLLAMA_URL}/api/generate",
-                    json=ollama_request,
-                    stream=True
-                )
+                # Get the appropriate model provider
+                if external_config:
+                    # Use external provider with user-provided configuration
+                    provider = ExternalProvider(
+                        base_url=external_config.get('base_url', 'https://api.poe.com/v1'),
+                        api_key=external_config.get('api_key', ''),
+                        model=external_config.get('model', 'GPT-5-mini')
+                    )
+                    # Override model with external config
+                    model = external_config.get('model', 'GPT-5-mini')
+                else:
+                    # Use default provider from configuration
+                    provider = get_model_provider()
                 
-                if response.status_code != 200:
-                    yield f"data: {json.dumps({'error': 'Ollama server error'})}\n\n"
-                    return
+                # Stream responses from the provider
+                stream = provider.chat_stream(messages, model, temperature)
                 
                 # Send sources first if RAG was used
                 if use_rag and search_results:
@@ -393,36 +339,37 @@ User's Question: {message}{thinking_instruction}
                 # Collect full response for conversation history
                 full_response = ""
                 
-                for line in response.iter_lines():
-                    if line:
-                        try:
-                            chunk_data = json.loads(line.decode('utf-8'))
-                            if 'response' in chunk_data:
-                                content = chunk_data['response']
-                                full_response += content
-                                yield f"data: {json.dumps({'content': content})}\n\n"
-                            if chunk_data.get('done', False):
-                                # Add assistant response to conversation history
-                                # Use session_id directly instead of calling get_session_data() which needs request context
-                                if session_id in session_data:
-                                    user_session = session_data[session_id]
-                                    conversation_history = user_session['conversation_history']
-                                    
-                                    # Clean thinking content from assistant messages
-                                    cleaned_content = clean_thinking_content(full_response)
-                                    
-                                    # Only add if content is not empty
-                                    if cleaned_content.strip():
-                                        conversation_history.append({"role": "assistant", "content": cleaned_content})
-                                        
-                                        # Keep only recent messages
-                                        if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
-                                            user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+                # Process chunks from the provider
+                for chunk in stream:
+                    if 'error' in chunk:
+                        yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
+                        break
+                    
+                    if 'content' in chunk:
+                        content = chunk['content']
+                        full_response += content
+                        yield f"data: {json.dumps({'content': content})}\n\n"
+                    
+                    if chunk.get('done', False):
+                        # Add assistant response to conversation history
+                        # Use session_id directly instead of calling get_session_data() which needs request context
+                        if session_id in session_data:
+                            user_session = session_data[session_id]
+                            conversation_history = user_session['conversation_history']
+                            
+                            # Clean thinking content from assistant messages
+                            cleaned_content = clean_thinking_content(full_response)
+                            
+                            # Only add if content is not empty
+                            if cleaned_content.strip():
+                                conversation_history.append({"role": "assistant", "content": cleaned_content})
                                 
-                                yield f"data: {json.dumps({'done': True})}\n\n"
-                                break
-                        except json.JSONDecodeError:
-                            continue
+                                # Keep only recent messages
+                                if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
+                                    user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+                        
+                        yield f"data: {json.dumps({'done': True})}\n\n"
+                        break
                             
             except Exception as e:
                 logging.error(f"Error in chat stream: {e}")
@@ -436,15 +383,35 @@ User's Question: {message}{thinking_instruction}
 
 @app.route('/api/health')
 def health_check():
-    """Check if Ollama is running"""
+    """Check if the model provider is accessible"""
     try:
-        response = requests.get(f"{OLLAMA_URL}/api/tags", timeout=5)
-        if response.status_code == 200:
-            return jsonify({'status': 'healthy', 'ollama': 'connected'})
+        provider = get_model_provider()
+        provider_name = MODEL_PROVIDER
+        
+        # Try to get models as a health check
+        models = provider.get_available_models()
+        
+        if models:
+            return jsonify({
+                'status': 'healthy', 
+                'provider': provider_name,
+                'connected': True,
+                'models_available': len(models)
+            })
         else:
-            return jsonify({'status': 'unhealthy', 'ollama': 'error'}), 503
+            return jsonify({
+                'status': 'unhealthy', 
+                'provider': provider_name,
+                'connected': False,
+                'error': 'No models available'
+            }), 503
     except Exception as e:
-        return jsonify({'status': 'unhealthy', 'ollama': 'disconnected', 'error': str(e)}), 503
+        return jsonify({
+            'status': 'unhealthy', 
+            'provider': MODEL_PROVIDER,
+            'connected': False,
+            'error': str(e)
+        }), 503
 
 @app.route('/api/rag/stats')
 def rag_stats():
