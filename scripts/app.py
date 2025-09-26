@@ -298,13 +298,15 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                         model=external_config.get('model', 'GPT-5-mini')
                     )
                     # Override model with external config
-                    model = external_config.get('model', 'GPT-5-mini')
+                    model_to_use = external_config.get('model', 'GPT-5-mini')
                 else:
                     # Use default provider from configuration
                     provider = get_model_provider()
+                    # Use the model from outer scope
+                    model_to_use = model
                 
                 # Stream responses from the provider
-                stream = provider.chat_stream(messages, model, temperature)
+                stream = provider.chat_stream(messages, model_to_use, temperature)
                 
                 # Send sources first if RAG was used
                 if use_rag and search_results:
