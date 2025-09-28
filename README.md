@@ -10,7 +10,7 @@ This project is developed for educational and experimental purposes.
 
 - Python 3.8+
 - [Ollama](https://ollama.ai/) installed and running, with at least one language model (for local models)
-- API access to any LLM provider (for external models)
+- API access (API key) to any LLM provider (for external models)
 
 ## Installation
 
