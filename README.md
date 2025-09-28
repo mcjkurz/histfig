@@ -2,15 +2,15 @@
 
 Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style. 
 
-This project is developed for purely educational and experimental purposes.
+This project is developed for educational and experimental purposes.
 
 ![Screenshot](img/screenshot_1.png)
 
 ## Prerequisites
 
-- Python 3.7+
-- [Ollama](https://ollama.ai/) installed and running
-- At least one language model pulled in Ollama (e.g., `ollama pull gpt-oss:20b`)
+- Python 3.8+
+- [Ollama](https://ollama.ai/) installed and running, with at least one language model (for local models)
+- API access to any LLM provider (for external models)
 
 ## Installation
 
