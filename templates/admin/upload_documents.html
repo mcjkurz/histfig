@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>📤 Upload Documents for {{ figure.name }}</h2>
+        <h2>Upload Documents for {{ figure.name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary">← Back to Figure</a>
             <a href="{{ url_for('index') }}" class="btn btn-secondary">Dashboard</a>
@@ -14,7 +14,7 @@
     <div class="card-body">
         <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('upload_documents', figure_id=figure.figure_id) }}" accept-charset="utf-8">
             <div class="file-upload">
-                <div style="font-size: 3rem; margin-bottom: 1rem;">📁</div>
+                <div style="font-size: 3rem; margin-bottom: 1rem;"></div>
                 <h3 style="color: #2c3e50; margin-bottom: 1rem;">Select Documents to Upload</h3>
                 <p style="color: #666; margin-bottom: 2rem;">Choose PDF or text files containing this figure's writings, speeches, letters, or other relevant content.</p>
                 
@@ -23,7 +23,7 @@
                 
                 <div style="margin-top: 1rem;">
                     <button type="submit" id="uploadButton" class="btn btn-success" style="padding: 1rem 2rem; font-size: 1rem;">
-                        🚀 Upload & Process Documents
+                        Upload & Process Documents
                     </button>
                 </div>
             </div>
@@ -31,7 +31,7 @@
         
         <!-- Progress Section (hidden by default) -->
         <div id="progressSection" style="display: none; margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
-            <h4 style="color: #2c3e50; margin-bottom: 1rem;">📊 Upload Progress</h4>
+            <h4 style="color: #2c3e50; margin-bottom: 1rem;">Upload Progress</h4>
             <div id="progressContainer"></div>
         </div>
     </div>
@@ -39,12 +39,12 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>📋 Upload Guidelines</h3>
+        <h3>Upload Guidelines</h3>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
             <div style="background: #e8f5e8; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #27ae60;">
-                <h4 style="color: #27ae60; margin-bottom: 1rem;">✅ Supported Files</h4>
+                <h4 style="color: #27ae60; margin-bottom: 1rem;">Supported Files</h4>
                 <ul style="margin: 0; padding-left: 1.5rem; color: #155724;">
                     <li><strong>PDF files</strong> (.pdf) - Automatically extracted</li>
                     <li><strong>Text files</strong> (.txt, .text) - Direct processing</li>
@@ -54,7 +54,7 @@
             </div>
             
             <div style="background: #d1ecf1; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #3498db;">
-                <h4 style="color: #0c5460; margin-bottom: 1rem;">💡 Best Practices</h4>
+                <h4 style="color: #0c5460; margin-bottom: 1rem;">Best Practices</h4>
                 <ul style="margin: 0; padding-left: 1.5rem; color: #0c5460;">
                     <li>Use authentic historical texts when possible</li>
                     <li>Include diverse content (letters, speeches, writings)</li>
@@ -64,7 +64,7 @@
             </div>
             
             <div style="background: #fff3cd; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #ffc107;">
-                <h4 style="color: #856404; margin-bottom: 1rem;">⚙️ Processing Info</h4>
+                <h4 style="color: #856404; margin-bottom: 1rem;">Processing Info</h4>
                 <ul style="margin: 0; padding-left: 1.5rem; color: #856404;">
                     <li>Documents are automatically chunked</li>
                     <li>Text is processed and vectorized</li>
@@ -78,30 +78,30 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>📚 Recommended Document Types</h3>
+        <h3>Recommended Document Types</h3>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem;">
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📜</div>
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;"></div>
                 <h5 style="color: #2c3e50;">Personal Writings</h5>
                 <p style="font-size: 0.9rem; color: #666; margin: 0;">Diaries, journals, personal letters, memoirs</p>
             </div>
             
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎤</div>
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;"></div>
                 <h5 style="color: #2c3e50;">Public Speeches</h5>
                 <p style="font-size: 0.9rem; color: #666; margin: 0;">Political speeches, public addresses, declarations</p>
             </div>
             
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">📖</div>
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;"></div>
                 <h5 style="color: #2c3e50;">Published Works</h5>
                 <p style="font-size: 0.9rem; color: #666; margin: 0;">Books, essays, philosophical treatises</p>
             </div>
             
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
-                <div style="font-size: 2rem; margin-bottom: 0.5rem;">✉️</div>
+                <div style="font-size: 2rem; margin-bottom: 0.5rem;"></div>
                 <h5 style="color: #2c3e50;">Correspondence</h5>
                 <p style="font-size: 0.9rem; color: #666; margin: 0;">Letters to colleagues, friends, family</p>
             </div>
@@ -111,7 +111,7 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>🔄 What Happens Next?</h3>
+        <h3>What Happens Next?</h3>
     </div>
     <div class="card-body">
         <div style="background: #f8f9fa; padding: 2rem; border-radius: 8px;">
@@ -276,7 +276,7 @@
                 this.parentNode.appendChild(preview);
             }
             
-            preview.innerHTML = '<h5 style="margin-bottom: 1rem; color: #2c3e50;">📋 Selected Files:</h5>';
+            preview.innerHTML = '<h5 style="margin-bottom: 1rem; color: #2c3e50;">Selected Files:</h5>';
             
             for (let i = 0; i < files.length; i++) {
                 const file = files[i];
@@ -289,11 +289,11 @@
                 fileInfo.style.justifyContent = 'space-between';
                 fileInfo.style.alignItems = 'center';
                 
-                const icon = file.type === 'application/pdf' ? '📄' : '📝';
+                const icon = file.type === 'application/pdf' ? '' : '';
                 const size = (file.size / 1024 / 1024).toFixed(2);
                 
                 fileInfo.innerHTML = `
-                    <span>${icon} ${file.name}</span>
+                    <span>${file.name}</span>
                     <span style="color: #666; font-size: 0.8rem;">${size} MB</span>
                 `;
                 
@@ -323,7 +323,7 @@
         
         // Prepare UI
         uploadButton.disabled = true;
-        uploadButton.innerHTML = '⏳ Uploading...';
+        uploadButton.innerHTML = 'Uploading...';
         progressSection.style.display = 'block';
         progressContainer.innerHTML = '';
         
@@ -336,7 +336,7 @@
             const progressHtml = `
                 <div class="file-progress" id="${progressId}">
                     <div class="file-progress-header">
-                        <span class="file-progress-name">📄 ${file.name}</span>
+                        <span class="file-progress-name">${file.name}</span>
                         <span class="file-progress-status status-processing processing-animation">Uploading...</span>
                     </div>
                     <div class="progress-bar-container">
@@ -474,7 +474,7 @@
                             progressBar.classList.add('success');
                             statusEl.classList.remove('processing-animation');
                             statusEl.className = 'file-progress-status status-success';
-                            statusEl.textContent = '✅ Complete';
+                            statusEl.textContent = 'Complete';
                             chunkInfo.textContent = `Successfully processed ${data.chunks_added} chunks`;
                         }
                         break;
@@ -491,7 +491,7 @@
                             progressBar.classList.add('error');
                             statusEl.classList.remove('processing-animation');
                             statusEl.className = 'file-progress-status status-error';
-                            statusEl.textContent = '❌ Failed';
+                            statusEl.textContent = 'Failed';
                             chunkInfo.textContent = data.error || 'Processing failed';
                         }
                         break;
@@ -526,14 +526,14 @@
                         progressBar.textContent = '100%';
                         progressBar.classList.add('success');
                         statusEl.className = 'file-progress-status status-success';
-                        statusEl.textContent = '✅ Complete';
+                        statusEl.textContent = 'Complete';
                         chunkInfo.textContent = `Successfully processed ${fileResult.total_chunks} chunks`;
                     } else {
                         progressBar.style.width = '100%';
                         progressBar.textContent = 'Error';
                         progressBar.classList.add('error');
                         statusEl.className = 'file-progress-status status-error';
-                        statusEl.textContent = '❌ Failed';
+                        statusEl.textContent = 'Failed';
                         chunkInfo.textContent = fileResult.error || 'Processing failed';
                     }
                 });
@@ -550,13 +550,13 @@
                 const summaryClass = successfulUploads < totalFiles ? 'has-errors' : '';
                 const summaryHtml = `
                     <div class="upload-summary ${summaryClass}">
-                        <h5 style="margin: 0 0 0.5rem 0; color: #2c3e50;">📊 Upload Summary</h5>
+                        <h5 style="margin: 0 0 0.5rem 0; color: #2c3e50;">Upload Summary</h5>
                         <p style="margin: 0;">
                             Successfully processed: <strong>${successfulUploads}/${totalFiles}</strong> files
                         </p>
                         ${successfulUploads > 0 ? 
-                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">✅ Documents have been added to the figure knowledge base.</p>' : 
-                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #721c24;">⚠️ Please check the errors above and try again.</p>'
+                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">Documents have been added to the figure knowledge base.</p>' : 
+                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #721c24;">Please check the errors above and try again.</p>'
                         }
                         ${successfulUploads > 0 ? 
                             `<p style="margin: 0.5rem 0 0 0;"><a href="${figureDetailUrl}" class="btn btn-primary">← Back to Figure Details</a></p>` : 
@@ -568,7 +568,7 @@
                 
                 // Reset button
                 uploadButton.disabled = false;
-                uploadButton.innerHTML = '🚀 Upload More Documents';
+                uploadButton.innerHTML = 'Upload More Documents';
             }
             
             // Handle upload error
@@ -577,13 +577,13 @@
                 // Show error in the progress section instead of alert
                 const errorHtml = `
                     <div class="upload-summary has-errors">
-                        <h5 style="margin: 0 0 0.5rem 0; color: #721c24;">❌ Upload Failed</h5>
+                        <h5 style="margin: 0 0 0.5rem 0; color: #721c24;">Upload Failed</h5>
                         <p style="margin: 0; color: #721c24;">${errorMessage}</p>
                     </div>
                 `;
                 progressContainer.insertAdjacentHTML('beforeend', errorHtml);
                 uploadButton.disabled = false;
-                uploadButton.innerHTML = '🚀 Upload & Process Documents';
+                uploadButton.innerHTML = 'Upload & Process Documents';
             }
             
         } catch (error) {

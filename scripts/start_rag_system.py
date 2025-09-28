@@ -143,6 +143,7 @@ def main():
         print("1. First, upload documents at http://localhost:5002")
         print("2. Then use the chat interface at http://localhost:5001")
         print("3. Toggle RAG on/off in the chat interface")
+        print("4. For External API: set EXTERNAL_API_KEY env var to pre-populate API key")
         print("\nPress Ctrl+C to stop all services")
         
         # Wait for user to stop

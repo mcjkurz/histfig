@@ -5,7 +5,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>✏️ Edit {{ figure.name }}</h2>
+        <h2>Edit {{ figure.name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
             <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary">← Back to Figure</a>
             <a href="{{ url_for('index') }}" class="btn btn-secondary">Dashboard</a>
@@ -49,7 +49,7 @@
                 </div>
 
                 <div>
-                    <h4 style="margin-bottom: 1rem; color: #2c3e50;">📅 Additional Metadata</h4>
+                    <h4 style="margin-bottom: 1rem; color: #2c3e50;">Additional Metadata</h4>
                     
                     <div class="form-group">
                         <label for="birth_year">Birth Year</label>
@@ -100,7 +100,7 @@
                     </div>
 
                     <div style="background: #fff3cd; padding: 1rem; border-radius: 8px; margin-top: 1rem; border-left: 4px solid #ffc107;">
-                        <h5 style="color: #856404; margin-bottom: 0.5rem;">⚠️ Important</h5>
+                        <h5 style="color: #856404; margin-bottom: 0.5rem;">Important</h5>
                         <ul style="margin: 0; padding-left: 1.5rem; font-size: 0.9rem; color: #856404;">
                             <li>Changes will apply to future conversations</li>
                             <li>Existing chat history remains unchanged</li>
@@ -113,7 +113,7 @@
             <div style="margin-top: 2rem; text-align: center; padding-top: 1rem; border-top: 1px solid #e9ecef;">
                 <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
                     <button type="submit" class="btn btn-primary" style="padding: 1rem 2rem; font-size: 1rem;">
-                        💾 Save Changes
+                        Save Changes
                     </button>
                     <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="padding: 1rem 2rem; font-size: 1rem;">
                         Cancel
@@ -126,7 +126,7 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>📊 Current Figure Status</h3>
+        <h3>Current Figure Status</h3>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">

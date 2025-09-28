@@ -354,8 +354,8 @@ def upload_documents(figure_id):
         # Get max_length from figure metadata, default to 500 if not set
         max_length = figure_metadata.get('max_length', 500)
         
-        # Create document processor with the figure's max_length
-        document_processor = DocumentProcessor(chunk_size=max_length)
+        # Create document processor using the global CHUNK_SIZE from config
+        document_processor = DocumentProcessor()
         
         # Check if files were uploaded
         if 'files' not in request.files:
@@ -507,8 +507,8 @@ def upload_documents_stream(figure_id):
             # Get max_length from figure metadata
             max_length = figure_metadata.get('max_length', 500)
             
-            # Create document processor with the figure's max_length
-            document_processor = DocumentProcessor(chunk_size=max_length)
+            # Create document processor using the global CHUNK_SIZE from config
+            document_processor = DocumentProcessor()
             
             # Check if files were provided
             if not files_data:

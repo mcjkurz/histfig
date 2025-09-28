@@ -14,6 +14,7 @@ from chromadb.config import Settings
 from sentence_transformers import SentenceTransformer
 import torch
 import re
+from config import EMBEDDING_MODEL
 
 class FigureManager:
     def __init__(self, figures_dir: str = "./figures", db_path: str = "./chroma_db"):
@@ -45,7 +46,7 @@ class FigureManager:
         else:
             self.device = "cpu"
         
-        self.encoder = SentenceTransformer("all-MiniLM-L6-v2", device=self.device)
+        self.encoder = SentenceTransformer(EMBEDDING_MODEL, device=self.device)
         logging.info(f"Figure manager initialized with device: {self.device}")
     
     def create_figure(self, figure_id: str, name: str, description: str = "", 

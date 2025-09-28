@@ -7,6 +7,8 @@ import signal
 import sys
 import markdown
 import secrets
+import uuid
+import datetime
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -17,7 +19,7 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER
+from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY
 from model_provider import get_model_provider, ExternalProvider
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -89,13 +91,13 @@ def get_thinking_instructions(intensity):
         instruction = "\n\nPlease respond directly to the user's message. You are not allowed to analyze the query or provide any other information, please respond directly."
         response_start = "<think></think>\n\n"
     elif intensity == 'low':
-        instruction = "\n\nPlease think very briefly (1-2 sentences only, not more than 3 sentences) before answering."
+        instruction = "\n\nPlease think briefly (3-4 sentences only, not more than 6 sentences) before answering."
         response_start = ""
     elif intensity == 'high':
         instruction = "\n\nPlease think deeply and thoroughly about this question. Consider multiple perspectives and implications before answering."
         response_start = ""
     else:
-        instruction = "\n\nThink through your answer carefully before responding."
+        instruction = "\n\nThink through your answer before responding, but do not spend too much time on it."
         response_start = ""
     
     return instruction, response_start
@@ -111,13 +113,51 @@ def get_session_data():
     """Get session data for the current user"""
     session_id = get_session_id()
     if session_id not in session_data:
+        # Generate a unique conversation ID for this session
+        conversation_id = str(uuid.uuid4())
         session_data[session_id] = {
             'conversation_history': [],
-            'current_figure': None
+            'current_figure': None,
+            'conversation_id': conversation_id,
+            'conversation_start_time': datetime.datetime.now().isoformat()
         }
     return session_data[session_id]
 
-def add_to_conversation_history(role, content):
+def save_conversation_to_json(user_session, session_id):
+    """Save conversation to JSON file automatically"""
+    try:
+        conversation_id = user_session['conversation_id']
+        conversation_start_time = user_session['conversation_start_time']
+        conversation_history = user_session['conversation_history']
+        
+        # Create conversations directory if it doesn't exist
+        conversations_dir = './conversations'
+        os.makedirs(conversations_dir, exist_ok=True)
+        
+        # Create filename with date and unique ID
+        start_time = datetime.datetime.fromisoformat(conversation_start_time)
+        date_str = start_time.strftime('%Y-%m-%d_%H-%M-%S')
+        filename = f'conversation_{date_str}_{conversation_id[:8]}.json'
+        filepath = os.path.join(conversations_dir, filename)
+        
+        # Prepare conversation data
+        conversation_data = {
+            'conversation_id': conversation_id,
+            'start_time': conversation_start_time,
+            'last_updated': datetime.datetime.now().isoformat(),
+            'current_figure': user_session.get('current_figure'),
+            'messages': conversation_history,
+            'session_id': session_id
+        }
+        
+        # Save to JSON file (overwrite each time with full conversation)
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(conversation_data, f, indent=2, ensure_ascii=False)
+            
+    except Exception as e:
+        logging.error(f"Error auto-saving conversation: {e}")
+
+def add_to_conversation_history(role, content, retrieved_documents=None):
     """Add a message to conversation history for current session"""
     user_session = get_session_data()
     conversation_history = user_session['conversation_history']
@@ -128,11 +168,20 @@ def add_to_conversation_history(role, content):
     
     # Only add if content is not empty
     if content.strip():
-        conversation_history.append({"role": role, "content": content})
+        message = {"role": role, "content": content}
+        
+        # Add retrieved documents if provided (for assistant messages)
+        if role == "assistant" and retrieved_documents:
+            message["retrieved_documents"] = retrieved_documents
+        
+        conversation_history.append(message)
         
         # Keep only recent messages
         if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:  # 2 messages per exchange
             user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+        
+        # Automatically save conversation to JSON file after each message
+        save_conversation_to_json(user_session, get_session_id())
 
 def build_conversation_messages():
     """Build conversation messages list for current session"""
@@ -152,10 +201,41 @@ def build_conversation_messages():
     
     return messages
 
+def truncate_messages_preserve_system(messages, system_message=None):
+    """Truncate messages while preserving the system message"""
+    if not messages:
+        return messages if not system_message else [system_message]
+    
+    # If we have a system message, we need to preserve it
+    if system_message:
+        # Keep the system message and the most recent conversation messages
+        # Allow space for system message by reducing available slots by 1
+        max_conversation_messages = (MAX_CONTEXT_MESSAGES * 2) - 1
+        
+        # Filter out any existing system messages from the conversation history
+        conversation_messages = [msg for msg in messages if msg.get('role') != 'system']
+        
+        # Truncate conversation messages if needed
+        if len(conversation_messages) > max_conversation_messages:
+            conversation_messages = conversation_messages[-max_conversation_messages:]
+        
+        # Return system message first, then conversation messages
+        return [system_message] + conversation_messages
+    else:
+        # No system message, just truncate normally
+        if len(messages) > MAX_CONTEXT_MESSAGES * 2:
+            return messages[-MAX_CONTEXT_MESSAGES * 2:]
+        return messages
+
 @app.route('/')
 def index():
     """Serve the main chat interface - responsive version with three panels"""
     return render_template('index.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    """Serve favicon from static folder"""
+    return send_from_directory(app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
 @app.route('/api/models')
 def get_models():
@@ -170,6 +250,28 @@ def get_models():
     except Exception as e:
         logging.error(f"Error fetching models: {e}")
         return jsonify([DEFAULT_MODEL])
+
+@app.route('/api/external-api-key-status')
+def get_external_api_key_status():
+    """Check if external API key is pre-configured"""
+    try:
+        has_key = bool(EXTERNAL_API_KEY and EXTERNAL_API_KEY.strip())
+        masked_key = ""
+        if has_key:
+            # Create a masked version: show first 3 and last 3 characters, mask the middle
+            key = EXTERNAL_API_KEY.strip()
+            if len(key) > 6:
+                masked_key = key[:3] + '*' * (len(key) - 6) + key[-3:]
+            else:
+                masked_key = '*' * len(key)
+        
+        return jsonify({
+            'has_key': has_key,
+            'masked_key': masked_key
+        })
+    except Exception as e:
+        logging.error(f"Error checking external API key status: {e}")
+        return jsonify({'has_key': False, 'masked_key': ''})
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -226,7 +328,7 @@ def chat():
                         base_instruction = f"You are responding as {figure_name}." if not personality_prompt else personality_prompt
                         system_content = f"""{base_instruction}
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, you must respond in English. If the user writes in Chinese, you must respond in Chinese, etc. You must not use tables. Your response must not, under any circumstances, be longer than 1000 words.
+IMPORTANT: Please respond in the same language that the user is using, even if the retrieved documents are in a different language. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc. You must not use tables or other formatting, write as though you were responding verbally to a question. Your response must not, under any circumstances, be longer than 400 words.
 
 Answer as {figure_name} would, drawing from the provided documents when relevant."""
                         
@@ -255,7 +357,7 @@ User's Current Question: {message}{thinking_instruction}
                     # No figure selected - use generic assistant
                     system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+IMPORTANT: Please respond in the same language that the user is using. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc."""
                     user_content = f"{message}{thinking_instruction}\n\n{response_start}"
                     
             except Exception as e:
@@ -263,24 +365,23 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                 # Fallback to generic assistant
                 system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+IMPORTANT: Please respond in the same language that the user is using. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc."""
                 user_content = f"{message}{thinking_instruction}\n\n{response_start}"
         else:
             # RAG disabled - use generic assistant
             system_content = """You are a helpful AI assistant.
 
-IMPORTANT: Please respond in the same language that the user is using. If the user writes in English, respond in English. If the user writes in Chinese, respond in Chinese, etc."""
+IMPORTANT: Please respond in the same language that the user is using. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc."""
             user_content = f"{message}{thinking_instruction}\n\n{response_start}"
         
-        # Build final messages list
-        if system_content:
-            messages.append({"role": "system", "content": system_content})
+        # Build final messages list with proper truncation
+        system_message = {"role": "system", "content": system_content} if system_content else None
         
-        # Add conversation history
-        messages.extend(conversation_messages)
+        # Add conversation history and current user message
+        all_conversation_messages = conversation_messages + [{"role": "user", "content": user_content}]
         
-        # Add current user message
-        messages.append({"role": "user", "content": user_content})
+        # Truncate messages while preserving system message
+        messages = truncate_messages_preserve_system(all_conversation_messages, system_message)
         
         # Get the session data before entering the generator (while we still have request context)
         session_id = get_session_id()
@@ -292,9 +393,14 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                 # Get the appropriate model provider
                 if external_config:
                     # Use external provider with user-provided configuration
+                    # If user didn't provide API key but we have a pre-configured one, use it
+                    api_key = external_config.get('api_key', '').strip()
+                    if not api_key and EXTERNAL_API_KEY:
+                        api_key = EXTERNAL_API_KEY.strip()
+                    
                     provider = ExternalProvider(
                         base_url=external_config.get('base_url', 'https://api.poe.com/v1'),
-                        api_key=external_config.get('api_key', ''),
+                        api_key=api_key,
                         model=external_config.get('model', 'GPT-5-mini')
                     )
                     # Override model with external config
@@ -353,7 +459,7 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                         yield f"data: {json.dumps({'content': content})}\n\n"
                     
                     if chunk.get('done', False):
-                        # Add assistant response to conversation history
+                        # Add assistant response to conversation history with retrieved documents
                         # Use session_id directly instead of calling get_session_data() which needs request context
                         if session_id in session_data:
                             user_session = session_data[session_id]
@@ -364,11 +470,47 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                             
                             # Only add if content is not empty
                             if cleaned_content.strip():
-                                conversation_history.append({"role": "assistant", "content": cleaned_content})
+                                message = {"role": "assistant", "content": cleaned_content}
+                                
+                                # Add retrieved documents if RAG was used
+                                if use_rag and search_results:
+                                    retrieved_docs = []
+                                    for result in search_results:
+                                        if current_figure:
+                                            # Figure-specific source format
+                                            doc_id = result.get('document_id', 'UNKNOWN')
+                                            retrieved_docs.append({
+                                                'document_id': doc_id,
+                                                'filename': result['metadata']['filename'],
+                                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
+                                                'full_text': result['text'],
+                                                'similarity': result.get('similarity', 0),
+                                                'chunk_index': result['metadata'].get('chunk_index', 0),
+                                                'figure_id': current_figure
+                                            })
+                                        else:
+                                            # General RAG source format (original)
+                                            doc_id = result.get('chunk_id', 'UNKNOWN')
+                                            retrieved_docs.append({
+                                                'chunk_id': doc_id,  # Keep for backward compatibility
+                                                'doc_id': f"DOC{doc_id}",
+                                                'filename': result['metadata']['filename'],
+                                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
+                                                'full_text': result['text'],
+                                                'similarity': result.get('similarity', 0),
+                                                'chunk_index': result['metadata'].get('chunk_index', 0)
+                                            })
+                                    message["retrieved_documents"] = retrieved_docs
+                                
+                                conversation_history.append(message)
                                 
                                 # Keep only recent messages
                                 if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
                                     user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+                                
+                                # Auto-save conversation after assistant response
+                                # We need to pass session_id since we're in a generator without request context
+                                save_conversation_to_json(user_session, session_id)
                         
                         yield f"data: {json.dumps({'done': True})}\n\n"
                         break
@@ -761,18 +903,62 @@ def export_conversation_pdf():
         story.append(Paragraph("<b>Conversation:</b>", message_style))
         story.append(Spacer(1, 0.1*inch))
         
-        # Add messages with simple format
+        # Document header style with Unicode font
+        doc_header_style = ParagraphStyle(
+            'DocHeader',
+            parent=styles['Normal'],
+            fontSize=11,
+            fontName=unicode_font,
+            textColor=colors.HexColor('#2c3e50'),
+            spaceAfter=5,
+            spaceBefore=8
+        )
+        
+        # Document content style with Unicode font
+        doc_content_style = ParagraphStyle(
+            'DocContent',
+            parent=styles['Normal'],
+            fontSize=9,
+            fontName=unicode_font,
+            textColor=colors.HexColor('#34495e'),
+            spaceAfter=8,
+            leftIndent=12,
+            rightIndent=12,
+            leading=11
+        )
+        
+        # Document metadata style with Unicode font
+        doc_meta_style = ParagraphStyle(
+            'DocMeta',
+            parent=styles['Normal'],
+            fontSize=8,
+            fontName=unicode_font,
+            textColor=colors.HexColor('#7f8c8d'),
+            spaceAfter=10,
+            leftIndent=12
+        )
+        
+        # Document section header style
+        doc_section_header_style = ParagraphStyle(
+            'DocSectionHeader',
+            parent=styles['Normal'],
+            fontSize=10,
+            fontName=unicode_font,
+            textColor=colors.HexColor('#2c3e50'),
+            spaceAfter=5,
+            spaceBefore=5
+        )
+        
+        # Add messages with retrieved documents after each assistant response
         for msg in messages:
             role = msg.get('role', 'unknown')
             content = msg.get('content', '')
+            msg_retrieved_documents = msg.get('retrieved_documents', [])
             
             # Escape HTML special characters and fix encoding issues
             content = content.replace('&', '&amp;')
             content = content.replace('<', '&lt;')
             content = content.replace('>', '&gt;')
-            
-            # Only replace specific problematic characters, preserve Unicode content
-            # Don't replace characters that might be legitimate Unicode text (like Chinese)
             
             # Convert newlines to HTML line breaks
             content = content.replace('\n', '<br/>')
@@ -784,108 +970,60 @@ def export_conversation_pdf():
                 # Extract just the figure name without document count
                 display_name = figure_name.split(' (')[0] if ' (' in figure_name else figure_name
                 story.append(Paragraph(f"<b>{display_name}:</b> {content}", message_style))
+                
+                # Add retrieved documents for this specific response
+                if msg_retrieved_documents and len(msg_retrieved_documents) > 0:
+                    story.append(Spacer(1, 0.05*inch))
+                    
+                    # Retrieved documents header
+                    story.append(Paragraph(f"<b>Retrieved Documents ({len(msg_retrieved_documents)}):</b>", doc_section_header_style))
+                    story.append(Spacer(1, 0.05*inch))
+                    
+                    # Sort documents by filename and chunk ID for better organization
+                    sorted_docs = sorted(msg_retrieved_documents, key=lambda d: (
+                        d.get('filename', ''),
+                        d.get('chunk_id') or d.get('document_id') or d.get('doc_id', '')
+                    ))
+                    
+                    # Add each document
+                    for idx, doc_data in enumerate(sorted_docs, 1):
+                        filename = doc_data.get('filename', 'Unknown')
+                        chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
+                        text = doc_data.get('full_text') or doc_data.get('text', '')
+                        similarity = doc_data.get('similarity', 0)
+                        
+                        # Document header
+                        header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
+                        story.append(Paragraph(header_text, doc_header_style))
+                        
+                        # Document metadata
+                        meta_text = f"Relevance Score: {similarity:.2%}"
+                        if doc_data.get('timestamp'):
+                            meta_text += f" | Retrieved: {doc_data['timestamp']}"
+                        story.append(Paragraph(meta_text, doc_meta_style))
+                        
+                        # Document content - escape and format
+                        doc_content = text.replace('&', '&amp;')
+                        doc_content = doc_content.replace('<', '&lt;')
+                        doc_content = doc_content.replace('>', '&gt;')
+                        
+                        # Preserve line breaks
+                        doc_content = doc_content.replace('\n', '<br/>')
+                        
+                        # Add content
+                        story.append(Paragraph(doc_content, doc_content_style))
+                        
+                        # Add separator between documents (if not the last one)
+                        if idx < len(sorted_docs):
+                            story.append(Spacer(1, 0.05*inch))
+                            # Add a subtle line separator
+                            from reportlab.platypus import HRFlowable
+                            story.append(HRFlowable(width="80%", thickness=0.5, 
+                                                   color=colors.HexColor('#e0e0e0'),
+                                                   spaceAfter=3, spaceBefore=3))
             
-            story.append(Spacer(1, 0.05*inch))
+            story.append(Spacer(1, 0.1*inch))
         
-        # Add retrieved documents appendix if available
-        if retrieved_documents and len(retrieved_documents) > 0:
-            # Add page break before appendix
-            from reportlab.platypus import PageBreak
-            story.append(PageBreak())
-            
-            # Appendix title with Unicode font
-            appendix_title_style = ParagraphStyle(
-                'AppendixTitle',
-                parent=styles['Title'],
-                fontSize=16,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=20,
-                alignment=TA_CENTER
-            )
-            story.append(Paragraph("Appendix: Retrieved Documents", appendix_title_style))
-            story.append(Spacer(1, 0.2*inch))
-            
-            # Document header style with Unicode font
-            doc_header_style = ParagraphStyle(
-                'DocHeader',
-                parent=styles['Normal'],
-                fontSize=12,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=8,
-                spaceBefore=12
-            )
-            
-            # Document content style with Unicode font
-            doc_content_style = ParagraphStyle(
-                'DocContent',
-                parent=styles['Normal'],
-                fontSize=10,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#34495e'),
-                spaceAfter=10,
-                leftIndent=12,
-                rightIndent=12,
-                leading=13
-            )
-            
-            # Document metadata style with Unicode font
-            doc_meta_style = ParagraphStyle(
-                'DocMeta',
-                parent=styles['Normal'],
-                fontSize=9,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#7f8c8d'),
-                spaceAfter=15,
-                leftIndent=12
-            )
-            
-            # Sort documents by filename and chunk ID for better organization
-            sorted_docs = sorted(retrieved_documents, key=lambda d: (
-                d.get('filename', ''),
-                d.get('chunk_id') or d.get('document_id') or d.get('doc_id', '')
-            ))
-            
-            # Add each document
-            for idx, doc_data in enumerate(sorted_docs, 1):
-                filename = doc_data.get('filename', 'Unknown')
-                chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
-                text = doc_data.get('full_text') or doc_data.get('text', '')
-                similarity = doc_data.get('similarity', 0)
-                
-                # Document header
-                header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
-                story.append(Paragraph(header_text, doc_header_style))
-                
-                # Document metadata
-                meta_text = f"Relevance Score: {similarity:.2%}"
-                if doc_data.get('timestamp'):
-                    meta_text += f" | Retrieved: {doc_data['timestamp']}"
-                story.append(Paragraph(meta_text, doc_meta_style))
-                
-                # Document content - escape and format
-                content = text.replace('&', '&amp;')
-                content = content.replace('<', '&lt;')
-                content = content.replace('>', '&gt;')
-                
-                # Preserve Unicode content including Chinese characters
-                # Don't replace characters that might be legitimate Unicode text
-                
-                # Preserve line breaks
-                content = content.replace('\n', '<br/>')
-                
-                # Add content
-                story.append(Paragraph(content, doc_content_style))
-                
-                # Add separator between documents
-                if idx < len(sorted_docs):
-                    story.append(Spacer(1, 0.1*inch))
-                    # Add a subtle line separator
-                    from reportlab.platypus import HRFlowable
-                    story.append(HRFlowable(width="80%", thickness=0.5, 
-                                           color=colors.HexColor('#e0e0e0'),
-                                           spaceAfter=10, spaceBefore=10))
         
         # Build PDF
         doc.build(story)

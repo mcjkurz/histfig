@@ -46,6 +46,9 @@ chroma_db/
 # Figures directory (user-generated content)
 figures/
 
+# Conversations directory (user conversations saved as JSON)
+conversations/
+
 # Environment variables
 .env
 .env.local

@@ -9,18 +9,19 @@ from typing import List, Dict, Any
 import PyPDF2
 import logging
 from io import BytesIO
+from config import CHUNK_SIZE, CHUNK_OVERLAP
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = 500, chunk_overlap: int = 50):
+    def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
         """
         Initialize document processor.
         
         Args:
-            chunk_size: Target size for text chunks (in characters)
-            chunk_overlap: Overlap between chunks (in characters)
+            chunk_size: Target size for text chunks (in words)
+            chunk_overlap: Overlap between chunks (in words)
         """
-        self.chunk_size = chunk_size
-        self.chunk_overlap = chunk_overlap
+        self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
+        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else CHUNK_OVERLAP
     
     def extract_text_from_pdf(self, file_content: bytes) -> str:
         """
@@ -83,23 +84,26 @@ class DocumentProcessor:
     
     def clean_text(self, text: str) -> str:
         """
-        Clean and normalize text by removing newlines and normalizing whitespace.
+        Clean and normalize text by keeping only alphabetic characters, spaces, and punctuation.
         
         Args:
             text: Raw text
             
         Returns:
-            Cleaned text as one long string without newlines
+            Cleaned text with only alphabet, spaces, and punctuation
         """
         # Remove all newlines and normalize whitespace
         text = text.replace('\n', ' ').replace('\r', ' ')
         text = re.sub(r'\s+', ' ', text)
         
+        # Keep only alphabetic characters, numbers, spaces, and punctuation
+        text = re.sub(r'[^\w\s\.,;:!?\'"()\-–—\[\]{}]', '', text, flags=re.UNICODE)
+        
         return text.strip()
     
     def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Split text into chunks by max length after removing all newlines.
+        Split text into chunks by word count after removing all newlines.
         
         Args:
             text: Text to chunk
@@ -114,7 +118,10 @@ class DocumentProcessor:
         # Clean text to create one long string without newlines
         text = self.clean_text(text)
         
-        if len(text) <= self.chunk_size:
+        # Split text into words
+        words = text.split()
+        
+        if len(words) <= self.chunk_size:
             # Text is small enough to be a single chunk
             return [{
                 "text": text,
@@ -123,38 +130,32 @@ class DocumentProcessor:
         
         chunks = []
         chunk_index = 0
-        start = 0
+        start_word = 0
         
-        while start < len(text):
-            # Determine end position for this chunk
-            end = start + self.chunk_size
+        while start_word < len(words):
+            # Determine end word position for this chunk
+            end_word = start_word + self.chunk_size
             
-            if end >= len(text):
-                # Last chunk - take remaining text
-                chunk_text = text[start:]
+            if end_word >= len(words):
+                # Last chunk - take remaining words
+                chunk_words = words[start_word:]
             else:
-                # Try to break at word boundary
-                chunk_text = text[start:end]
-                # Find the last space to avoid breaking words
-                last_space = chunk_text.rfind(' ')
-                if last_space != -1 and last_space > start + self.chunk_size // 2:
-                    # Break at word boundary if it's not too far back
-                    chunk_text = text[start:start + last_space]
-                    end = start + last_space + 1  # +1 to skip the space
-                else:
-                    # No good word boundary found, use the full chunk
-                    end = start + self.chunk_size
+                # Take exactly chunk_size words
+                chunk_words = words[start_word:end_word]
+            
+            # Join words back into text
+            chunk_text = ' '.join(chunk_words)
             
             chunks.append({
-                "text": chunk_text.strip(),
+                "text": chunk_text,
                 "metadata": {**metadata, "chunk_index": chunk_index}
             })
             
             # Move to next chunk with overlap
-            if self.chunk_overlap > 0 and end < len(text):
-                start = end - self.chunk_overlap
+            if self.chunk_overlap > 0 and end_word < len(words):
+                start_word = end_word - self.chunk_overlap
             else:
-                start = end
+                start_word = end_word
             
             chunk_index += 1
         

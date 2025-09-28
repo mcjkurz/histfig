@@ -175,12 +175,14 @@
         .figure-header {
             background: #2c3e50;
             color: #7dd3fc;
-            padding: 20px;
+            padding: 15px;
             text-align: center;
             border-bottom: 1px solid #4a5f7a;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            min-height: 60px; /* Ensure consistent height */
+            box-sizing: border-box;
         }
 
         .figure-header h2 {
@@ -265,12 +267,14 @@
         .control-header {
             background: #2c3e50;
             color: #7dd3fc;
-            padding: 20px;
+            padding: 15px;
             text-align: center;
             border-bottom: 1px solid #4a5f7a;
             display: flex;
             justify-content: space-between;
             align-items: center;
+            min-height: 60px; /* Ensure consistent height */
+            box-sizing: border-box;
         }
 
         .control-header h2 {
@@ -359,11 +363,17 @@
             text-align: center;
             position: relative;
             border-bottom: 1px solid #4a5f7a;
+            min-height: 60px; /* Ensure consistent height */
+            box-sizing: border-box;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .chat-header h1 {
             font-size: 1.3rem;
             font-weight: 600;
+            margin: 0;
         }
 
         .save-conversation-btn {
@@ -584,10 +594,12 @@
 
         .chat-input-container {
             padding: 15px;
+            padding-bottom: calc(15px + env(safe-area-inset-bottom));
             background: #1e2a3a;
             border-top: 1px solid #4a5f7a;
-            position: relative;
-            z-index: 10;
+            position: sticky;
+            bottom: 0;
+            z-index: 100;
         }
 
         .chat-input-form {
@@ -710,9 +722,13 @@
 
             .chat-input-container {
                 padding: 12px;
+                padding-bottom: calc(12px + env(safe-area-inset-bottom));
                 flex-shrink: 0;
                 background: #1e2a3a;
                 border-top: 1px solid #4a5f7a;
+                position: sticky;
+                bottom: 0;
+                z-index: 100;
             }
 
             .message-content {
@@ -1134,9 +1150,18 @@
                             </div>
                             <div class="control-item">
                                 <label class="control-label">Model Name</label>
+                                <select id="external-model-select" class="control-select">
+                                    <option value="GPT-5-mini">GPT-5-mini</option>
+                                    <option value="GPT-5-nano">GPT-5-nano</option>
+                                    <option value="GPT-4.1-mini">GPT-4.1-mini</option>
+                                    <option value="Gemini-2.5-Flash">Gemini-2.5-Flash</option>
+                                    <option value="Nova-Micro-1.0">Nova-Micro-1.0</option>
+                                    <option value="Grok-4-Fast-Non-Reasoning">Grok-4-Fast-Non-Reasoning</option>
+                                    <option value="Other">Other</option>
+                                </select>
                                 <input type="text" id="external-model-name" class="control-input" 
-                                       placeholder="GPT-5-mini" 
-                                       value="GPT-5-mini">
+                                       placeholder="Enter custom model name" 
+                                       style="display: none; margin-top: 10px;">
                             </div>
                             <div class="control-item">
                                 <label class="control-label">API Key</label>

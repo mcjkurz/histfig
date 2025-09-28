@@ -5,12 +5,12 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>🏛️ {{ figure.name }}</h2>
+        <h2>{{ figure.name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">✏️ Edit</a>
-            <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success">📄 Upload Documents</a>
+            <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">Edit</a>
+            <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success">Upload Documents</a>
             <form method="POST" action="{{ url_for('delete_figure', figure_id=figure.figure_id) }}" style="display: inline;" onsubmit="return confirmDelete('{{ figure.name }}')">
-                <button type="submit" class="btn btn-danger">🗑️ Delete</button>
+                <button type="submit" class="btn btn-danger">Delete</button>
             </form>
         </div>
     </div>
@@ -18,7 +18,7 @@
         <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
             <div>
                 <div style="margin-bottom: 2rem;">
-                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">📋 Basic Information</h4>
+                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">Basic Information</h4>
                     <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px;">
                         <div style="margin-bottom: 1rem;">
                             <strong>Figure ID:</strong> <code style="background: white; padding: 0.2rem 0.5rem; border-radius: 4px;">{{ figure.figure_id }}</code>
@@ -45,7 +45,7 @@
 
                 {% if figure.metadata %}
                 <div>
-                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">📅 Additional Metadata</h4>
+                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">Additional Metadata</h4>
                     <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px;">
                         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
                             {% if figure.metadata.birth_year %}
@@ -79,7 +79,7 @@
             </div>
 
             <div>
-                <h4 style="color: #2c3e50; margin-bottom: 1rem;">📊 Statistics</h4>
+                <h4 style="color: #2c3e50; margin-bottom: 1rem;">Statistics</h4>
                 <div style="display: flex; flex-direction: column; gap: 1rem;">
                     <div class="stat-card">
                         <div class="stat-number">{{ stats.document_count or 0 }}</div>
@@ -92,14 +92,14 @@
                 </div>
 
                 <div style="margin-top: 2rem;">
-                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">🚀 Quick Actions</h4>
+                    <h4 style="color: #2c3e50; margin-bottom: 1rem;">Quick Actions</h4>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success" style="width: 100%;">📄 Upload Documents</a>
-                        <a href="http://localhost:5001" target="_blank" class="btn btn-primary" style="width: 100%;">💬 Chat with {{ figure.name }}</a>
-                        <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="width: 100%;">✏️ Edit Figure</a>
+                        <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success" style="width: 100%;">Upload Documents</a>
+                        <a href="http://localhost:5001" target="_blank" class="btn btn-primary" style="width: 100%;">Chat with {{ figure.name }}</a>
+                        <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="width: 100%;">Edit Figure</a>
                         {% if stats.document_count and stats.document_count > 0 %}
                         <form method="POST" action="{{ url_for('clean_figure_documents', figure_id=figure.figure_id) }}" style="width: 100%;" onsubmit="return confirmClean('{{ figure.name }}')">
-                            <button type="submit" class="btn btn-warning" style="width: 100%;">🧹 Clean Documents</button>
+                            <button type="submit" class="btn btn-warning" style="width: 100%;">Clean Documents</button>
                         </form>
                         {% endif %}
                     </div>
@@ -107,12 +107,12 @@
 
                 {% if stats.document_count and stats.document_count > 0 %}
                 <div style="margin-top: 2rem; padding: 1rem; background: #e8f5e8; border-radius: 8px; border-left: 4px solid #27ae60;">
-                    <h5 style="color: #27ae60; margin-bottom: 0.5rem;">✅ Ready for Chat</h5>
+                    <h5 style="color: #27ae60; margin-bottom: 0.5rem;">Ready for Chat</h5>
                     <p style="margin: 0; font-size: 0.9rem; color: #155724;">This figure has documents and is ready for conversations!</p>
                 </div>
                 {% else %}
                 <div style="margin-top: 2rem; padding: 1rem; background: #fff3cd; border-radius: 8px; border-left: 4px solid #ffc107;">
-                    <h5 style="color: #856404; margin-bottom: 0.5rem;">📋 No Documents</h5>
+                    <h5 style="color: #856404; margin-bottom: 0.5rem;">No Documents</h5>
                     <p style="margin: 0; font-size: 0.9rem; color: #856404;">Upload some documents to enable personalized responses for this figure.</p>
                 </div>
                 {% endif %}
@@ -123,24 +123,24 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>🔧 Management Actions</h3>
+        <h3>Management Actions</h3>
     </div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
             <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">📤 Upload Documents</h4>
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Upload Documents</h4>
                 <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Add PDF or text files containing this figure's writings, speeches, or other relevant content.</p>
                 <a href="{{ url_for('upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success">Upload Files</a>
             </div>
             
             <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">🔍 Search Documents</h4>
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Search Documents</h4>
                 <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Test document retrieval using the command line interface.</p>
                 <code style="background: white; padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; display: block; margin-bottom: 1rem;">python scripts/figure_cli.py search {{ figure.figure_id }} "your query"</code>
             </div>
             
             <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">✏️ Edit Settings</h4>
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Edit Settings</h4>
                 <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Modify the figure's personality prompt, description, and metadata.</p>
                 <a href="{{ url_for('edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">Edit Figure</a>
             </div>
@@ -150,14 +150,14 @@
 
 <div class="card">
     <div class="card-header">
-        <h3>💬 Testing & Preview</h3>
+        <h3>Testing & Preview</h3>
     </div>
     <div class="card-body">
         <div style="background: #f8f9fa; padding: 2rem; border-radius: 8px; text-align: center;">
             <h4 style="color: #2c3e50; margin-bottom: 1rem;">Ready to Chat?</h4>
             <p style="color: #666; margin-bottom: 2rem;">Open the chat interface and select "{{ figure.name }}" from the figure dropdown to start a conversation.</p>
             <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap;">
-                <a href="http://localhost:5001" target="_blank" class="btn btn-primary">💬 Open Chat Interface</a>
+                <a href="http://localhost:5001" target="_blank" class="btn btn-primary">Open Chat Interface</a>
                 <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Dashboard</a>
             </div>
         </div>
