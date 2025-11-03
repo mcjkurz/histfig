@@ -8,12 +8,13 @@ import os
 import logging
 import signal
 import sys
+import secrets
 from werkzeug.utils import secure_filename
-from vector_db import get_vector_db
+from hybrid_search import get_hybrid_db
 from document_processor import document_processor
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
-app.secret_key = 'your-secret-key-change-this'  # Change this in production
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
 app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size
 
@@ -32,8 +33,8 @@ def allowed_file(filename):
 def index():
     """Main upload interface."""
     try:
-        vector_db = get_vector_db()
-        stats = vector_db.get_collection_stats()
+        hybrid_db = get_hybrid_db()
+        stats = hybrid_db.get_collection_stats()
         return render_template('upload.html', stats=stats)
     except Exception as e:
         logging.error(f"Error loading upload page: {e}")
@@ -70,13 +71,13 @@ def upload_file():
         except Exception as e:
             return jsonify({'error': f'Failed to process document: {str(e)}'}), 400
         
-        # Add chunks to vector database
-        vector_db = get_vector_db()
+        # Add chunks to hybrid database
+        hybrid_db = get_hybrid_db()
         added_chunks = 0
         
         for chunk in chunks:
             try:
-                vector_db.add_document(chunk['text'], chunk['metadata'])
+                hybrid_db.add_document(chunk['text'], chunk['metadata'])
                 added_chunks += 1
             except Exception as e:
                 logging.error(f"Error adding chunk to database: {e}")
@@ -99,8 +100,8 @@ def upload_file():
 def get_stats():
     """Get database statistics."""
     try:
-        vector_db = get_vector_db()
-        stats = vector_db.get_collection_stats()
+        hybrid_db = get_hybrid_db()
+        stats = hybrid_db.get_collection_stats()
         return jsonify(stats)
     except Exception as e:
         logging.error(f"Error getting stats: {e}")
@@ -117,8 +118,8 @@ def search_documents():
         if not query:
             return jsonify({'error': 'Query is required'}), 400
         
-        vector_db = get_vector_db()
-        results = vector_db.search_similar(query, n_results)
+        hybrid_db = get_hybrid_db()
+        results = hybrid_db.hybrid_search(query, n_results)
         
         return jsonify({
             'query': query,
@@ -134,10 +135,10 @@ def search_documents():
 def list_documents():
     """Get list of uploaded documents."""
     try:
-        vector_db = get_vector_db()
+        hybrid_db = get_hybrid_db()
         
         # Get all documents (this is a simple approach; for large datasets, implement pagination)
-        all_results = vector_db.collection.get(include=["metadatas"])
+        all_results = hybrid_db.collection.get(include=["metadatas"])
         
         # Group by filename
         documents = {}
@@ -167,8 +168,8 @@ def list_documents():
 def clear_database():
     """Clear all documents from the database."""
     try:
-        vector_db = get_vector_db()
-        success = vector_db.clear_collection()
+        hybrid_db = get_hybrid_db()
+        success = hybrid_db.clear_collection()
         
         if success:
             return jsonify({'message': 'Database cleared successfully'})
@@ -183,8 +184,8 @@ def clear_database():
 def health_check():
     """Health check endpoint."""
     try:
-        vector_db = get_vector_db()
-        stats = vector_db.get_collection_stats()
+        hybrid_db = get_hybrid_db()
+        stats = hybrid_db.get_collection_stats()
         return jsonify({
             'status': 'healthy',
             'database': 'connected',

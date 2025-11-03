@@ -37,6 +37,10 @@ temp_uploads/
 tmp/
 temp/
 
+# Tests
+tests/
+test/
+
 # Static files (user-specific content like figure images)
 static/
 

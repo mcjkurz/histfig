@@ -131,7 +131,9 @@ def save_conversation_to_json(user_session, session_id):
         conversation_history = user_session['conversation_history']
         
         # Create conversations directory if it doesn't exist
-        conversations_dir = './conversations'
+        # Use absolute path to ensure conversations are saved in the correct location
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        conversations_dir = os.path.join(project_root, 'conversations')
         os.makedirs(conversations_dir, exist_ok=True)
         
         # Create filename with date and unique ID
@@ -328,9 +330,9 @@ def chat():
                         base_instruction = f"You are responding as {figure_name}." if not personality_prompt else personality_prompt
                         system_content = f"""{base_instruction}
 
-IMPORTANT: Please respond in the same language that the user is using, even if the retrieved documents are in a different language. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc. You must not use tables or other formatting, write as though you were responding verbally to a question. Your response must not, under any circumstances, be longer than 400 words.
+IMPORTANT: Please respond in the same language that the user is using, even if the retrieved documents are in a different language. If the user asks a question in English, you must respond in English. If the user asks a question in Chinese, you must respond in Chinese, etc. You must not use tables or other formatting, write as though you were responding verbally to a question. Your response must not, under any circumstances, be longer than 300 words.
 
-Answer as {figure_name} would, drawing from the provided documents when relevant."""
+Answer as {figure_name} would. You should respond in their speech style and reflecting their opinions, drawing from the provided documents when relevant."""
                         
                         if search_results:
                             # Build context from figure's documents
@@ -427,6 +429,10 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
                                 'full_text': result['text'],
                                 'similarity': result.get('similarity', 0),
+                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
+                                'bm25_score': result.get('bm25_score', 0),
+                                'rrf_score': result.get('rrf_score', 0),
+                                'top_matching_words': result.get('top_matching_words', []),
                                 'chunk_index': result['metadata'].get('chunk_index', 0),
                                 'figure_id': current_figure
                             })
@@ -440,6 +446,10 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
                                 'full_text': result['text'],
                                 'similarity': result.get('similarity', 0),
+                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
+                                'bm25_score': result.get('bm25_score', 0),
+                                'rrf_score': result.get('rrf_score', 0),
+                                'top_matching_words': result.get('top_matching_words', []),
                                 'chunk_index': result['metadata'].get('chunk_index', 0)
                             })
                     yield f"data: {json.dumps({'sources': sources_data})}\n\n"
@@ -485,6 +495,10 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
                                                 'full_text': result['text'],
                                                 'similarity': result.get('similarity', 0),
+                                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
+                                                'bm25_score': result.get('bm25_score', 0),
+                                                'rrf_score': result.get('rrf_score', 0),
+                                                'top_matching_words': result.get('top_matching_words', []),
                                                 'chunk_index': result['metadata'].get('chunk_index', 0),
                                                 'figure_id': current_figure
                                             })
@@ -498,6 +512,10 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
                                                 'full_text': result['text'],
                                                 'similarity': result.get('similarity', 0),
+                                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
+                                                'bm25_score': result.get('bm25_score', 0),
+                                                'rrf_score': result.get('rrf_score', 0),
+                                                'top_matching_words': result.get('top_matching_words', []),
                                                 'chunk_index': result['metadata'].get('chunk_index', 0)
                                             })
                                     message["retrieved_documents"] = retrieved_docs
@@ -991,13 +1009,28 @@ def export_conversation_pdf():
                         chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
                         text = doc_data.get('full_text') or doc_data.get('text', '')
                         similarity = doc_data.get('similarity', 0)
+                        cosine_similarity = doc_data.get('cosine_similarity', similarity)
+                        bm25_score = doc_data.get('bm25_score', 0)
+                        rrf_score = doc_data.get('rrf_score', 0)
+                        top_matching_words = doc_data.get('top_matching_words', [])
                         
                         # Document header
                         header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
                         story.append(Paragraph(header_text, doc_header_style))
                         
-                        # Document metadata
-                        meta_text = f"Relevance Score: {similarity:.2%}"
+                        # Document metadata with all scores
+                        meta_parts = []
+                        if cosine_similarity > 0:
+                            meta_parts.append(f"Cosine Similarity: {cosine_similarity:.2%}")
+                        if bm25_score > 0:
+                            meta_parts.append(f"BM25 Score: {bm25_score:.2f}")
+                        if rrf_score > 0:
+                            meta_parts.append(f"RRF Score: {rrf_score:.4f}")
+                        if top_matching_words:
+                            keywords_str = ', '.join(top_matching_words[:5])
+                            meta_parts.append(f"Keywords: {keywords_str}")
+                        
+                        meta_text = ' | '.join(meta_parts) if meta_parts else f"Relevance Score: {similarity:.2%}"
                         if doc_data.get('timestamp'):
                             meta_text += f" | Retrieved: {doc_data['timestamp']}"
                         story.append(Paragraph(meta_text, doc_meta_style))

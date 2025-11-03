@@ -27,10 +27,9 @@
                         <label for="name">Display Name *</label>
                         <input type="text" id="name" name="name" class="form-control" required
                                value="{{ figure.name }}"
-                               pattern="[a-zA-Z\s]+"
                                maxlength="100"
-                               title="Use only letters and spaces">
-                        <small style="color: #666; font-size: 0.8rem;">Letters and spaces only</small>
+                               title="Display name (supports Chinese characters)">
+                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese (no special characters or numbers)</small>
                     </div>
 
                     <div class="form-group">
@@ -176,11 +175,6 @@
     updateCharCounter('description', 'desc-counter', 400);
     updateCharCounter('personality_prompt', 'prompt-counter', 400);
     
-    // Validate name input (letters and spaces only)
-    document.getElementById('name').addEventListener('input', function() {
-        this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
-    });
-    
     // Validate year inputs (numbers only, 4 digits)
     ['birth_year', 'death_year'].forEach(id => {
         const input = document.getElementById(id);
@@ -211,10 +205,10 @@
             return false;
         }
         
-        // Name validation (letters and spaces only)
-        if (!/^[a-zA-Z\s]+$/.test(name)) {
+        // Name validation (allow Unicode characters, reject special characters and numbers)
+        if (/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~]/.test(name)) {
             e.preventDefault();
-            alert('Name must contain only letters and spaces!');
+            alert('Display Name cannot contain numbers or special characters!');
             return false;
         }
         

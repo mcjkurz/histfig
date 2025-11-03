@@ -9,19 +9,45 @@ from typing import List, Dict, Any
 import PyPDF2
 import logging
 from io import BytesIO
+import nltk
+import jieba
 from config import CHUNK_SIZE, CHUNK_OVERLAP
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = None, chunk_overlap: int = None):
+    def __init__(self, chunk_size: int = None, chunk_overlap: int = None, 
+                 max_chunk_chars: int = 1000, char_overlap: int = None):
         """
-        Initialize document processor.
+        Initialize document processor with character-based and word-based chunking.
         
         Args:
-            chunk_size: Target size for text chunks (in words)
-            chunk_overlap: Overlap between chunks (in words)
+            chunk_size: Target size for text chunks (in words, used for semantic chunking)
+            chunk_overlap: Overlap between chunks (in words). If None, defaults to 25% of chunk_size
+            max_chunk_chars: Maximum characters per chunk (default 1000)
+            char_overlap: Character-based overlap. If None, defaults to 25% of max_chunk_chars
         """
         self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
-        self.chunk_overlap = chunk_overlap if chunk_overlap is not None else CHUNK_OVERLAP
+        if chunk_overlap is not None:
+            self.chunk_overlap = chunk_overlap
+        else:
+            # Default to 25% of chunk size for overlap
+            self.chunk_overlap = int(self.chunk_size * 0.25)
+        
+        # Character-based chunking parameters
+        self.max_chunk_chars = max_chunk_chars
+        if char_overlap is not None:
+            self.char_overlap = char_overlap
+        else:
+            # Default to 25% of max_chunk_chars for overlap
+            self.char_overlap = int(self.max_chunk_chars * 0.25)
+        
+        # Download NLTK data for sentence tokenization
+        try:
+            nltk.data.find('tokenizers/punkt')
+        except LookupError:
+            try:
+                nltk.download('punkt', quiet=True)
+            except Exception as e:
+                logging.warning(f"Failed to download NLTK punkt data: {e}")
     
     def extract_text_from_pdf(self, file_content: bytes) -> str:
         """
@@ -103,7 +129,8 @@ class DocumentProcessor:
     
     def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
-        Split text into chunks by word count after removing all newlines.
+        Split text into chunks with intelligent boundary detection.
+        Uses character-based chunking with configurable size to avoid splitting mid-word/sentence.
         
         Args:
             text: Text to chunk
@@ -115,49 +142,87 @@ class DocumentProcessor:
         if metadata is None:
             metadata = {}
         
-        # Clean text to create one long string without newlines
-        text = self.clean_text(text)
+        # Clean text minimally - just normalize whitespace
+        text = re.sub(r'\s+', ' ', text).strip()
         
-        # Split text into words
-        words = text.split()
+        # Use configured character-based chunk size
+        target_chunk_size = self.max_chunk_chars
+        overlap_size = self.char_overlap
         
-        if len(words) <= self.chunk_size:
-            # Text is small enough to be a single chunk
+        # If text is small, return as single chunk
+        if len(text) <= target_chunk_size:
             return [{
                 "text": text,
-                "metadata": {**metadata, "chunk_index": 0, "total_chunks": 1}
+                "metadata": {
+                    **metadata, 
+                    "chunk_index": 0, 
+                    "total_chunks": 1,
+                    "start_char": 0,
+                    "end_char": len(text),
+                    "char_count": len(text)
+                }
             }]
         
         chunks = []
         chunk_index = 0
-        start_word = 0
+        start_pos = 0
         
-        while start_word < len(words):
-            # Determine end word position for this chunk
-            end_word = start_word + self.chunk_size
+        while start_pos < len(text):
+            # Calculate end position
+            end_pos = start_pos + target_chunk_size
             
-            if end_word >= len(words):
-                # Last chunk - take remaining words
-                chunk_words = words[start_word:]
-            else:
-                # Take exactly chunk_size words
-                chunk_words = words[start_word:end_word]
+            # If this is the last chunk, just take the rest
+            if end_pos >= len(text):
+                chunk_text = text[start_pos:]
+                chunks.append({
+                    "text": chunk_text,
+                    "metadata": {
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "start_char": start_pos,
+                        "end_char": len(text),
+                        "char_count": len(chunk_text)
+                    }
+                })
+                break
             
-            # Join words back into text
-            chunk_text = ' '.join(chunk_words)
+            # Find a good break point near end_pos to avoid splitting mid-word
+            # Look for punctuation or whitespace within 50 chars before end_pos
+            search_start = max(start_pos, end_pos - 50)
             
-            chunks.append({
-                "text": chunk_text,
-                "metadata": {**metadata, "chunk_index": chunk_index}
-            })
+            # Chinese and English punctuation marks that indicate good break points
+            break_chars = '。！？；.!?;\n '
+            
+            # Search backwards from end_pos for a good break point
+            best_break = end_pos
+            for i in range(end_pos - 1, search_start - 1, -1):
+                if text[i] in break_chars:
+                    best_break = i + 1  # Break after the punctuation/space
+                    break
+            
+            # Extract chunk
+            chunk_text = text[start_pos:best_break].strip()
+            
+            if chunk_text:  # Only add non-empty chunks
+                chunks.append({
+                    "text": chunk_text,
+                    "metadata": {
+                        **metadata,
+                        "chunk_index": chunk_index,
+                        "start_char": start_pos,
+                        "end_char": best_break,
+                        "char_count": len(chunk_text)
+                    }
+                })
+                chunk_index += 1
             
             # Move to next chunk with overlap
-            if self.chunk_overlap > 0 and end_word < len(words):
-                start_word = end_word - self.chunk_overlap
-            else:
-                start_word = end_word
+            # Subtract overlap from the break point to create overlapping chunks
+            start_pos = best_break - overlap_size
             
-            chunk_index += 1
+            # Make sure we don't go backwards
+            if start_pos <= chunks[-1]["metadata"]["start_char"]:
+                start_pos = best_break
         
         # Update total_chunks in all metadata
         total_chunks = len(chunks)

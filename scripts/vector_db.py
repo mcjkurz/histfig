@@ -28,7 +28,11 @@ class VectorDatabase:
         self.chunk_counter_file = os.path.join(db_path, "chunk_counter.json")
         
         # Detect best available device
-        if torch.backends.mps.is_available():
+        # For testing, force CPU to avoid accelerate dependency issues
+        if model_name == "all-MiniLM-L6-v2":
+            self.device = "cpu"
+            logging.info("Using CPU for embeddings (test mode)")
+        elif torch.backends.mps.is_available():
             self.device = "mps"  # Apple Silicon GPU
             logging.info("Using Apple Silicon GPU (MPS) for embeddings")
         elif torch.cuda.is_available():
@@ -41,6 +45,9 @@ class VectorDatabase:
         # Initialize sentence transformer with proper device handling
         self.encoder = self._initialize_sentence_transformer(model_name)
         logging.info(f"Initialized SentenceTransformer '{model_name}' on device: {self.device}")
+        
+        # Initialize database components
+        self._initialize_database()
     
     def _initialize_sentence_transformer(self, model_name: str) -> SentenceTransformer:
         """Initialize SentenceTransformer with device handling and model-specific configurations."""
@@ -98,10 +105,12 @@ class VectorDatabase:
                     self.encoder = SentenceTransformer(model_name)
                 logging.info("Using CPU for embeddings (fallback)")
                 return self.encoder
-        
+    
+    def _initialize_database(self):
+        """Initialize ChromaDB client and collection."""
         # Initialize ChromaDB client
         self.client = chromadb.PersistentClient(
-            path=db_path,
+            path=self.db_path,
             settings=Settings(
                 anonymized_telemetry=False,
                 allow_reset=True
@@ -229,10 +238,16 @@ class VectorDatabase:
         if results["documents"] and results["documents"][0]:
             for i in range(len(results["documents"][0])):
                 metadata = results["metadatas"][0][i]
+                # Convert cosine distance to similarity score
+                # Cosine distance ranges from 0 (identical) to 2 (opposite)
+                # Convert to similarity: 0 distance = 1.0 similarity, 2 distance = 0.0 similarity
+                distance = results["distances"][0][i]
+                similarity = max(0.0, 1.0 - (distance / 2.0))  # Normalize and clamp to [0,1]
+                
                 formatted_results.append({
                     "text": results["documents"][0][i],
                     "metadata": metadata,
-                    "similarity": 1 - results["distances"][0][i],  # Convert distance to similarity
+                    "similarity": similarity,
                     "chunk_id": metadata.get("absolute_chunk_id", 0)  # Use stored absolute chunk ID
                 })
         
@@ -316,26 +331,7 @@ class VectorDatabase:
             logging.error(f"Error getting documents for {filename}: {e}")
             return []
 
-# Global instance
-vector_db = None
-
-def get_vector_db() -> VectorDatabase:
-    """Get or create global vector database instance."""
-    global vector_db
-    if vector_db is None:
-        try:
-            vector_db = VectorDatabase(db_path=CHROMA_DB_PATH, model_name=EMBEDDING_MODEL)
-        except Exception as e:
-            logging.error(f"Failed to initialize vector database: {e}")
-            # Try to create a fallback instance with CPU device
-            try:
-                vector_db = VectorDatabase(db_path=CHROMA_DB_PATH, model_name=EMBEDDING_MODEL)
-            except Exception as e2:
-                logging.error(f"Failed to create fallback vector database: {e2}")
-                raise e2
-    return vector_db
-
-def reset_vector_db():
-    """Reset the global vector database instance to force reinitialization."""
-    global vector_db
-    vector_db = None
+# Note: Global vector_db instance removed - system now uses:
+# - get_hybrid_db() from hybrid_search.py for hybrid search functionality
+# - FigureManager for per-figure vector stores
+# The VectorDatabase class is still used as a base class for HybridSearchDatabase

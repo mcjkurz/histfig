@@ -25,11 +25,10 @@
                     <div class="form-group">
                         <label for="name">Display Name *</label>
                         <input type="text" id="name" name="name" class="form-control" required
-                               placeholder="e.g., Napoleon Bonaparte"
-                               pattern="[a-zA-Z\s]+"
+                               placeholder="e.g., Napoleon Bonaparte or 朱元璋"
                                maxlength="100"
-                               title="Use only letters and spaces">
-                        <small style="color: #666; font-size: 0.8rem;">Letters and spaces only</small>
+                               title="Display name (supports Chinese characters)">
+                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese (no special characters or numbers)</small>
                     </div>
 
                     <div class="form-group">
@@ -84,15 +83,28 @@
                                placeholder="e.g., Emperor, Military General">
                     </div>
 
+                    <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; color: #2c3e50;">Document Chunking Settings</h4>
+                    
                     <div class="form-group">
-                        <label for="max_length">Max Paragraph Length</label>
+                        <label for="max_chunk_chars">Max Characters per Chunk (Primary)</label>
+                        <input type="number" id="max_chunk_chars" name="max_chunk_chars" class="form-control"
+                               placeholder="e.g., 1000" 
+                               value="1000"
+                               min="500"
+                               max="3000"
+                               title="Maximum number of characters per document chunk (500-3000 chars)">
+                        <small style="color: #666; font-size: 0.8rem;">Primary chunking method: characters per chunk (default: 1000). Smart boundary detection avoids splitting mid-sentence.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="max_length">Max Words per Chunk (Legacy/Semantic)</label>
                         <input type="number" id="max_length" name="max_length" class="form-control"
-                               placeholder="e.g., 500" 
-                               value="500"
-                               min="100"
-                               max="2000"
-                               title="Maximum length for document paragraphs (100-2000 characters)">
-                        <small style="color: #666; font-size: 0.8rem;">Characters per paragraph when processing documents (default: 500)</small>
+                               placeholder="e.g., 250" 
+                               value="250"
+                               min="50"
+                               max="1000"
+                               title="Maximum number of words per document chunk (50-1000 words)">
+                        <small style="color: #666; font-size: 0.8rem;">Secondary parameter for semantic operations (default: 250, uses jieba for Chinese text)</small>
                     </div>
 
                     <div class="form-group">
@@ -196,11 +208,6 @@
         this.value = this.value.replace(/[^a-zA-Z]/g, '');
     });
     
-    // Validate name input (letters and spaces only)
-    document.getElementById('name').addEventListener('input', function() {
-        this.value = this.value.replace(/[^a-zA-Z\s]/g, '');
-    });
-    
     // Validate year inputs (numbers only, 4 digits)
     ['birth_year', 'death_year'].forEach(id => {
         const input = document.getElementById(id);
@@ -239,10 +246,10 @@
             return false;
         }
         
-        // Name validation (letters and spaces only)
-        if (!/^[a-zA-Z\s]+$/.test(name)) {
+        // Name validation (allow Unicode characters, reject special characters and numbers)
+        if (/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~]/.test(name)) {
             e.preventDefault();
-            alert('Name must contain only letters and spaces!');
+            alert('Display Name cannot contain numbers or special characters!');
             return false;
         }
         

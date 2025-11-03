@@ -24,7 +24,6 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 class FigureCLI:
     def __init__(self):
         self.figure_manager = get_figure_manager()
-        self.document_processor = DocumentProcessor()
     
     def create_figure(self, args):
         """Create a new historical figure."""
@@ -140,10 +139,15 @@ class FigureCLI:
         figure_id = args.figure_id
         file_paths = args.files
         
-        # Check if figure exists
-        if not self.figure_manager.get_figure_metadata(figure_id):
+        # Check if figure exists and get metadata
+        figure_metadata = self.figure_manager.get_figure_metadata(figure_id)
+        if not figure_metadata:
             print(f"Figure '{figure_id}' not found.")
             return False
+        
+        # Get figure-specific chunk size
+        max_length = figure_metadata.get('max_length', 250)
+        document_processor = DocumentProcessor(chunk_size=max_length)
         
         successful_uploads = 0
         total_files = len(file_paths)
@@ -170,7 +174,7 @@ class FigureCLI:
                 
                 # Process the file into chunks
                 filename = Path(file_path).name
-                chunks = self.document_processor.process_file(file_content, filename, file_type)
+                chunks = document_processor.process_file(file_content, filename, file_type)
                 
                 # Add each chunk to the figure's collection
                 chunk_count = 0

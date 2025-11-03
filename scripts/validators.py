@@ -36,7 +36,7 @@ def validate_figure_id(figure_id: str) -> Tuple[bool, Optional[str]]:
 def validate_figure_name(name: str) -> Tuple[bool, Optional[str]]:
     """
     Validate figure name.
-    Must contain only alphabetic characters and spaces.
+    Allows alphabetic characters (including Unicode/Chinese) and spaces.
     
     Args:
         name: The figure name to validate
@@ -50,8 +50,9 @@ def validate_figure_name(name: str) -> Tuple[bool, Optional[str]]:
     if len(name) > 100:
         return False, "Figure name must be 100 characters or less"
     
-    # Only allow letters and spaces
-    if not re.match(r'^[a-zA-Z\s]+$', name):
+    # Check for invalid characters (numbers, special characters except spaces)
+    # Allow Unicode letters including Chinese characters
+    if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', name):
         return False, "Figure name must contain only alphabetic characters and spaces"
     
     return True, None
@@ -216,6 +217,7 @@ def sanitize_figure_id(figure_id: str) -> str:
 def sanitize_figure_name(name: str) -> str:
     """
     Sanitize figure name by removing invalid characters.
+    Allows Unicode letters (including Chinese characters) and spaces.
     
     Args:
         name: The figure name to sanitize
@@ -223,8 +225,9 @@ def sanitize_figure_name(name: str) -> str:
     Returns:
         Sanitized figure name
     """
-    # Remove all non-alphabetic characters except spaces
-    sanitized = re.sub(r'[^a-zA-Z\s]', '', name)
+    # Remove only specific invalid characters (numbers and special characters)
+    # This preserves all Unicode letters including Chinese characters
+    sanitized = re.sub(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~\-]', '', name)
     
     # Remove multiple spaces
     sanitized = ' '.join(sanitized.split())

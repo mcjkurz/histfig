@@ -4,7 +4,7 @@ Historical Figures Administration Interface
 A web-based admin panel for managing historical figures and their documents.
 """
 
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, send_from_directory
+from flask import Flask, render_template, request, jsonify, redirect, url_for, flash, Response, send_from_directory, session
 import os
 import json
 import logging
@@ -12,16 +12,17 @@ from werkzeug.utils import secure_filename
 from pathlib import Path
 import sys
 import time
+from functools import wraps
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
-from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR
+from config import ADMIN_PORT, DEBUG_MODE, ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR, ADMIN_PASSWORD
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
-app.secret_key = 'historical_figures_admin_key_change_in_production'
+app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'historical_figures_admin_key_change_in_production')
 
 app.config['APPLICATION_ROOT'] = '/admin'
 class PrefixMiddleware:
@@ -62,7 +63,39 @@ def allowed_image_file(filename):
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
 
+def login_required(f):
+    """Decorator to require login for admin routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('logged_in'):
+            flash('Please log in to access the admin panel.', 'error')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page for admin panel."""
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == ADMIN_PASSWORD:
+            session['logged_in'] = True
+            session.permanent = True
+            flash('Successfully logged in!', 'success')
+            return redirect(url_for('index'))
+        else:
+            flash('Invalid password. Please try again.', 'error')
+    return render_template('admin/login.html')
+
+@app.route('/logout')
+def logout():
+    """Logout from admin panel."""
+    session.pop('logged_in', None)
+    flash('Successfully logged out.', 'success')
+    return redirect(url_for('login'))
+
 @app.route('/')
+@login_required
 def index():
     """Main dashboard showing all figures."""
     try:
@@ -74,11 +107,13 @@ def index():
         return render_template('admin/dashboard.html', figures=[])
 
 @app.route('/figure/new')
+@login_required
 def new_figure():
     """Form to create a new figure."""
     return render_template('admin/new_figure.html')
 
 @app.route('/figure/create', methods=['POST'])
+@login_required
 def create_figure():
     """Create a new historical figure."""
     try:
@@ -92,7 +127,8 @@ def create_figure():
             'death_year': request.form.get('death_year', '').strip(),
             'nationality': request.form.get('nationality', '').strip(),
             'occupation': request.form.get('occupation', '').strip(),
-            'max_length': request.form.get('max_length', '500').strip()
+            'max_length': request.form.get('max_length', '250').strip(),
+            'max_chunk_chars': request.form.get('max_chunk_chars', '1000').strip()
         }
         
         # Validate all input
@@ -119,12 +155,19 @@ def create_figure():
         if form_data['occupation']:
             metadata['occupation'] = form_data['occupation'][:200]  # Limit length
         
-        # Parse and validate max_length
+        # Parse and validate max_length (words, legacy/semantic parameter)
         try:
             max_length = int(form_data['max_length'])
-            max_length = max(100, min(2000, max_length))  # Clamp between 100 and 2000
+            max_length = max(50, min(1000, max_length))  # Clamp between 50 and 1000 words
         except (ValueError, TypeError):
-            max_length = 500  # Default value
+            max_length = 250  # Default value (words)
+        
+        # Parse and validate max_chunk_chars (characters, primary chunking parameter)
+        try:
+            max_chunk_chars = int(form_data['max_chunk_chars'])
+            max_chunk_chars = max(500, min(3000, max_chunk_chars))  # Clamp between 500 and 3000 chars
+        except (ValueError, TypeError):
+            max_chunk_chars = 1000  # Default value (characters)
         
         # Handle image upload
         image_filename = None
@@ -156,7 +199,8 @@ def create_figure():
             description=description,
             personality_prompt=personality_prompt,
             metadata=metadata,
-            max_length=max_length
+            max_length=max_length,
+            max_chunk_chars=max_chunk_chars
         )
         
         if success:
@@ -171,6 +215,7 @@ def create_figure():
         return redirect(url_for('new_figure'))
 
 @app.route('/figure/<figure_id>')
+@login_required
 def figure_detail(figure_id):
     """Show detailed information about a figure."""
     try:
@@ -189,6 +234,7 @@ def figure_detail(figure_id):
         return redirect(url_for('index'))
 
 @app.route('/figure/<figure_id>/edit')
+@login_required
 def edit_figure(figure_id):
     """Form to edit a figure."""
     try:
@@ -204,6 +250,7 @@ def edit_figure(figure_id):
         return redirect(url_for('index'))
 
 @app.route('/figure/<figure_id>/update', methods=['POST'])
+@login_required
 def update_figure(figure_id):
     """Update a figure's metadata."""
     try:
@@ -313,6 +360,7 @@ def update_figure(figure_id):
         return redirect(url_for('figure_detail', figure_id=figure_id))
 
 @app.route('/figure/<figure_id>/upload')
+@login_required
 def upload_documents_form(figure_id):
     """Form to upload documents to a figure."""
     try:
@@ -328,6 +376,7 @@ def upload_documents_form(figure_id):
         return redirect(url_for('index'))
 
 @app.route('/figure/<figure_id>/upload', methods=['POST'])
+@login_required
 def upload_documents(figure_id):
     """Upload documents to a figure - supports both AJAX and traditional form submission."""
     try:
@@ -351,11 +400,15 @@ def upload_documents(figure_id):
             flash(f'Figure {figure_id} not found', 'error')
             return redirect(url_for('index'))
         
-        # Get max_length from figure metadata, default to 500 if not set
-        max_length = figure_metadata.get('max_length', 500)
+        # Get chunking parameters from figure metadata
+        max_length = figure_metadata.get('max_length', 250)  # Words (legacy/semantic)
+        max_chunk_chars = figure_metadata.get('max_chunk_chars', 1000)  # Characters (primary)
         
-        # Create document processor using the global CHUNK_SIZE from config
-        document_processor = DocumentProcessor()
+        # Create document processor using figure-specific chunk size (both char and word-based)
+        document_processor = DocumentProcessor(
+            chunk_size=max_length,
+            max_chunk_chars=max_chunk_chars
+        )
         
         # Check if files were uploaded
         if 'files' not in request.files:
@@ -391,10 +444,21 @@ def upload_documents(figure_id):
                 try:
                     # Read file content
                     file_content = file.read()
-                    filename = secure_filename(file.filename)
+                    original_filename = file.filename
+                    
+                    # Handle Unicode filenames: secure_filename strips non-ASCII chars
+                    # Generate safe filename while preserving original in metadata
+                    safe_filename = secure_filename(original_filename)
+                    if not safe_filename or safe_filename.startswith('.'):
+                        # If secure_filename results in empty or just extension, use timestamp
+                        import time
+                        file_ext = Path(original_filename).suffix.lower()
+                        safe_filename = f"upload_{int(time.time() * 1000)}{file_ext}"
+                    
+                    filename = safe_filename
                     
                     # Determine file type
-                    file_extension = Path(filename).suffix.lower()
+                    file_extension = Path(original_filename).suffix.lower()
                     if file_extension == '.pdf':
                         file_type = 'pdf'
                     elif file_extension in ['.txt', '.text']:
@@ -405,17 +469,21 @@ def upload_documents(figure_id):
                         all_results.append(file_result)
                         continue
                     
-                    # Process the file into chunks
+                    # Process the file into chunks (use safe filename for internal processing)
                     chunks = document_processor.process_file(file_content, filename, file_type)
                     file_result['total_chunks'] = len(chunks)
                     
                     # Add each chunk to the figure's collection
                     chunk_count = 0
                     for chunk_index, chunk in enumerate(chunks):
+                        # Update metadata to use original filename
+                        chunk_metadata = chunk['metadata'].copy()
+                        chunk_metadata['original_filename'] = original_filename
+                        
                         doc_id = figure_manager.add_document_to_figure(
                             figure_id=figure_id,
                             text=chunk['text'],
-                            metadata=chunk['metadata']
+                            metadata=chunk_metadata
                         )
                         if doc_id:
                             chunk_count += 1
@@ -473,6 +541,7 @@ def upload_documents(figure_id):
         return redirect(url_for('upload_documents_form', figure_id=figure_id))
 
 @app.route('/figure/<figure_id>/upload-stream', methods=['POST'])
+@login_required
 def upload_documents_stream(figure_id):
     """Upload documents with streaming progress updates."""
     
@@ -483,8 +552,16 @@ def upload_documents_stream(figure_id):
         files = request.files.getlist('files')
         for file in files:
             if file.filename:
+                # Handle Unicode filenames: secure_filename strips non-ASCII chars
+                safe_filename = secure_filename(file.filename)
+                if not safe_filename or safe_filename.startswith('.'):
+                    # If secure_filename results in empty or just extension, use timestamp
+                    import time
+                    file_ext = Path(file.filename).suffix.lower()
+                    safe_filename = f"upload_{int(time.time() * 1000)}{file_ext}"
+                
                 files_data.append({
-                    'filename': secure_filename(file.filename),
+                    'filename': safe_filename,
                     'content': file.read(),  # Read the content now while in request context
                     'original_filename': file.filename
                 })
@@ -504,11 +581,15 @@ def upload_documents_stream(figure_id):
                 yield f"data: {json.dumps({'error': 'Figure not found'})}\n\n"
                 return
             
-            # Get max_length from figure metadata
-            max_length = figure_metadata.get('max_length', 500)
+            # Get chunking parameters from figure metadata
+            max_length = figure_metadata.get('max_length', 250)  # Words (legacy/semantic)
+            max_chunk_chars = figure_metadata.get('max_chunk_chars', 1000)  # Characters (primary)
             
-            # Create document processor using the global CHUNK_SIZE from config
-            document_processor = DocumentProcessor()
+            # Create document processor using figure-specific chunk size (both char and word-based)
+            document_processor = DocumentProcessor(
+                chunk_size=max_length,
+                max_chunk_chars=max_chunk_chars
+            )
             
             # Check if files were provided
             if not files_data:
@@ -531,8 +612,8 @@ def upload_documents_stream(figure_id):
                     continue
                 
                 try:
-                    # Determine file type
-                    file_extension = Path(filename).suffix.lower()
+                    # Determine file type from original filename
+                    file_extension = Path(original_filename).suffix.lower()
                     if file_extension == '.pdf':
                         file_type = 'pdf'
                     elif file_extension in ['.txt', '.text']:
@@ -541,7 +622,7 @@ def upload_documents_stream(figure_id):
                         yield f"data: {json.dumps({'event': 'file_error', 'file_index': file_index, 'error': 'Unsupported file type'})}\n\n"
                         continue
                     
-                    # Process the file into chunks
+                    # Process the file into chunks (use safe filename for internal processing)
                     chunks = document_processor.process_file(file_content, filename, file_type)
                     total_chunks = len(chunks)
                     
@@ -551,10 +632,14 @@ def upload_documents_stream(figure_id):
                     # Add each chunk to the figure's collection
                     chunk_count = 0
                     for chunk_index, chunk in enumerate(chunks):
+                        # Update metadata to use original filename
+                        chunk_metadata = chunk['metadata'].copy()
+                        chunk_metadata['original_filename'] = original_filename
+                        
                         doc_id = figure_manager.add_document_to_figure(
                             figure_id=figure_id,
                             text=chunk['text'],
-                            metadata=chunk['metadata']
+                            metadata=chunk_metadata
                         )
                         if doc_id:
                             chunk_count += 1
@@ -582,6 +667,7 @@ def upload_documents_stream(figure_id):
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/figure/<figure_id>/clean', methods=['POST'])
+@login_required
 def clean_figure_documents(figure_id):
     """Remove all documents from a figure without deleting the figure itself."""
     try:
@@ -606,6 +692,7 @@ def clean_figure_documents(figure_id):
         return redirect(url_for('figure_detail', figure_id=figure_id))
 
 @app.route('/figure/<figure_id>/delete', methods=['POST'])
+@login_required
 def delete_figure(figure_id):
     """Delete a figure and all its data."""
     try:
