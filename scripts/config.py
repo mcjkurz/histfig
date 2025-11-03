@@ -19,6 +19,7 @@ DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b")
 
 # External API Configuration
 EXTERNAL_API_KEY = os.environ.get("EXTERNAL_API_KEY", "")
+EXTERNAL_BASE_URL = os.environ.get("EXTERNAL_BASE_URL", "https://api.poe.com/v1")
 
 # Admin Panel Configuration
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")  # Change in production!
@@ -59,3 +60,8 @@ ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'md'}
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 TEMP_UPLOAD_DIR = "./temp_uploads"
 FIGURE_IMAGES_DIR = "./static/figure_images"
+
+# Query Augmentation Settings
+QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "false").lower() == "true"
+QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
+QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://openrouter.ai/api/v1")

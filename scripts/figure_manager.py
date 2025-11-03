@@ -19,6 +19,7 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 from config import EMBEDDING_MODEL
 from text_processor import text_processor
+from query_augmentation import augment_query
 
 class FigureManager:
     def __init__(self, figures_dir: str = "./figures", db_path: str = "./chroma_db"):
@@ -486,7 +487,7 @@ class FigureManager:
         
         Args:
             figure_id: Figure identifier
-            query: Search query
+            query: Search query (will be augmented if enabled)
             n_results: Number of results to return
             min_cosine_similarity: Minimum cosine similarity threshold (default 0.05)
             
@@ -494,6 +495,15 @@ class FigureManager:
             List of similar documents ranked by hybrid search with both metrics
         """
         try:
+            # Augment query if enabled (transparent to user)
+            augmented_query = augment_query(query)
+            logging.info(f"Original query: '{query}'")
+            if augmented_query != query:
+                logging.info(f"Using augmented query: '{augmented_query}'")
+            
+            # Use augmented query for search
+            search_query = augmented_query
+            
             # Preload BM25 index for efficient searching
             self.preload_bm25_index(figure_id)
             
@@ -501,8 +511,8 @@ class FigureManager:
             search_multiplier = 3
             extended_n_results = min(n_results * search_multiplier, 30)
             
-            # Perform vector search
-            vector_results = self._search_figure_vector(figure_id, query, extended_n_results)
+            # Perform vector search (using augmented query)
+            vector_results = self._search_figure_vector(figure_id, search_query, extended_n_results)
             
             # Filter vector results to only those with meaningful cosine similarity
             filtered_vector_results = [
@@ -518,8 +528,8 @@ class FigureManager:
                 logging.warning(f"No results with sufficient cosine similarity found for figure {figure_id}")
                 return []
             
-            # Perform BM25 search
-            bm25_results = self._search_figure_bm25(figure_id, query, extended_n_results)
+            # Perform BM25 search (using augmented query)
+            bm25_results = self._search_figure_bm25(figure_id, search_query, extended_n_results)
             
             logging.info(f"Figure {figure_id} hybrid search: vector={len(filtered_vector_results)}, bm25={len(bm25_results)} results")
             

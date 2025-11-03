@@ -19,7 +19,7 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY
+from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY, EXTERNAL_BASE_URL
 from model_provider import get_model_provider, ExternalProvider
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
@@ -400,8 +400,11 @@ IMPORTANT: Please respond in the same language that the user is using. If the us
                     if not api_key and EXTERNAL_API_KEY:
                         api_key = EXTERNAL_API_KEY.strip()
                     
+                    # Use base_url from external_config, fallback to EXTERNAL_BASE_URL from env, then hardcoded default
+                    base_url = external_config.get('base_url', EXTERNAL_BASE_URL)
+                    
                     provider = ExternalProvider(
-                        base_url=external_config.get('base_url', 'https://api.poe.com/v1'),
+                        base_url=base_url,
                         api_key=api_key,
                         model=external_config.get('model', 'GPT-5-mini')
                     )
