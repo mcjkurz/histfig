@@ -1,18 +1,13 @@
 """
-DEPRECATED: This file is kept for backwards compatibility.
-The application has been refactored to use Flask Blueprints.
-Please use main.py as the entry point instead.
-
-The chat functionality is now in chat_routes.py
+Chat Routes Blueprint
+Handles chat interface and conversation functionality.
 """
 
-from flask import Flask, render_template, request, jsonify, Response, make_response, send_from_directory, session
+from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 import requests
 import json
 import logging
 import os
-import signal
-import sys
 import markdown
 import secrets
 import uuid
@@ -27,42 +22,34 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTENT_LENGTH, MAX_CONTEXT_MESSAGES, CHAT_PORT, DEBUG_MODE, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY, EXTERNAL_BASE_URL
+from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY, EXTERNAL_BASE_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL
 from model_provider import get_model_provider, ExternalProvider
+from query_augmentation import augment_query
 from prompts import (
     FIGURE_SYSTEM_PROMPT, DEFAULT_FIGURE_INSTRUCTION,
     USER_MESSAGE_WITH_RAG, USER_MESSAGE_NO_RAG, GENERIC_ASSISTANT_PROMPT
 )
 
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
-app.config['MAX_FORM_MEMORY_SIZE'] = None
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
-logging.basicConfig(level=logging.WARNING)
+# Create blueprint
+chat_bp = Blueprint('chat', __name__, template_folder='../templates', static_folder='../static')
 
 # Store conversation history per session
-# We'll use a dictionary to store per-session data
 session_data = {}
 
 def register_unicode_fonts():
     """Register Unicode-capable fonts for PDF generation"""
     try:
-        # Try to use system fonts that support Chinese characters
         import platform
         system = platform.system()
         
         if system == "Darwin":  # macOS
-            # Try to register common macOS fonts that support Chinese
             font_paths = [
-                "/System/Library/Fonts/PingFang.ttc",  # PingFang SC
-                "/System/Library/Fonts/Hiragino Sans GB.ttc",  # Hiragino Sans GB
-                "/System/Library/Fonts/STHeiti Light.ttc",  # STHeiti
-                "/System/Library/Fonts/Arial Unicode MS.ttf",  # Arial Unicode MS
+                "/System/Library/Fonts/PingFang.ttc",
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                "/System/Library/Fonts/STHeiti Light.ttc",
+                "/System/Library/Fonts/Arial Unicode MS.ttf",
             ]
         elif system == "Linux":
-            # Try common Linux fonts
             font_paths = [
                 "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -70,21 +57,19 @@ def register_unicode_fonts():
             ]
         else:  # Windows
             font_paths = [
-                "C:/Windows/Fonts/msyh.ttc",  # Microsoft YaHei
-                "C:/Windows/Fonts/simsun.ttc",  # SimSun
-                "C:/Windows/Fonts/arial.ttf",  # Arial
+                "C:/Windows/Fonts/msyh.ttc",
+                "C:/Windows/Fonts/simsun.ttc",
+                "C:/Windows/Fonts/arial.ttf",
             ]
         
-        # Try to register the first available font
         for font_path in font_paths:
             try:
                 if os.path.exists(font_path):
                     pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
                     return 'UnicodeFont'
-            except Exception as e:
+            except Exception:
                 continue
         
-        # Fallback: use Helvetica (built-in font that handles basic Latin)
         return 'Helvetica'
         
     except Exception as e:
@@ -125,7 +110,6 @@ def get_session_data():
     """Get session data for the current user"""
     session_id = get_session_id()
     if session_id not in session_data:
-        # Generate a unique conversation ID for this session
         conversation_id = str(uuid.uuid4())
         session_data[session_id] = {
             'conversation_history': [],
@@ -142,19 +126,15 @@ def save_conversation_to_json(user_session, session_id):
         conversation_start_time = user_session['conversation_start_time']
         conversation_history = user_session['conversation_history']
         
-        # Create conversations directory if it doesn't exist
-        # Use absolute path to ensure conversations are saved in the correct location
         project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         conversations_dir = os.path.join(project_root, 'conversations')
         os.makedirs(conversations_dir, exist_ok=True)
         
-        # Create filename with date and unique ID
         start_time = datetime.datetime.fromisoformat(conversation_start_time)
         date_str = start_time.strftime('%Y-%m-%d_%H-%M-%S')
         filename = f'conversation_{date_str}_{conversation_id[:8]}.json'
         filepath = os.path.join(conversations_dir, filename)
         
-        # Prepare conversation data
         conversation_data = {
             'conversation_id': conversation_id,
             'start_time': conversation_start_time,
@@ -164,7 +144,6 @@ def save_conversation_to_json(user_session, session_id):
             'session_id': session_id
         }
         
-        # Save to JSON file (overwrite each time with full conversation)
         with open(filepath, 'w', encoding='utf-8') as f:
             json.dump(conversation_data, f, indent=2, ensure_ascii=False)
             
@@ -176,25 +155,20 @@ def add_to_conversation_history(role, content, retrieved_documents=None):
     user_session = get_session_data()
     conversation_history = user_session['conversation_history']
     
-    # Clean thinking content from assistant messages
     if role == "assistant":
         content = clean_thinking_content(content)
     
-    # Only add if content is not empty
     if content.strip():
         message = {"role": role, "content": content}
         
-        # Add retrieved documents if provided (for assistant messages)
         if role == "assistant" and retrieved_documents:
             message["retrieved_documents"] = retrieved_documents
         
         conversation_history.append(message)
         
-        # Keep only recent messages
-        if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:  # 2 messages per exchange
+        if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
             user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
         
-        # Automatically save conversation to JSON file after each message
         save_conversation_to_json(user_session, get_session_id())
 
 def build_conversation_messages():
@@ -202,10 +176,8 @@ def build_conversation_messages():
     user_session = get_session_data()
     conversation_history = user_session['conversation_history']
     
-    # Return messages in the format expected by model providers
     messages = []
     for msg in conversation_history:
-        # Clean thinking content from assistant messages
         content = clean_thinking_content(msg['content']) if msg['role'] == 'assistant' else msg['content']
         if content.strip():
             messages.append({
@@ -220,38 +192,30 @@ def truncate_messages_preserve_system(messages, system_message=None):
     if not messages:
         return messages if not system_message else [system_message]
     
-    # If we have a system message, we need to preserve it
     if system_message:
-        # Keep the system message and the most recent conversation messages
-        # Allow space for system message by reducing available slots by 1
         max_conversation_messages = (MAX_CONTEXT_MESSAGES * 2) - 1
-        
-        # Filter out any existing system messages from the conversation history
         conversation_messages = [msg for msg in messages if msg.get('role') != 'system']
         
-        # Truncate conversation messages if needed
         if len(conversation_messages) > max_conversation_messages:
             conversation_messages = conversation_messages[-max_conversation_messages:]
         
-        # Return system message first, then conversation messages
         return [system_message] + conversation_messages
     else:
-        # No system message, just truncate normally
         if len(messages) > MAX_CONTEXT_MESSAGES * 2:
             return messages[-MAX_CONTEXT_MESSAGES * 2:]
         return messages
 
-@app.route('/')
+@chat_bp.route('/')
 def index():
-    """Serve the main chat interface - responsive version with three panels"""
+    """Serve the main chat interface"""
     return render_template('index.html')
 
-@app.route('/favicon.ico')
+@chat_bp.route('/favicon.ico')
 def favicon():
     """Serve favicon from static folder"""
-    return send_from_directory(app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
+    return send_from_directory(current_app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-@app.route('/api/models')
+@chat_bp.route('/api/models')
 def get_models():
     """Get list of available models from current provider"""
     try:
@@ -265,14 +229,13 @@ def get_models():
         logging.error(f"Error fetching models: {e}")
         return jsonify([DEFAULT_MODEL])
 
-@app.route('/api/external-api-key-status')
+@chat_bp.route('/api/external-api-key-status')
 def get_external_api_key_status():
     """Check if external API key is pre-configured"""
     try:
         has_key = bool(EXTERNAL_API_KEY and EXTERNAL_API_KEY.strip())
         masked_key = ""
         if has_key:
-            # Create a masked version: show first 3 and last 3 characters, mask the middle
             key = EXTERNAL_API_KEY.strip()
             if len(key) > 6:
                 masked_key = key[:3] + '*' * (len(key) - 6) + key[-3:]
@@ -287,37 +250,62 @@ def get_external_api_key_status():
         logging.error(f"Error checking external API key status: {e}")
         return jsonify({'has_key': False, 'masked_key': ''})
 
-@app.route('/api/chat', methods=['POST'])
+@chat_bp.route('/api/feature-flags')
+def get_feature_flags():
+    """Get feature flags from server config"""
+    return jsonify({
+        'rag_enabled': RAG_ENABLED,
+        'query_augmentation_enabled': QUERY_AUGMENTATION_ENABLED,
+        'query_augmentation_model': QUERY_AUGMENTATION_MODEL
+    })
+
+@chat_bp.route('/api/chat', methods=['POST'])
 def chat():
     """Handle chat requests and stream responses using messages format"""
     try:
         data = request.json
         message = data.get('message', '')
         model = data.get('model', DEFAULT_MODEL)
-        use_rag = data.get('use_rag', True)  # Enable RAG by default
-        k = data.get('k', 5)  # Number of documents to retrieve
-        thinking_intensity = data.get('thinking_intensity', 'normal')  # Thinking intensity level
-        temperature = data.get('temperature', 1.0)  # Temperature for response generation
-        
-        # External API configuration
+        use_rag = data.get('use_rag', True)
+        k = data.get('k', 5)
+        thinking_intensity = data.get('thinking_intensity', 'normal')
+        temperature = data.get('temperature', 1.0)
         external_config = data.get('external_config', None)
+        use_query_augmentation = data.get('query_augmentation', True)
         
         if not message:
             return jsonify({'error': 'Message is required'}), 400
         
-        # Get conversation messages BEFORE adding current message
         conversation_messages = build_conversation_messages()
-        
-        # Add user message to conversation history AFTER building context
         add_to_conversation_history("user", message)
         
-        # Build messages list for the model
         messages = []
         search_results = None
         system_content = ""
         user_content = message
+        augmented_query = None
         
-        # Get thinking instruction based on intensity
+        # Get figure name early for query augmentation
+        figure_name = None
+        if use_rag:
+            user_session = get_session_data()
+            current_figure = user_session.get('current_figure')
+            if current_figure:
+                figure_manager = get_figure_manager()
+                figure_metadata = figure_manager.get_figure_metadata(current_figure)
+                if figure_metadata:
+                    figure_name = figure_metadata.get('name', current_figure)
+        
+        # Apply query augmentation if enabled in config AND by user
+        if QUERY_AUGMENTATION_ENABLED and use_query_augmentation and use_rag and k > 0:
+            try:
+                augmented_query = augment_query(message, figure_name=figure_name or "a historical figure")
+                if augmented_query and augmented_query != message:
+                    logging.info(f"Query augmented: '{message}' -> '{augmented_query}'")
+            except Exception as e:
+                logging.warning(f"Query augmentation failed: {e}")
+                augmented_query = None
+        
         thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
         
         if use_rag:
@@ -326,19 +314,16 @@ def chat():
                 current_figure = user_session['current_figure']
                 
                 if current_figure:
-                    # Use figure-specific RAG
                     figure_manager = get_figure_manager()
                     figure_metadata = figure_manager.get_figure_metadata(current_figure)
                     
                     if figure_metadata:
-                        # Search in figure's documents
-                        search_results = figure_manager.search_figure_documents(current_figure, message, n_results=k)
-                        
-                        # Get personality prompt if available
+                        # Use augmented query for search if available
+                        search_query = augmented_query if augmented_query else message
+                        search_results = figure_manager.search_figure_documents(current_figure, search_query, n_results=k)
                         personality_prompt = figure_metadata.get('personality_prompt', '')
                         figure_name = figure_metadata.get('name', current_figure)
                         
-                        # Build system message
                         base_instruction = DEFAULT_FIGURE_INSTRUCTION.format(figure_name=figure_name) if not personality_prompt else personality_prompt
                         system_content = FIGURE_SYSTEM_PROMPT.format(
                             base_instruction=base_instruction,
@@ -346,7 +331,6 @@ def chat():
                         )
                         
                         if search_results:
-                            # Build context from figure's documents
                             context_parts = []
                             for result in search_results:
                                 filename = result['metadata'].get('filename', 'Unknown')
@@ -354,7 +338,6 @@ def chat():
                             
                             rag_context = "\n\n".join(context_parts)
                             
-                            # Add RAG context to user message
                             user_content = USER_MESSAGE_WITH_RAG.format(
                                 rag_context=rag_context,
                                 message=message,
@@ -362,14 +345,12 @@ def chat():
                                 response_start=response_start
                             )
                         else:
-                            # No relevant documents found
                             user_content = USER_MESSAGE_NO_RAG.format(
                                 message=message,
                                 thinking_instruction=thinking_instruction,
                                 response_start=response_start
                             )
                 else:
-                    # No figure selected - use generic assistant
                     system_content = GENERIC_ASSISTANT_PROMPT
                     user_content = USER_MESSAGE_NO_RAG.format(
                         message=message,
@@ -379,7 +360,6 @@ def chat():
                     
             except Exception as e:
                 logging.error(f"Error in RAG enhancement: {e}")
-                # Fallback to generic assistant
                 system_content = GENERIC_ASSISTANT_PROMPT
                 user_content = USER_MESSAGE_NO_RAG.format(
                     message=message,
@@ -387,7 +367,6 @@ def chat():
                     response_start=response_start
                 )
         else:
-            # RAG disabled - use generic assistant
             system_content = GENERIC_ASSISTANT_PROMPT
             user_content = USER_MESSAGE_NO_RAG.format(
                 message=message,
@@ -395,31 +374,21 @@ def chat():
                 response_start=response_start
             )
         
-        # Build final messages list with proper truncation
         system_message = {"role": "system", "content": system_content} if system_content else None
-        
-        # Add conversation history and current user message
         all_conversation_messages = conversation_messages + [{"role": "user", "content": user_content}]
-        
-        # Truncate messages while preserving system message
         messages = truncate_messages_preserve_system(all_conversation_messages, system_message)
         
-        # Get the session data before entering the generator (while we still have request context)
         session_id = get_session_id()
         user_session = get_session_data()
         current_figure = user_session.get('current_figure')
         
         def generate():
             try:
-                # Get the appropriate model provider
                 if external_config:
-                    # Use external provider with user-provided configuration
-                    # If user didn't provide API key but we have a pre-configured one, use it
                     api_key = external_config.get('api_key', '').strip()
                     if not api_key and EXTERNAL_API_KEY:
                         api_key = EXTERNAL_API_KEY.strip()
                     
-                    # Use base_url from external_config, fallback to EXTERNAL_BASE_URL from env, then hardcoded default
                     base_url = external_config.get('base_url', EXTERNAL_BASE_URL)
                     
                     provider = ExternalProvider(
@@ -427,23 +396,21 @@ def chat():
                         api_key=api_key,
                         model=external_config.get('model', 'GPT-5-mini')
                     )
-                    # Override model with external config
                     model_to_use = external_config.get('model', 'GPT-5-mini')
                 else:
-                    # Use default provider from configuration
                     provider = get_model_provider()
-                    # Use the model from outer scope
                     model_to_use = model
                 
-                # Stream responses from the provider
                 stream = provider.chat_stream(messages, model_to_use, temperature)
                 
-                # Send sources first if RAG was used
+                # Send augmented query if available
+                if augmented_query and augmented_query != message:
+                    yield f"data: {json.dumps({'augmented_query': augmented_query})}\n\n"
+                
                 if use_rag and search_results:
                     sources_data = []
                     for result in search_results:
                         if current_figure:
-                            # Figure-specific source format
                             doc_id = result.get('document_id', 'UNKNOWN')
                             sources_data.append({
                                 'document_id': doc_id,
@@ -459,10 +426,9 @@ def chat():
                                 'figure_id': current_figure
                             })
                         else:
-                            # General RAG source format (original)
                             doc_id = result.get('chunk_id', 'UNKNOWN')
                             sources_data.append({
-                                'chunk_id': doc_id,  # Keep for backward compatibility
+                                'chunk_id': doc_id,
                                 'doc_id': f"DOC{doc_id}",
                                 'filename': result['metadata']['filename'],
                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
@@ -476,10 +442,8 @@ def chat():
                             })
                     yield f"data: {json.dumps({'sources': sources_data})}\n\n"
                 
-                # Collect full response for conversation history
                 full_response = ""
                 
-                # Process chunks from the provider
                 for chunk in stream:
                     if 'error' in chunk:
                         yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
@@ -491,25 +455,19 @@ def chat():
                         yield f"data: {json.dumps({'content': content})}\n\n"
                     
                     if chunk.get('done', False):
-                        # Add assistant response to conversation history with retrieved documents
-                        # Use session_id directly instead of calling get_session_data() which needs request context
                         if session_id in session_data:
                             user_session = session_data[session_id]
                             conversation_history = user_session['conversation_history']
                             
-                            # Clean thinking content from assistant messages
                             cleaned_content = clean_thinking_content(full_response)
                             
-                            # Only add if content is not empty
                             if cleaned_content.strip():
-                                message = {"role": "assistant", "content": cleaned_content}
+                                assistant_msg = {"role": "assistant", "content": cleaned_content}
                                 
-                                # Add retrieved documents if RAG was used
                                 if use_rag and search_results:
                                     retrieved_docs = []
                                     for result in search_results:
                                         if current_figure:
-                                            # Figure-specific source format
                                             doc_id = result.get('document_id', 'UNKNOWN')
                                             retrieved_docs.append({
                                                 'document_id': doc_id,
@@ -525,10 +483,9 @@ def chat():
                                                 'figure_id': current_figure
                                             })
                                         else:
-                                            # General RAG source format (original)
                                             doc_id = result.get('chunk_id', 'UNKNOWN')
                                             retrieved_docs.append({
-                                                'chunk_id': doc_id,  # Keep for backward compatibility
+                                                'chunk_id': doc_id,
                                                 'doc_id': f"DOC{doc_id}",
                                                 'filename': result['metadata']['filename'],
                                                 'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
@@ -540,16 +497,13 @@ def chat():
                                                 'top_matching_words': result.get('top_matching_words', []),
                                                 'chunk_index': result['metadata'].get('chunk_index', 0)
                                             })
-                                    message["retrieved_documents"] = retrieved_docs
+                                    assistant_msg["retrieved_documents"] = retrieved_docs
                                 
-                                conversation_history.append(message)
+                                conversation_history.append(assistant_msg)
                                 
-                                # Keep only recent messages
                                 if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
                                     user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
                                 
-                                # Auto-save conversation after assistant response
-                                # We need to pass session_id since we're in a generator without request context
                                 save_conversation_to_json(user_session, session_id)
                         
                         yield f"data: {json.dumps({'done': True})}\n\n"
@@ -565,14 +519,13 @@ def chat():
         logging.error(f"Error in chat endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/health')
+@chat_bp.route('/api/health')
 def health_check():
     """Check if the model provider is accessible"""
     try:
         provider = get_model_provider()
         provider_name = MODEL_PROVIDER
         
-        # Try to get models as a health check
         models = provider.get_available_models()
         
         if models:
@@ -597,9 +550,9 @@ def health_check():
             'error': str(e)
         }), 503
 
-@app.route('/api/rag/stats')
+@chat_bp.route('/api/rag/stats')
 def rag_stats():
-    """Get RAG database statistics - now only shows figure-specific stats"""
+    """Get RAG database statistics"""
     try:
         user_session = get_session_data()
         current_figure = user_session['current_figure']
@@ -608,13 +561,12 @@ def rag_stats():
             stats = figure_manager.get_figure_stats(current_figure)
             return jsonify(stats)
         else:
-            # No figure selected, no RAG available
             return jsonify({'total_documents': 0, 'message': 'No figure selected'}), 404
     except Exception as e:
         logging.error(f"Error getting RAG stats: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/rag/reset', methods=['POST'])
+@chat_bp.route('/api/rag/reset', methods=['POST'])
 def reset_rag():
     """Reset figure-specific RAG collections"""
     try:
@@ -622,7 +574,6 @@ def reset_rag():
         current_figure = user_session['current_figure']
         if current_figure:
             figure_manager = get_figure_manager()
-            # Could add figure-specific reset logic here if needed
             stats = figure_manager.get_figure_stats(current_figure)
             return jsonify({'message': 'Figure RAG reset successfully', 'stats': stats})
         else:
@@ -631,7 +582,7 @@ def reset_rag():
         logging.error(f"Error resetting figure RAG: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/debug/rag')
+@chat_bp.route('/api/debug/rag')
 def debug_rag():
     """Debug endpoint for figure-specific RAG system status"""
     try:
@@ -644,7 +595,6 @@ def debug_rag():
             'errors': []
         }
         
-        # Test figure manager
         try:
             figure_manager = get_figure_manager()
             debug_info['figure_manager_initialized'] = True
@@ -662,7 +612,7 @@ def debug_rag():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/figures')
+@chat_bp.route('/api/figures')
 def get_figures():
     """Get list of available historical figures"""
     try:
@@ -673,7 +623,7 @@ def get_figures():
         logging.error(f"Error getting figures: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/figure/<figure_id>')
+@chat_bp.route('/api/figure/<figure_id>')
 def get_figure_details(figure_id):
     """Get details for a specific figure"""
     try:
@@ -688,7 +638,7 @@ def get_figure_details(figure_id):
         logging.error(f"Error getting figure details: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/figure/select', methods=['POST'])
+@chat_bp.route('/api/figure/select', methods=['POST'])
 def select_figure():
     """Select a figure for the current chat session"""
     try:
@@ -704,16 +654,14 @@ def select_figure():
                 return jsonify({'error': 'Figure not found'}), 404
             
             user_session['current_figure'] = figure_id
-            # Clear conversation history when switching figures
             user_session['conversation_history'] = []
             
             return jsonify({
                 'success': True,
-                'current_figure': metadata,  # Return full metadata instead of just ID
+                'current_figure': metadata,
                 'figure_name': metadata.get('name', figure_id)
             })
         else:
-            # Deselect figure (use general chat)
             user_session['current_figure'] = None
             user_session['conversation_history'] = []
             return jsonify({
@@ -725,7 +673,7 @@ def select_figure():
         logging.error(f"Error selecting figure: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/figure/current')
+@chat_bp.route('/api/figure/current')
 def get_current_figure():
     """Get currently selected figure for current session"""
     try:
@@ -742,7 +690,7 @@ def get_current_figure():
         logging.error(f"Error getting current figure: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/markdown', methods=['POST'])
+@chat_bp.route('/api/markdown', methods=['POST'])
 def convert_markdown():
     """Convert markdown text to HTML"""
     try:
@@ -752,24 +700,20 @@ def convert_markdown():
         if not text.strip():
             return jsonify({'html': ''})
         
-        # Process the text with markdown
         html_content = markdown.markdown(text, output_format='html5')
         
-        # Remove outer <p> tags if they exist to keep content inline
         if html_content.startswith('<p>') and html_content.endswith('</p>'):
-            html_content = html_content[3:-4]  # Remove <p> and </p>
+            html_content = html_content[3:-4]
         
         return jsonify({'html': html_content})
     except Exception as e:
         logging.error(f"Error converting markdown: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/figure_images/<filename>')
+@chat_bp.route('/figure_images/<filename>')
 def serve_figure_image(filename):
     """Serve figure images."""
     try:
-        # Use absolute path for FIGURE_IMAGES_DIR
-        import os
         figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
         logging.info(f"Serving figure image {filename} from {figure_images_path}")
         return send_from_directory(figure_images_path, filename)
@@ -778,7 +722,7 @@ def serve_figure_image(filename):
         logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
         return jsonify({'error': 'Image not found'}), 404
 
-@app.route('/api/export/pdf', methods=['POST'])
+@chat_bp.route('/api/export/pdf', methods=['POST'])
 def export_conversation_pdf():
     """Export conversation as PDF"""
     try:
@@ -796,22 +740,16 @@ def export_conversation_pdf():
         rag_enabled = data.get('rag_enabled', True)
         retrieved_documents = data.get('retrieved_documents', [])
         
-        # Register Unicode fonts for Chinese character support
         unicode_font = register_unicode_fonts()
         
-        # Create PDF in memory
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter,
                               rightMargin=72, leftMargin=72,
                               topMargin=72, bottomMargin=18)
         
-        # Container for the 'Flowable' objects
         story = []
-        
-        # Define styles
         styles = getSampleStyleSheet()
         
-        # Simple title style with Unicode font
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Title'],
@@ -822,7 +760,6 @@ def export_conversation_pdf():
             alignment=TA_CENTER
         )
         
-        # Settings style with Unicode font
         settings_style = ParagraphStyle(
             'Settings',
             parent=styles['Normal'],
@@ -833,7 +770,6 @@ def export_conversation_pdf():
             alignment=TA_LEFT
         )
         
-        # Simple message style with Unicode font
         message_style = ParagraphStyle(
             'Message',
             parent=styles['Normal'],
@@ -845,15 +781,12 @@ def export_conversation_pdf():
             leftIndent=0,
             rightIndent=0,
             alignment=TA_LEFT,
-            leading=14  # Line height for better readability
+            leading=14
         )
         
-        # Add title
         story.append(Paragraph(title, title_style))
         
-        # Add figure description section if available
         if figure_data and figure != 'General Chat':
-            # Figure description style
             figure_desc_style = ParagraphStyle(
                 'FigureDescription',
                 parent=styles['Normal'],
@@ -868,7 +801,6 @@ def export_conversation_pdf():
                 rightIndent=20
             )
             
-            # Figure header style
             figure_header_style = ParagraphStyle(
                 'FigureHeader',
                 parent=styles['Heading2'],
@@ -880,12 +812,10 @@ def export_conversation_pdf():
                 alignment=TA_CENTER
             )
             
-            # Build figure description text
             figure_text = ""
             if figure_data.get('name'):
                 figure_text += f"<b>{figure_data['name']}</b>"
                 
-                # Add years if available
                 birth_year = figure_data.get('birth_year')
                 death_year = figure_data.get('death_year')
                 if birth_year or death_year:
@@ -895,18 +825,14 @@ def export_conversation_pdf():
                 
                 figure_text += "<br/><br/>"
             
-            # Add description
             if figure_data.get('description'):
-                # Escape HTML in description
                 description = figure_data['description'].replace('&', '&amp;')
                 description = description.replace('<', '&lt;')
                 description = description.replace('>', '&gt;')
                 description = description.replace('\n', '<br/>')
                 figure_text += f"<b>Description:</b><br/>{description}<br/><br/>"
             
-            # Add personality prompt
             if figure_data.get('personality_prompt'):
-                # Escape HTML in personality prompt
                 personality = figure_data['personality_prompt'].replace('&', '&amp;')
                 personality = personality.replace('<', '&lt;')
                 personality = personality.replace('>', '&gt;')
@@ -918,7 +844,6 @@ def export_conversation_pdf():
                 story.append(Paragraph(figure_text, figure_desc_style))
                 story.append(Spacer(1, 0.3*inch))
         
-        # Add settings section
         settings_text = f"<b>Chat Settings:</b><br/>"
         settings_text += f"Date: {date}<br/>"
         settings_text += f"Figure: {figure_name}<br/>"
@@ -930,11 +855,9 @@ def export_conversation_pdf():
         story.append(Paragraph(settings_text, settings_style))
         story.append(Spacer(1, 0.3*inch))
         
-        # Add separator line
         story.append(Paragraph("<b>Conversation:</b>", message_style))
         story.append(Spacer(1, 0.1*inch))
         
-        # Document header style with Unicode font
         doc_header_style = ParagraphStyle(
             'DocHeader',
             parent=styles['Normal'],
@@ -945,7 +868,6 @@ def export_conversation_pdf():
             spaceBefore=8
         )
         
-        # Document content style with Unicode font
         doc_content_style = ParagraphStyle(
             'DocContent',
             parent=styles['Normal'],
@@ -958,7 +880,6 @@ def export_conversation_pdf():
             leading=11
         )
         
-        # Document metadata style with Unicode font
         doc_meta_style = ParagraphStyle(
             'DocMeta',
             parent=styles['Normal'],
@@ -969,7 +890,6 @@ def export_conversation_pdf():
             leftIndent=12
         )
         
-        # Document section header style
         doc_section_header_style = ParagraphStyle(
             'DocSectionHeader',
             parent=styles['Normal'],
@@ -980,43 +900,33 @@ def export_conversation_pdf():
             spaceBefore=5
         )
         
-        # Add messages with retrieved documents after each assistant response
         for msg in messages:
             role = msg.get('role', 'unknown')
             content = msg.get('content', '')
             msg_retrieved_documents = msg.get('retrieved_documents', [])
             
-            # Escape HTML special characters and fix encoding issues
             content = content.replace('&', '&amp;')
             content = content.replace('<', '&lt;')
             content = content.replace('>', '&gt;')
-            
-            # Convert newlines to HTML line breaks
             content = content.replace('\n', '<br/>')
             
-            # Use figure name for assistant messages
             if role == 'user':
                 story.append(Paragraph(f"<b>User:</b> {content}", message_style))
             else:
-                # Extract just the figure name without document count
                 display_name = figure_name.split(' (')[0] if ' (' in figure_name else figure_name
                 story.append(Paragraph(f"<b>{display_name}:</b> {content}", message_style))
                 
-                # Add retrieved documents for this specific response
                 if msg_retrieved_documents and len(msg_retrieved_documents) > 0:
                     story.append(Spacer(1, 0.05*inch))
                     
-                    # Retrieved documents header
                     story.append(Paragraph(f"<b>Retrieved Documents ({len(msg_retrieved_documents)}):</b>", doc_section_header_style))
                     story.append(Spacer(1, 0.05*inch))
                     
-                    # Sort documents by filename and chunk ID for better organization
                     sorted_docs = sorted(msg_retrieved_documents, key=lambda d: (
                         d.get('filename', ''),
                         d.get('chunk_id') or d.get('document_id') or d.get('doc_id', '')
                     ))
                     
-                    # Add each document
                     for idx, doc_data in enumerate(sorted_docs, 1):
                         filename = doc_data.get('filename', 'Unknown')
                         chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
@@ -1027,11 +937,9 @@ def export_conversation_pdf():
                         rrf_score = doc_data.get('rrf_score', 0)
                         top_matching_words = doc_data.get('top_matching_words', [])
                         
-                        # Document header
                         header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
                         story.append(Paragraph(header_text, doc_header_style))
                         
-                        # Document metadata with all scores
                         meta_parts = []
                         if cosine_similarity > 0:
                             meta_parts.append(f"Cosine Similarity: {cosine_similarity:.2%}")
@@ -1048,21 +956,15 @@ def export_conversation_pdf():
                             meta_text += f" | Retrieved: {doc_data['timestamp']}"
                         story.append(Paragraph(meta_text, doc_meta_style))
                         
-                        # Document content - escape and format
                         doc_content = text.replace('&', '&amp;')
                         doc_content = doc_content.replace('<', '&lt;')
                         doc_content = doc_content.replace('>', '&gt;')
-                        
-                        # Preserve line breaks
                         doc_content = doc_content.replace('\n', '<br/>')
                         
-                        # Add content
                         story.append(Paragraph(doc_content, doc_content_style))
                         
-                        # Add separator between documents (if not the last one)
                         if idx < len(sorted_docs):
                             story.append(Spacer(1, 0.05*inch))
-                            # Add a subtle line separator
                             from reportlab.platypus import HRFlowable
                             story.append(HRFlowable(width="80%", thickness=0.5, 
                                                    color=colors.HexColor('#e0e0e0'),
@@ -1070,15 +972,11 @@ def export_conversation_pdf():
             
             story.append(Spacer(1, 0.1*inch))
         
-        
-        # Build PDF
         doc.build(story)
         
-        # Get PDF value
         pdf = buffer.getvalue()
         buffer.close()
         
-        # Create response
         response = make_response(pdf)
         response.headers['Content-Type'] = 'application/pdf'
         response.headers['Content-Disposition'] = f'attachment; filename=chat_conversation.pdf'
@@ -1089,24 +987,3 @@ def export_conversation_pdf():
         logging.error(f"Error generating PDF: {e}")
         return jsonify({'error': str(e)}), 500
 
-def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully."""
-    logging.info("Shutting down chat application...")
-    sys.exit(0)
-
-if __name__ == '__main__':
-    # Session data will be managed per user
-    # No need for global variables
-    
-    # Set up signal handlers
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
-    
-    try:
-        app.run(debug=DEBUG_MODE, host='0.0.0.0', port=CHAT_PORT)
-    except KeyboardInterrupt:
-        logging.info("Chat application stopped by user")
-    except Exception as e:
-        logging.error(f"Chat application error: {e}")
-    finally:
-        logging.info("Chat application shutdown complete")

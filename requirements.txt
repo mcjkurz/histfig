@@ -3,6 +3,7 @@ requests
 chromadb
 sentence-transformers
 PyPDF2
+python-docx
 python-multipart
 torch
 markdown

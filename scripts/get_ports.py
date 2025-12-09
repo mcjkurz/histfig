@@ -4,12 +4,15 @@ Simple utility to get port configuration for shell scripts.
 Usage: python get_ports.py [port_name]
 """
 import sys
-from config import PROXY_PORT, CHAT_PORT, ADMIN_PORT
+from config import APP_PORT
 
 ports = {
-    'proxy': PROXY_PORT,
-    'chat': CHAT_PORT, 
-    'admin': ADMIN_PORT
+    'app': APP_PORT,
+    'main': APP_PORT,
+    # Legacy aliases for compatibility
+    'proxy': APP_PORT,
+    'chat': APP_PORT, 
+    'admin': APP_PORT
 }
 
 if len(sys.argv) == 2:
@@ -20,5 +23,4 @@ if len(sys.argv) == 2:
         print(f"Unknown port: {port_name}", file=sys.stderr)
         sys.exit(1)
 else:
-    for name, port in ports.items():
-        print(f"{name}: {port}")
+    print(f"app: {APP_PORT}")

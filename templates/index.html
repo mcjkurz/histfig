@@ -315,6 +315,29 @@
             display: block;
         }
 
+        .augmented-query-panel {
+            background: #2c3e50;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            border: 1px solid #4a5f7a;
+        }
+
+        .augmented-query-panel .documents-header {
+            background: #1e2a3a;
+            color: #7dd3fc;
+            padding: 15px;
+            border-radius: 12px 12px 0 0;
+            border-bottom: 1px solid #4a5f7a;
+        }
+
+        .augmented-query-panel .documents-content {
+            padding: 15px;
+            background: #2c3e50;
+            border-radius: 0 0 12px 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
         .documents-header {
             background: #1e2a3a;
             color: #7dd3fc;
@@ -502,6 +525,18 @@
 
         .toggle-switch.active .toggle-slider {
             transform: translateX(20px);
+        }
+
+        .control-toggle.disabled {
+            cursor: not-allowed;
+        }
+
+        .control-toggle.disabled .toggle-label {
+            color: #6b7b8a;
+        }
+
+        .control-toggle.disabled .toggle-switch {
+            background: #3a4a5a;
         }
 
         .toggle-label {
@@ -1061,8 +1096,6 @@
                 <img class="figure-image" id="figure-image" src="" alt="Figure Portrait" style="display: none;">
                 <div class="figure-name" id="figure-display-name"></div>
                 <div class="figure-years" id="figure-years"></div>
-                <div class="figure-nationality" id="figure-nationality" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 5px;"></div>
-                <div class="figure-occupation" id="figure-occupation" style="font-size: 0.9rem; color: #a8c5d9; margin-bottom: 15px;"></div>
                 <div class="figure-description" id="figure-display-description"></div>
                 <div class="figure-personality" id="figure-display-personality"></div>
                 </div>
@@ -1177,9 +1210,9 @@
                     </div>
                 </div>
 
-                <!-- Display Options -->
+                <!-- Chat Options -->
                 <div class="control-section">
-                    <div class="control-section-header">Display Options</div>
+                    <div class="control-section-header">Chat Options</div>
                     <div class="control-section-content">
                         <div class="control-item">
                             <div class="control-toggle" id="rag-toggle-container">
@@ -1190,6 +1223,30 @@
                             </div>
                             <div style="margin-top: 5px;">
                                 <span style="font-size: 0.75rem; color: #a8c5d9;" id="rag-status">0 docs</span>
+                                <span style="font-size: 0.7rem; color: #e74c3c; display: none;" id="rag-config-disabled"> (disabled in config)</span>
+                            </div>
+                        </div>
+                        <div class="control-item">
+                            <label class="control-label">Documents to Retrieve</label>
+                            <select id="docs-count-select" class="control-select">
+                                <option value="0">None</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="5" selected>5</option>
+                                <option value="10">10</option>
+                                <option value="15">15</option>
+                                <option value="20">20</option>
+                            </select>
+                        </div>
+                        <div class="control-item">
+                            <div class="control-toggle" id="query-augmentation-toggle-container">
+                                <div class="toggle-switch active" id="query-augmentation-toggle-switch">
+                                    <div class="toggle-slider"></div>
+                                </div>
+                                <span class="toggle-label">Query Augmentation</span>
+                            </div>
+                            <div style="margin-top: 5px;">
+                                <span style="font-size: 0.7rem; color: #e74c3c; display: none;" id="query-augmentation-config-disabled">Disabled in config</span>
                             </div>
                         </div>
                         <div class="control-item">
@@ -1210,32 +1267,7 @@
                             </select>
                         </div>
                         <div class="control-item">
-                            <div class="control-toggle" id="documents-toggle-container">
-                                <div class="toggle-switch active" id="documents-toggle-switch">
-                                    <div class="toggle-slider"></div>
-                                </div>
-                                <span class="toggle-label">Show Retrieved Documents</span>
-                            </div>
-                        </div>
-                        <div class="control-item">
-                            <label class="control-label">Documents to Retrieve</label>
-                            <select id="docs-count-select" class="control-select">
-                                <option value="3">3 documents</option>
-                                <option value="5" selected>5 documents</option>
-                                <option value="7">7 documents</option>
-                                <option value="10">10 documents</option>
-                                <option value="15">15 documents</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Temperature Control -->
-                <div class="control-section">
-                    <div class="control-section-header">Response Temperature</div>
-                    <div class="control-section-content">
-                        <div class="control-item">
-                            <label class="control-label">Response Creativity</label>
+                            <label class="control-label">Response Temperature</label>
                             <div style="display: flex; align-items: center; gap: 10px;">
                                 <input type="range" id="temperature-slider" min="0" max="2" step="0.1" value="1.0" style="flex: 1;">
                                 <span id="temperature-value" style="min-width: 35px; text-align: right; color: #7dd3fc; font-weight: 600;">1.0</span>
@@ -1249,8 +1281,18 @@
                     </div>
                 </div>
 
+                <!-- Augmented Query Panel -->
+                <div class="augmented-query-panel" id="augmented-query-panel" style="display: none;">
+                    <div class="documents-header">
+                        <h3>Augmented Query <span id="augmented-query-model" style="font-weight: normal; font-size: 0.8em; color: #6b8fa3;"></span></h3>
+                    </div>
+                    <div class="documents-content" id="augmented-query-content">
+                        <div id="augmented-query-text" style="color: #a8c5d9; font-size: 0.85rem; line-height: 1.5; white-space: pre-wrap;"></div>
+                    </div>
+                </div>
+
                 <!-- Retrieved Documents -->
-                <div class="documents-panel visible" id="documents-panel">
+                <div class="documents-panel" id="documents-panel">
                     <div class="documents-header">
                         <h3>Retrieved Documents</h3>
                     </div>

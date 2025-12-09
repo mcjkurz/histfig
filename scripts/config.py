@@ -4,11 +4,14 @@ Modify these settings to customize ports and other configurations.
 """
 import os
 
-# Port Configuration
-PROXY_PORT = 5001      # Main external access port
-CHAT_PORT = 5003       # Internal chat application port  
-ADMIN_PORT = 5004      # Internal admin application port
-UPLOAD_PORT = 5002     # Upload application port (if used)
+# Port Configuration (single-port setup)
+APP_PORT = 5001        # Application port for all services (chat, admin, uploads)
+
+# Legacy port aliases for backward compatibility
+PROXY_PORT = APP_PORT
+CHAT_PORT = APP_PORT
+ADMIN_PORT = APP_PORT
+UPLOAD_PORT = APP_PORT
 
 # Model Provider Configuration
 MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "ollama")  # Options: "ollama"
@@ -32,11 +35,11 @@ AVAILABLE_MODELS = [
     "Gemini-2.5-Flash",
     "Nova-Micro-1.0",
     "Grok-4-Fast-Non-Reasoning",
-    "Other"
 ]
 
 # Application Settings
-MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
+MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500MB max total request size (individual 50MB file limit enforced client-side)
+MAX_FILE_SIZE = 50 * 1024 * 1024        # 50MB max per individual file
 MAX_CONTEXT_MESSAGES = 15              # Keep last 15 exchanges
 DEBUG_MODE = False                     # Set to True for development
 
@@ -61,7 +64,10 @@ ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 TEMP_UPLOAD_DIR = "./temp_uploads"
 FIGURE_IMAGES_DIR = "./static/figure_images"
 
+# RAG Settings
+RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
+
 # Query Augmentation Settings
-QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "false").lower() == "true"
+QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
-QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://openrouter.ai/api/v1")
+QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")

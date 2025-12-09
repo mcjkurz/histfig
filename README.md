@@ -50,10 +50,8 @@ Runs persistently in background. Use `./kill_ports.sh` to stop.
 
 All configuration is centralized in `scripts/config.py`. You can modify:
 
-### Ports
-- `PROXY_PORT = 5001` - Main external access port
-- `CHAT_PORT = 5003` - Internal chat application port  
-- `ADMIN_PORT = 5004` - Internal admin application port
+### Port
+- `APP_PORT = 5001` - Application port for all services
 
 ### Other Settings
 - `OLLAMA_URL` - Ollama server URL
@@ -61,7 +59,29 @@ All configuration is centralized in `scripts/config.py`. You can modify:
 - `MAX_CONTENT_LENGTH` - Maximum file upload size
 - `DEBUG_MODE` - Enable/disable debug mode
 
-**To change ports:** Edit the values in `scripts/config.py`, then restart the application.
+**To change port:** Edit `APP_PORT` in `scripts/config.py`, then restart the application.
+
+## Architecture
+
+The application uses a single-port Flask setup with Blueprints:
+
+```
+Port 5001
+├── / (Chat Interface)
+│   ├── /api/chat
+│   ├── /api/figures
+│   └── ... (other chat endpoints)
+└── /admin (Admin Interface)
+    ├── /admin/login
+    ├── /admin/figure/<id>
+    └── ... (other admin endpoints)
+```
+
+**Key files:**
+- `scripts/main.py` - Main application entry point
+- `scripts/chat_routes.py` - Chat functionality blueprint
+- `scripts/admin_routes.py` - Admin panel blueprint
+- `scripts/config.py` - Centralized configuration
 
 ## Out-of-the-Box Ready
 
@@ -77,5 +97,5 @@ The application automatically:
 - Upload and process documents (TXT, PDF, DOCX, MD)
 - Admin interface for managing figures and documents
 - Real-time streaming responses
-- Configurable ports and settings
+- Configurable port and settings
 - Modern responsive UI

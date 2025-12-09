@@ -92,7 +92,7 @@ def validate_personality_prompt(prompt: str) -> Tuple[bool, Optional[str]]:
 def validate_year(year_str: str, field_name: str = "Year") -> Tuple[bool, Optional[str]]:
     """
     Validate year format.
-    Must be a 4-digit number.
+    Must be a numeric year (1-4 digits for ancient to modern dates).
     
     Args:
         year_str: The year string to validate
@@ -110,13 +110,9 @@ def validate_year(year_str: str, field_name: str = "Year") -> Tuple[bool, Option
     except ValueError:
         return False, f"{field_name} must be a number"
     
-    # Check if it's 4 digits
-    if not (1000 <= year <= 9999):
-        return False, f"{field_name} must be a 4-digit number (e.g., 1950)"
-    
-    # Reasonable range check
-    if not (-3000 <= year <= 2100):
-        return False, f"{field_name} must be between 3000 BC and 2100 AD"
+    # Reasonable range check (1-9999 for ancient to modern dates)
+    if not (1 <= year <= 9999):
+        return False, f"{field_name} must be between 1 and 9999 (e.g., 750 for 8th century, 1950 for modern)"
     
     return True, None
 
@@ -182,16 +178,6 @@ def validate_figure_data(data: Dict[str, Any], is_update: bool = False) -> Dict[
                 errors['death_year'] = "Death year cannot be before birth year"
         except ValueError:
             pass  # Already caught above
-    
-    # Validate nationality (optional, but if provided, should be alphabetic)
-    nationality = data.get('nationality', '').strip()
-    if nationality and not re.match(r'^[a-zA-Z\s\-\']+$', nationality):
-        errors['nationality'] = "Nationality must contain only letters, spaces, hyphens, and apostrophes"
-    
-    # Validate occupation (optional, basic check)
-    occupation = data.get('occupation', '').strip()
-    if occupation and len(occupation) > 200:
-        errors['occupation'] = "Occupation must be 200 characters or less"
     
     return errors
 

@@ -21,7 +21,7 @@ def debug_search(figure_id="zhenghe", query="你去過東南亞、南亞、中�
     # Process query
     print("Step 1: Process Query")
     print("-" * 80)
-    query_tokens = text_processor.process_query(query, include_bigrams=True)
+    query_tokens = text_processor.process_query(query, ngram_range=(1, 2))
     print(f"Query tokens ({len(query_tokens)} total):")
     print("Unigrams:", [t for t in query_tokens if '_' not in t])
     print("Bigrams:", [t for t in query_tokens if '_' in t][:10], "...")

@@ -239,10 +239,10 @@ class VectorDatabase:
             for i in range(len(results["documents"][0])):
                 metadata = results["metadatas"][0][i]
                 # Convert cosine distance to similarity score
-                # Cosine distance ranges from 0 (identical) to 2 (opposite)
-                # Convert to similarity: 0 distance = 1.0 similarity, 2 distance = 0.0 similarity
+                # ChromaDB returns cosine distance = 1 - cosine_similarity
+                # distance 0 = identical (similarity 1), distance 2 = opposite (similarity -1)
                 distance = results["distances"][0][i]
-                similarity = max(0.0, 1.0 - (distance / 2.0))  # Normalize and clamp to [0,1]
+                similarity = 1.0 - distance  # Range: [-1, 1]
                 
                 formatted_results.append({
                     "text": results["documents"][0][i],

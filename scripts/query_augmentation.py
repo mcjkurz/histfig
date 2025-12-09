@@ -15,20 +15,21 @@ from config import (
 )
 
 
-def augment_query(query: str, api_key: Optional[str] = None) -> str:
+def augment_query(query: str, figure_name: str = "a historical figure", api_key: Optional[str] = None) -> str:
     """
     Augment a user query by adding more context and details.
     
     Args:
         query: Original user query
+        figure_name: Name of the historical figure being addressed
         api_key: Optional API key (uses EXTERNAL_API_KEY from config if not provided)
         
     Returns:
         Augmented query or original query if augmentation is disabled/fails
     """
-    # Check if augmentation is enabled
+    # Check if augmentation is enabled in config
     if not QUERY_AUGMENTATION_ENABLED:
-        logging.debug("Query augmentation is disabled")
+        logging.debug("Query augmentation is disabled in config")
         return query
     
     # Use provided API key or fall back to config
@@ -39,7 +40,7 @@ def augment_query(query: str, api_key: Optional[str] = None) -> str:
     
     try:
         # Prepare the augmentation prompt
-        augmentation_prompt = f"""Given the following user query, expand it by adding relevant details, context, and related concepts that would help in document search. Important: Do not shorten or summarize the original query. Your response should include all the original content plus additional relevant information. If the query is already detailed, add supplementary context. Keep it focused on the core topic. Make sure to respond in the same language as the user's query.
+        augmentation_prompt = f"""Given the following user query addressed to {figure_name}, expand it by adding relevant details, context, and related concepts that would help in document search. Important: Do not shorten or summarize the original query. Your response should include all the original content plus additional relevant information. If the query is already detailed, do not augment it further; just return the original query. Keep it concise and focused on the core topic. Make sure to respond in the same language as the user's query.
 
 User query: {query}
 
@@ -62,7 +63,7 @@ Augmented query:"""
                 ],
                 "stream": False,
                 "temperature": 0.3,  # Lower temperature for more focused augmentation
-                "max_tokens": 150
+                "max_tokens": 250
             },
             timeout=10
         )

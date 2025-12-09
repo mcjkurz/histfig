@@ -5,7 +5,7 @@ Handles Chinese segmentation with jieba and English lemmatization with NLTK.
 
 import re
 import logging
-from typing import List, Set
+from typing import List, Set, Tuple
 import jieba
 import nltk
 from nltk.stem import WordNetLemmatizer
@@ -168,17 +168,21 @@ class TextProcessor:
         
         return ngrams
     
-    def process_text(self, text: str, include_bigrams: bool = True) -> List[str]:
+    def process_text(self, text: str, ngram_range: Tuple[int, int] = (1, 2)) -> List[str]:
         """
         Process text using jieba segmentation followed by NLTK lemmatization.
-        Optionally includes bigrams alongside unigrams.
+        Generates n-grams within the specified range.
         
         Args:
             text: Input text
-            include_bigrams: Whether to include bigrams in output
+            ngram_range: Tuple of (min_n, max_n) for n-gram generation.
+                         (1, 1) = unigrams only
+                         (1, 2) = unigrams + bigrams (default)
+                         (2, 2) = bigrams only
+                         (1, 3) = unigrams + bigrams + trigrams
             
         Returns:
-            List of processed tokens (unigrams + bigrams if enabled)
+            List of processed tokens with n-grams in specified range
         """
         if not text or not text.strip():
             return []
@@ -187,27 +191,32 @@ class TextProcessor:
         tokens = self.segment_text(text)
         
         # Lemmatize tokens (English tokens get lemmatized, Chinese remain unchanged)
-        processed_tokens = self.lemmatize_tokens(tokens)
+        unigrams = self.lemmatize_tokens(tokens)
         
-        # Add bigrams if requested
-        if include_bigrams and len(processed_tokens) >= 2:
-            bigrams = self.generate_ngrams(processed_tokens, n=2)
-            processed_tokens.extend(bigrams)
+        # Generate n-grams for the specified range
+        min_n, max_n = ngram_range
+        result = []
         
-        return processed_tokens
+        for n in range(min_n, max_n + 1):
+            if n == 1:
+                result.extend(unigrams)
+            elif len(unigrams) >= n:
+                result.extend(self.generate_ngrams(unigrams, n=n))
+        
+        return result
     
-    def process_query(self, query: str, include_bigrams: bool = True) -> List[str]:
+    def process_query(self, query: str, ngram_range: Tuple[int, int] = (1, 2)) -> List[str]:
         """
         Process a search query using the same logic as document processing.
         
         Args:
             query: Search query
-            include_bigrams: Whether to include bigrams in output
+            ngram_range: Tuple of (min_n, max_n) for n-gram generation
             
         Returns:
-            List of processed query tokens (unigrams + bigrams if enabled)
+            List of processed query tokens with n-grams in specified range
         """
-        return self.process_text(query, include_bigrams=include_bigrams)
+        return self.process_text(query, ngram_range=ngram_range)
     
     def filter_stopwords(self, tokens: List[str]) -> List[str]:
         """

@@ -1,5 +1,5 @@
 """
-Document processing utilities for extracting text from PDFs and text files,
+Document processing utilities for extracting text from PDFs, text files, and DOCX files,
 and chunking them for vector storage.
 """
 
@@ -11,6 +11,7 @@ import logging
 from io import BytesIO
 import nltk
 import jieba
+from docx import Document
 from config import CHUNK_SIZE, CHUNK_OVERLAP
 
 class DocumentProcessor:
@@ -106,6 +107,40 @@ class DocumentProcessor:
         except Exception as e:
             logging.error(f"Error extracting text from text file: {e}")
             raise Exception(f"Failed to extract text from text file: {str(e)}")
+    
+    def extract_text_from_docx(self, file_content: bytes) -> str:
+        """
+        Extract text from DOCX file content.
+        
+        Args:
+            file_content: DOCX file content as bytes
+            
+        Returns:
+            Extracted text
+        """
+        try:
+            docx_file = BytesIO(file_content)
+            doc = Document(docx_file)
+            
+            text = ""
+            for paragraph in doc.paragraphs:
+                paragraph_text = paragraph.text.strip()
+                if paragraph_text:
+                    text += paragraph_text + "\n"
+            
+            # Extract text from tables
+            for table in doc.tables:
+                for row in table.rows:
+                    for cell in row.cells:
+                        cell_text = cell.text.strip()
+                        if cell_text:
+                            text += cell_text + " "
+                text += "\n"
+            
+            return text
+        except Exception as e:
+            logging.error(f"Error extracting text from DOCX: {e}")
+            raise Exception(f"Failed to extract text from DOCX: {str(e)}")
     
     
     def clean_text(self, text: str) -> str:
@@ -239,7 +274,7 @@ class DocumentProcessor:
         Args:
             file_content: File content as bytes
             filename: Original filename
-            file_type: File type ('pdf' or 'txt')
+            file_type: File type ('pdf', 'txt', or 'docx')
             
         Returns:
             List of processed text chunks
@@ -250,6 +285,8 @@ class DocumentProcessor:
                 text = self.extract_text_from_pdf(file_content)
             elif file_type.lower() in ['txt', 'text']:
                 text = self.extract_text_from_txt(file_content)
+            elif file_type.lower() == 'docx':
+                text = self.extract_text_from_docx(file_content)
             else:
                 raise ValueError(f"Unsupported file type: {file_type}")
             

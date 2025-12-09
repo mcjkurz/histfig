@@ -12,14 +12,12 @@ echo "🚀 Starting Historical Figures Chat System (Background Mode)..."
 echo "================================================"
 
 # Get port configuration  
-CHAT_PORT=$(python3 scripts/get_ports.py chat 2>/dev/null || echo "5003")
-ADMIN_PORT=$(python3 scripts/get_ports.py admin 2>/dev/null || echo "5004") 
-PROXY_PORT=$(python3 scripts/get_ports.py proxy 2>/dev/null || echo "5001")
+APP_PORT=$(python3 scripts/get_ports.py app 2>/dev/null || echo "5001")
 
 # Check if already running
-RUNNING_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)
+RUNNING_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
 if [ ! -z "$RUNNING_PIDS" ]; then
-    echo "⚠️  Server appears to be already running on ports $PROXY_PORT, $CHAT_PORT, or $ADMIN_PORT"
+    echo "⚠️  Server appears to be already running on port $APP_PORT"
     echo "💡 Run ./kill_ports.sh first to stop existing servers"
     echo "🔍 Or run ./check_status.sh to verify status"
     exit 1
@@ -41,17 +39,17 @@ echo "🌙 Starting server with sleep prevention..."
 # Redirect output to log file for debugging if needed
 (nohup caffeinate -i -s ./start_foreground.sh > rag_server.log 2>&1 &)
 
-# Give it a moment to start
+# Give it time to start (loading models can take a while)
 sleep 5
 
 # Check if it started successfully
-STARTED_PIDS=$(lsof -t -i :$PROXY_PORT -i :$CHAT_PORT -i :$ADMIN_PORT 2>/dev/null)
+STARTED_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
 if [ ! -z "$STARTED_PIDS" ]; then
     echo "✅ Server started successfully in background!"
     echo ""
     echo "🌐 Access URLs:"
-    echo "   Chat Interface: http://localhost:$PROXY_PORT/"
-    echo "   Admin Interface: http://localhost:$PROXY_PORT/admin/"
+    echo "   Chat Interface: http://localhost:$APP_PORT/"
+    echo "   Admin Interface: http://localhost:$APP_PORT/admin/"
     echo ""
     echo "💡 Useful commands:"
     echo "   Check status: ./check_status.sh"
@@ -67,5 +65,3 @@ else
 fi
 
 echo "================================================"
-
-

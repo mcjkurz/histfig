@@ -216,8 +216,7 @@ class FigureManager:
         return self.bm25_cache.get(figure_id)
 
     def create_figure(self, figure_id: str, name: str, description: str = "", 
-                     personality_prompt: str = "", metadata: Dict[str, Any] = None,
-                     max_length: int = 250, max_chunk_chars: int = 1000) -> bool:
+                     personality_prompt: str = "", metadata: Dict[str, Any] = None) -> bool:
         """
         Create a new historical figure with validation.
         
@@ -227,8 +226,6 @@ class FigureManager:
             description: Description of the figure (max 400 chars)
             personality_prompt: Optional personality prompt (max 400 chars)
             metadata: Additional metadata (birth_year, death_year, etc.)
-            max_length: Maximum number of words per document chunk (50-1000 words, legacy/semantic parameter)
-            max_chunk_chars: Maximum characters per chunk (500-3000 chars, primary chunking parameter)
             
         Returns:
             True if successful
@@ -257,12 +254,6 @@ class FigureManager:
             # Create figure directory structure
             figure_path.mkdir(exist_ok=True)
             
-            # Validate and clamp max_length (words, legacy parameter)
-            max_length = max(50, min(1000, max_length))
-            
-            # Validate and clamp max_chunk_chars (primary chunking parameter)
-            max_chunk_chars = max(500, min(3000, max_chunk_chars))
-            
             # Create metadata file
             figure_metadata = {
                 "figure_id": figure_id,
@@ -271,8 +262,6 @@ class FigureManager:
                 "personality_prompt": personality_prompt,
                 "created_at": str(Path().resolve()),
                 "document_count": 0,
-                "max_length": max_length,  # Words (legacy/semantic)
-                "max_chunk_chars": max_chunk_chars,  # Characters (primary)
                 "metadata": metadata or {}
             }
             
@@ -495,8 +484,12 @@ class FigureManager:
             List of similar documents ranked by hybrid search with both metrics
         """
         try:
+            # Get figure name for query augmentation
+            figure_metadata = self.get_figure_metadata(figure_id)
+            figure_name = figure_metadata.get('name', figure_id) if figure_metadata else figure_id
+            
             # Augment query if enabled (transparent to user)
-            augmented_query = augment_query(query)
+            augmented_query = augment_query(query, figure_name=figure_name)
             logging.info(f"Original query: '{query}'")
             if augmented_query != query:
                 logging.info(f"Using augmented query: '{augmented_query}'")
@@ -574,9 +567,10 @@ class FigureManager:
                     metadata = results["metadatas"][0][i]
                     doc_id = metadata.get("doc_id", f"doc_{i}")
                     # Convert cosine distance to similarity score
-                    # Cosine distance ranges from 0 (identical) to 2 (opposite)
+                    # ChromaDB returns cosine distance = 1 - cosine_similarity
+                    # distance 0 = identical (similarity 1), distance 2 = opposite (similarity -1)
                     distance = results["distances"][0][i]
-                    similarity = max(0.0, 1.0 - (distance / 2.0))  # Normalize and clamp to [0,1]
+                    similarity = 1.0 - distance  # Range: [-1, 1]
                     
                     formatted_results.append({
                         "text": results["documents"][0][i],

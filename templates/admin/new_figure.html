@@ -6,10 +6,10 @@
 <div class="card">
     <div class="card-header">
         <h2>Create New Historical Figure</h2>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">← Back to Dashboard</a>
+        <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">← Back to Dashboard</a>
     </div>
     <div class="card-body">
-        <form method="POST" action="{{ url_for('create_figure') }}" enctype="multipart/form-data">
+        <form method="POST" action="{{ url_for('admin.create_figure') }}" enctype="multipart/form-data">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                 <div>
                     <div class="form-group">
@@ -54,57 +54,21 @@
                     <div class="form-group">
                         <label for="birth_year">Birth Year</label>
                         <input type="text" id="birth_year" name="birth_year" class="form-control"
-                               placeholder="e.g., 1769" 
-                               pattern="[0-9]{4}"
+                               placeholder="e.g., 750 or 1769" 
+                               pattern="[0-9]{1,4}"
                                maxlength="4"
-                               title="Enter a 4-digit year (e.g., 1769)">
-                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
+                               title="Enter a year (e.g., 750 for 8th century, 1769 for modern)">
+                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 750 or 1769)</small>
                     </div>
 
                     <div class="form-group">
                         <label for="death_year">Death Year</label>
                         <input type="text" id="death_year" name="death_year" class="form-control"
-                               placeholder="e.g., 1821" 
-                               pattern="[0-9]{4}"
+                               placeholder="e.g., 814 or 1821" 
+                               pattern="[0-9]{1,4}"
                                maxlength="4"
-                               title="Enter a 4-digit year (e.g., 1821)">
-                        <small style="color: #666; font-size: 0.8rem;">4-digit year format required</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="nationality">Nationality</label>
-                        <input type="text" id="nationality" name="nationality" class="form-control"
-                               placeholder="e.g., French">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="occupation">Occupation/Title</label>
-                        <input type="text" id="occupation" name="occupation" class="form-control"
-                               placeholder="e.g., Emperor, Military General">
-                    </div>
-
-                    <h4 style="margin-top: 1.5rem; margin-bottom: 1rem; color: #2c3e50;">Document Chunking Settings</h4>
-                    
-                    <div class="form-group">
-                        <label for="max_chunk_chars">Max Characters per Chunk (Primary)</label>
-                        <input type="number" id="max_chunk_chars" name="max_chunk_chars" class="form-control"
-                               placeholder="e.g., 1000" 
-                               value="1000"
-                               min="500"
-                               max="3000"
-                               title="Maximum number of characters per document chunk (500-3000 chars)">
-                        <small style="color: #666; font-size: 0.8rem;">Primary chunking method: characters per chunk (default: 1000). Smart boundary detection avoids splitting mid-sentence.</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="max_length">Max Words per Chunk (Legacy/Semantic)</label>
-                        <input type="number" id="max_length" name="max_length" class="form-control"
-                               placeholder="e.g., 250" 
-                               value="250"
-                               min="50"
-                               max="1000"
-                               title="Maximum number of words per document chunk (50-1000 words)">
-                        <small style="color: #666; font-size: 0.8rem;">Secondary parameter for semantic operations (default: 250, uses jieba for Chinese text)</small>
+                               title="Enter a year (e.g., 814 for 9th century, 1821 for modern)">
+                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 814 or 1821)</small>
                     </div>
 
                     <div class="form-group">
@@ -208,7 +172,7 @@
         this.value = this.value.replace(/[^a-zA-Z]/g, '');
     });
     
-    // Validate year inputs (numbers only, 4 digits)
+    // Validate year inputs (numbers only, up to 4 digits)
     ['birth_year', 'death_year'].forEach(id => {
         const input = document.getElementById(id);
         if (input) {
@@ -254,15 +218,15 @@
         }
         
         // Year validation
-        if (birthYear && !/^\d{4}$/.test(birthYear)) {
+        if (birthYear && !/^\d{1,4}$/.test(birthYear)) {
             e.preventDefault();
-            alert('Birth year must be a 4-digit number!');
+            alert('Birth year must be a 1-4 digit number (e.g., 750 or 1769)!');
             return false;
         }
         
-        if (deathYear && !/^\d{4}$/.test(deathYear)) {
+        if (deathYear && !/^\d{1,4}$/.test(deathYear)) {
             e.preventDefault();
-            alert('Death year must be a 4-digit number!');
+            alert('Death year must be a 1-4 digit number (e.g., 814 or 1821)!');
             return false;
         }
         

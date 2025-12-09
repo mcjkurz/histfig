@@ -7,19 +7,40 @@
     <div class="card-header">
         <h2>Upload Documents for {{ figure.name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary">← Back to Figure</a>
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">Dashboard</a>
+            <a href="{{ url_for('admin.figure_detail', figure_id=figure.figure_id) }}" class="btn btn-secondary">← Back to Figure</a>
+            <a href="{{ url_for('admin.index') }}" class="btn btn-secondary">Dashboard</a>
         </div>
     </div>
     <div class="card-body">
-        <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('upload_documents', figure_id=figure.figure_id) }}" accept-charset="utf-8">
+        <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('admin.upload_documents', figure_id=figure.figure_id) }}" accept-charset="utf-8">
             <div class="file-upload">
                 <div style="font-size: 3rem; margin-bottom: 1rem;"></div>
                 <h3 style="color: #2c3e50; margin-bottom: 1rem;">Select Documents to Upload</h3>
                 <p style="color: #666; margin-bottom: 2rem;">Choose PDF or text files containing this figure's writings, speeches, letters, or other relevant content.</p>
                 
-                <input type="file" id="fileInput" name="files" multiple accept=".pdf,.txt,.text" required
+                <input type="file" id="fileInput" name="files" multiple accept=".pdf,.txt,.text,.docx" required
                        style="margin: 1rem 0; padding: 0.5rem; border: 2px solid #ddd; border-radius: 4px; width: 100%; max-width: 400px;">
+                
+                <!-- Document Chunking Settings -->
+                <div style="margin: 1.5rem auto; padding: 1.5rem; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; max-width: 500px; text-align: left;">
+                    <h4 style="color: #2c3e50; margin-bottom: 1rem; font-size: 1rem;">Document Chunking Settings</h4>
+                    
+                    <div style="margin-bottom: 1rem;">
+                        <label for="max_chunk_chars" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Max Characters per Chunk</label>
+                        <input type="number" id="max_chunk_chars" name="max_chunk_chars" 
+                               value="1000" min="500" max="3000" step="100"
+                               style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.8rem;">Primary chunking method (500-3000 chars, default: 1000). Smart boundary detection avoids splitting mid-sentence.</small>
+                    </div>
+                    
+                    <div>
+                        <label for="max_length" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Max Words per Chunk</label>
+                        <input type="number" id="max_length" name="max_length" 
+                               value="250" min="50" max="1000" step="50"
+                               style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                        <small style="color: #666; font-size: 0.8rem;">Secondary parameter for semantic operations (50-1000 words, default: 250)</small>
+                    </div>
+                </div>
                 
                 <div style="margin-top: 1rem;">
                     <button type="submit" id="uploadButton" class="btn btn-success" style="padding: 1rem 2rem; font-size: 1rem;">
@@ -354,6 +375,9 @@
         for (let i = 0; i < files.length; i++) {
             formData.append('files', files[i]);
         }
+        // Include chunking settings
+        formData.append('max_chunk_chars', document.getElementById('max_chunk_chars').value);
+        formData.append('max_length', document.getElementById('max_length').value);
         
         try {
             // Use EventSource for streaming progress updates
@@ -544,7 +568,7 @@
             // Handle upload completion
             function handleUploadComplete(successfulUploads, totalFiles) {
                 // Get the figure detail URL from Jinja2 before entering the template literal
-                const figureDetailUrl = "{{ url_for('figure_detail', figure_id=figure.figure_id) }}";
+                const figureDetailUrl = "{{ url_for('admin.figure_detail', figure_id=figure.figure_id) }}";
                 
                 // Add summary
                 const summaryClass = successfulUploads < totalFiles ? 'has-errors' : '';

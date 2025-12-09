@@ -168,6 +168,8 @@ class FigureCLI:
                     file_type = 'pdf'
                 elif file_extension in ['.txt', '.text']:
                     file_type = 'txt'
+                elif file_extension == '.docx':
+                    file_type = 'docx'
                 else:
                     print(f"✗ Unsupported file type: {file_path}")
                     continue

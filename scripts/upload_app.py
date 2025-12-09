@@ -12,17 +12,18 @@ import secrets
 from werkzeug.utils import secure_filename
 from hybrid_search import get_hybrid_db
 from document_processor import document_processor
+from config import MAX_CONTENT_LENGTH
 
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
-app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB max file size
-app.config['MAX_FORM_MEMORY_SIZE'] = None  # No limit on form memory size
+app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
+app.config['MAX_FORM_MEMORY_SIZE'] = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 
 # Allowed file extensions
-ALLOWED_EXTENSIONS = {'txt', 'pdf'}
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx'}
 
 def allowed_file(filename):
     """Check if the file extension is allowed."""
