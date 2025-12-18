@@ -730,12 +730,21 @@ body {
     }
 
     .chat-header {
-        padding: 12px 50px 12px 15px;
+        padding: 12px 50px 12px 50px;
         flex-shrink: 0;
+        flex-direction: column;
+        gap: 8px;
+        min-height: auto;
     }
 
     .chat-header h1 {
         font-size: 1.1rem;
+    }
+
+    .save-conversation-btn {
+        position: static;
+        transform: none;
+        align-self: center;
     }
 
     .control-panel {
