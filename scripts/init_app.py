@@ -57,7 +57,7 @@ def main():
         sys.exit(1)
     
     print("✅ Application initialization complete!")
-    print("💡 You can now run: ./start_foreground.sh or ./start_background.sh")
+    print("💡 You can now run: ./start.sh")
 
 if __name__ == '__main__':
     main()

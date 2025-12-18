@@ -15,7 +15,7 @@ from functools import wraps
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
-from config import ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR, ADMIN_PASSWORD, TEMP_UPLOAD_DIR
+from config import ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR, ADMIN_PASSWORD, TEMP_UPLOAD_DIR, OVERLAP_PERCENT
 from flask import current_app
 from datetime import datetime
 import glob
@@ -323,10 +323,10 @@ def upload_documents(figure_id):
             max_chunk_chars = 1000
         
         try:
-            overlap_percent = int(request.form.get('overlap_percent', '20'))
+            overlap_percent = int(request.form.get('overlap_percent', str(OVERLAP_PERCENT)))
             overlap_percent = max(0, min(50, overlap_percent))
         except (ValueError, TypeError):
-            overlap_percent = 20
+            overlap_percent = OVERLAP_PERCENT
         
         document_processor = DocumentProcessor(
             chunk_size=max_length,
@@ -475,10 +475,10 @@ def upload_documents_stream(figure_id):
         max_chunk_chars = 1000
     
     try:
-        overlap_percent = int(request.form.get('overlap_percent', '25'))
+        overlap_percent = int(request.form.get('overlap_percent', str(OVERLAP_PERCENT)))
         overlap_percent = max(0, min(50, overlap_percent))
     except (ValueError, TypeError):
-        overlap_percent = 25
+        overlap_percent = OVERLAP_PERCENT
     
     try:
         files = request.files.getlist('files')

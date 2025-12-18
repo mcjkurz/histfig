@@ -21,7 +21,7 @@ else
     echo "❌ Port $APP_PORT: Not running"
     echo ""
     echo "😴 Service is not running"
-    echo "💡 Run ./start_background.sh to start the system"
+    echo "💡 Run ./start.sh to start the system"
 fi
 
 echo "=================================="

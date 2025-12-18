@@ -51,12 +51,9 @@ CHROMA_DB_PATH = "./chroma_db"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 
 # Document Processing Settings
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "250"))  # Number of words per chunk (used for semantic operations)
-CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "62"))  # Overlap in words (25% of chunk_size)
-
-# Character-based chunking (primary chunking method)
-MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))  # Maximum characters per chunk
-CHAR_OVERLAP = int(os.environ.get("CHAR_OVERLAP", "200"))  # Character overlap (20% of MAX_CHUNK_CHARS)
+CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "250"))  # Words per chunk (for word-based chunking)
+MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))  # Characters per chunk (primary method)
+OVERLAP_PERCENT = int(os.environ.get("OVERLAP_PERCENT", "20"))  # Chunk overlap percentage (0-50%, default 20%)
 
 # File Upload Settings
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'md'}

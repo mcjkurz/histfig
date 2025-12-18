@@ -12,37 +12,27 @@ from io import BytesIO
 import nltk
 import jieba
 from docx import Document
-from config import CHUNK_SIZE, CHUNK_OVERLAP
+from config import CHUNK_SIZE, MAX_CHUNK_CHARS, OVERLAP_PERCENT
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = None, chunk_overlap: int = None, 
-                 max_chunk_chars: int = 1000, char_overlap: int = None,
-                 overlap_percent: int = 20):
+    def __init__(self, chunk_size: int = None, max_chunk_chars: int = None,
+                 overlap_percent: int = None):
         """
         Initialize document processor with character-based and word-based chunking.
         
         Args:
-            chunk_size: Target size for text chunks (in words, used for semantic chunking)
-            chunk_overlap: Overlap between chunks (in words). If None, defaults to overlap_percent of chunk_size
-            max_chunk_chars: Maximum characters per chunk (default 1000)
-            char_overlap: Character-based overlap. If None, defaults to overlap_percent of max_chunk_chars
-            overlap_percent: Percentage of chunk size to use as overlap (default 20, range 0-50)
+            chunk_size: Words per chunk (defaults to config CHUNK_SIZE)
+            max_chunk_chars: Characters per chunk (defaults to config MAX_CHUNK_CHARS)
+            overlap_percent: Overlap percentage 0-50% (defaults to config OVERLAP_PERCENT)
         """
-        # Clamp overlap_percent to valid range
-        self.overlap_percent = max(0, min(50, overlap_percent))
-        
+        # Use config defaults if not provided
         self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
-        if chunk_overlap is not None:
-            self.chunk_overlap = chunk_overlap
-        else:
-            self.chunk_overlap = int(self.chunk_size * self.overlap_percent / 100)
+        self.max_chunk_chars = max_chunk_chars if max_chunk_chars is not None else MAX_CHUNK_CHARS
+        self.overlap_percent = max(0, min(50, overlap_percent if overlap_percent is not None else OVERLAP_PERCENT))
         
-        # Character-based chunking parameters
-        self.max_chunk_chars = max_chunk_chars
-        if char_overlap is not None:
-            self.char_overlap = char_overlap
-        else:
-            self.char_overlap = int(self.max_chunk_chars * self.overlap_percent / 100)
+        # Calculate overlaps from percentage
+        self.chunk_overlap = int(self.chunk_size * self.overlap_percent / 100)
+        self.char_overlap = int(self.max_chunk_chars * self.overlap_percent / 100)
         
         # Download NLTK data for sentence tokenization
         try:

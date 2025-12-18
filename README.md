@@ -1,101 +1,65 @@
 # Historical Figures Chat System
 
-Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style. 
-
-This project is developed for educational and experimental purposes.
+Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style.
 
 ![Screenshot](img/screenshot_1.png)
 
-## Prerequisites
+## Quick Start
 
-- Python 3.8+
-- [Ollama](https://ollama.ai/) installed and running, with at least one language model (for local models)
-- API access (API key) to any LLM provider (for external models)
+### 1. Clone & Install
 
-## Installation
-
-1. Clone this repository
-2. Create virtual environment:
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-
-## Usage
-
-### Quick Start (Foreground)
 ```bash
-./start_foreground.sh
-```
-Runs in terminal. Press Ctrl+C to stop.
+git clone <repository-url>
+cd histfig
 
-### Background Mode
-```bash
-./start_background.sh
-```
-Runs persistently in background. Use `./kill_ports.sh` to stop.
-
-### Check Status
-```bash
-./check_status.sh
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Access URLs
+### 2. Set Environment Variables
 
-- Chat Interface: `http://localhost:5001/`
-- Admin Interface: `http://localhost:5001/admin/`
+Before running, export your API credentials:
+
+```bash
+export EXTERNAL_API_KEY="your-api-key"
+export EXTERNAL_BASE_URL="https://api.openai.com/v1"  # or your provider
+export ADMIN_PASSWORD="your-secure-password"
+
+# Optional: Query augmentation
+export QUERY_AUGMENTATION_ENABLED="true"
+export QUERY_AUGMENTATION_MODEL="gpt-4"
+export QUERY_AUGMENTATION_API_URL="https://api.openai.com/v1"
+```
+
+### 3. Run
+
+```bash
+./start.sh
+```
+
+Access at: `http://localhost:5001/`
+
+Admin panel: `http://localhost:5001/admin/`
+
+Press `Ctrl+C` to stop.
+
+## Utility Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `./check_status.sh` | Check if server is running |
+| `./kill_ports.sh` | Stop the server |
 
 ## Configuration
 
-All configuration is centralized in `scripts/config.py`. You can modify:
+Edit `scripts/config.py` to change:
+- `APP_PORT` - Server port (default: 5001)
+- `OLLAMA_URL` / `OLLAMA_MODEL` - For local Ollama setup
+- `MAX_CONTENT_LENGTH` - Max upload size
 
-### Port
-- `APP_PORT = 5001` - Application port for all services
+## Requirements
 
-### Other Settings
-- `OLLAMA_URL` - Ollama server URL
-- `OLLAMA_MODEL` - Default Ollama model
-- `MAX_CONTENT_LENGTH` - Maximum file upload size
-- `DEBUG_MODE` - Enable/disable debug mode
-
-**To change port:** Edit `APP_PORT` in `scripts/config.py`, then restart the application.
-
-## Architecture
-
-The application uses a single-port Flask setup with Blueprints:
-
-```
-Port 5001
-├── / (Chat Interface)
-│   ├── /api/chat
-│   ├── /api/figures
-│   └── ... (other chat endpoints)
-└── /admin (Admin Interface)
-    ├── /admin/login
-    ├── /admin/figure/<id>
-    └── ... (other admin endpoints)
-```
-
-**Key files:**
-- `scripts/main.py` - Main application entry point
-- `scripts/chat_routes.py` - Chat functionality blueprint
-- `scripts/admin_routes.py` - Admin panel blueprint
-- `scripts/config.py` - Centralized configuration
-
-## Out-of-the-Box Ready
-
-The application automatically:
-- Creates necessary directories (`figures/`, `chroma_db/`, `temp_uploads/`)
-- Initializes the vector database
-- Sets up historical figure management
-- No manual database setup required
-
-## Features
-
-- Chat with historical figures using RAG-enhanced AI
-- Upload and process documents (TXT, PDF, DOCX, MD)
-- Admin interface for managing figures and documents
-- Real-time streaming responses
-- Configurable port and settings
-- Modern responsive UI
+- Python 3.8+
+- API key for an OpenAI-compatible LLM provider
+- (Optional) [Ollama](https://ollama.ai/) for local models
