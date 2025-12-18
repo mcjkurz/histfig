@@ -22,7 +22,7 @@ class TextProcessor:
         self._download_nltk_data()
         self.lemmatizer = WordNetLemmatizer()
         
-        # Load stopwords from files (for display filtering only, not for indexing)
+        # Load stopwords from files (used for filtering n-grams at indexing time)
         self.stopwords = self._load_stopwords(stopwords_dir)
         
         logging.info(f"Text processor initialized with {len(self.stopwords)} stopwords")
@@ -132,6 +132,11 @@ class TextProcessor:
             if token.isdigit() and len(token) > 4:
                 continue
             
+            # Filter out single-letter English tokens (e.g., "s" from "Mao's", "t" from "don't")
+            # These are typically artifacts from possessives/contractions and add no value
+            if len(token) == 1 and token.isalpha() and token.isascii():
+                continue
+            
             # Lemmatize if it's alphabetic (English), otherwise keep as is (Chinese/mixed)
             if token.isalpha():
                 try:
@@ -147,23 +152,31 @@ class TextProcessor:
         
         return processed_tokens
     
-    def generate_ngrams(self, tokens: List[str], n: int = 2) -> List[str]:
+    def generate_ngrams(self, tokens: List[str], n: int = 2, filter_stopwords: bool = True) -> List[str]:
         """
-        Generate n-grams from tokens.
+        Generate n-grams from tokens, optionally filtering those containing stopwords.
         
         Args:
             tokens: List of tokens
             n: Size of n-gram (2 for bigrams, 3 for trigrams, etc.)
+            filter_stopwords: If True, exclude n-grams where any component is a stopword
             
         Returns:
-            List of n-grams as joined strings
+            List of n-grams as joined strings (meaningful phrases only)
         """
         if len(tokens) < n:
             return []
         
         ngrams = []
         for i in range(len(tokens) - n + 1):
-            ngram = "_".join(tokens[i:i+n])
+            components = tokens[i:i+n]
+            
+            # Filter n-grams containing stopwords (produces cleaner, more meaningful bigrams)
+            if filter_stopwords:
+                if any(comp.lower() in self.stopwords for comp in components):
+                    continue
+            
+            ngram = "_".join(components)
             ngrams.append(ngram)
         
         return ngrams
@@ -220,8 +233,8 @@ class TextProcessor:
     
     def filter_stopwords(self, tokens: List[str]) -> List[str]:
         """
-        Filter stopwords from a list of tokens (for display purposes only).
-        Does NOT affect indexing or scoring.
+        Filter stopwords from a list of unigram tokens.
+        Note: N-grams are filtered at generation time in generate_ngrams().
         
         Args:
             tokens: List of tokens to filter

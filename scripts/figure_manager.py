@@ -698,14 +698,22 @@ class FigureManager:
                         # Sort terms by their BM25 contribution (highest first)
                         sorted_terms = sorted(term_scores.items(), key=lambda x: x[1], reverse=True)
                         
-                        # Filter out stopwords from displayed keywords (keep bigrams)
+                        # Filter out stopwords and bigrams containing stopwords
                         filtered_terms = []
                         for term, score in sorted_terms:
-                            # Skip stopwords only
-                            if term not in text_processor.stopwords:
-                                # Format bigrams: replace underscore with space for display
+                            # Check if term is a bigram (contains underscore)
+                            if '_' in term:
+                                # Filter bigrams where any component is a stopword
+                                components = term.split('_')
+                                if any(comp.lower() in text_processor.stopwords for comp in components):
+                                    continue
                                 display_term = term.replace('_', ' ')
-                                filtered_terms.append(display_term)
+                            else:
+                                # Skip unigram stopwords
+                                if term.lower() in text_processor.stopwords:
+                                    continue
+                                display_term = term
+                            filtered_terms.append(display_term)
                         
                         top_matching_words = filtered_terms[:5] if filtered_terms else []
                     
