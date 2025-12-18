@@ -118,6 +118,7 @@ body {
     border: 1px solid #34495e;
     position: relative;
     width: 100%;
+    min-height: 0;
 }
 
 .figure-panel {
@@ -571,6 +572,8 @@ body {
     padding: 20px;
     overflow-y: auto;
     background: #2c3e50;
+    /* Critical for flex layouts: allow this pane to shrink so the input stays at the bottom */
+    min-height: 0;
 }
 
 .message {
@@ -630,12 +633,14 @@ body {
     border-top: 1px solid #4a5f7a;
     flex-shrink: 0;
     z-index: 100;
+    padding-bottom: calc(15px + env(safe-area-inset-bottom));
 }
 
 .chat-input-form {
     display: flex;
     gap: 10px;
-    align-items: flex-end;
+    /* Keep the send/stop button vertically centered within the composer */
+    align-items: center;
 }
 
 .chat-input {
@@ -670,6 +675,10 @@ body {
     cursor: pointer;
     transition: transform 0.2s;
     min-width: 70px;
+    height: 45px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .send-button:hover:not(:disabled) {
@@ -691,6 +700,10 @@ body {
     cursor: pointer;
     transition: transform 0.2s;
     min-width: 70px;
+    height: 45px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .stop-button:hover {
@@ -782,6 +795,7 @@ body {
         border-top: 1px solid #4a5f7a;
         position: relative;
         z-index: 100;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
     }
 
     .message-content {
@@ -808,6 +822,11 @@ body {
         font-size: 0.9rem;
         min-width: 60px;
         flex-shrink: 0;
+        height: 40px;
+    }
+
+    .stop-button {
+        height: 40px;
     }
 
     .control-section-header {
