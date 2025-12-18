@@ -55,9 +55,3 @@ Logs are saved to `logs/server_<timestamp>.log`
 ## Configuration
 
 Other settings (port, Ollama config, embedding model, upload limits, etc.) can be changed in `scripts/config.py`.
-
-## Requirements
-
-- Python 3.8+
-- API key for an OpenAI-compatible LLM provider
-- (Optional) [Ollama](https://ollama.ai/) for local models

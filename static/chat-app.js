@@ -481,6 +481,17 @@ class ChatApp {
         
         const handleViewportChange = () => {
             const currentViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+            const isInputFocused = document.activeElement === this.messageInput;
+
+            // If the input is not focused, viewport changes are usually caused by the browser UI
+            // (address bar show/hide, orientation changes). Don't move the composer in that case.
+            if (!isInputFocused) {
+                initialViewportHeight = currentViewportHeight;
+                inputContainer.style.transform = 'translateY(0)';
+                inputContainer.style.transition = 'transform 0.3s ease';
+                return;
+            }
+
             const heightDifference = initialViewportHeight - currentViewportHeight;
             
             // If viewport height decreased significantly (keyboard is likely open)
@@ -505,10 +516,19 @@ class ChatApp {
 
         // Handle input focus to ensure it's visible
         this.messageInput.addEventListener('focus', () => {
+            // Capture the "no keyboard" baseline right before the keyboard resize happens
+            initialViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
             setTimeout(() => {
                 // Scroll the input into view
                 this.messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 300); // Delay to allow keyboard animation
+        });
+
+        // When focus is lost, ensure we reset any transform so the bar doesn't "float"
+        this.messageInput.addEventListener('blur', () => {
+            inputContainer.style.transform = 'translateY(0)';
+            inputContainer.style.transition = 'transform 0.3s ease';
+            initialViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
         });
 
         // Prevent zoom on input focus (iOS Safari)
