@@ -7,14 +7,17 @@ Creates necessary directories and ensures the app is ready to run.
 import os
 import sys
 from pathlib import Path
-from config import FIGURES_DIR, CHROMA_DB_PATH, TEMP_UPLOAD_DIR
+from config import FIGURES_DIR, CHROMA_DB_PATH, TEMP_UPLOAD_DIR, FIGURE_IMAGES_DIR
 
 def init_directories():
     """Create necessary directories for the application."""
     directories = [
         FIGURES_DIR,
         CHROMA_DB_PATH, 
-        TEMP_UPLOAD_DIR
+        TEMP_UPLOAD_DIR,
+        FIGURE_IMAGES_DIR,
+        "./conversations",
+        "./logs"
     ]
     
     print("🔧 Initializing application directories...")

@@ -10,3 +10,5 @@ markdown
 reportlab
 jieba
 nltk
+numpy
+rank_bm25
