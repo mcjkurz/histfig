@@ -127,11 +127,13 @@ body {
     width: 400px;
     max-width: 90vw;
     height: 100vh;
+    height: 100dvh;
     background: #34495e;
     box-shadow: 4px 0 20px rgba(0,0,0,0.3);
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    overflow-y: auto;
     border-right: 1px solid #4a5f7a;
     transition: left 0.3s ease;
     z-index: 999;
@@ -148,6 +150,7 @@ body {
     width: 400px;
     max-width: 90vw;
     height: 100vh;
+    height: 100dvh;
     background: #34495e;
     box-shadow: -4px 0 20px rgba(0,0,0,0.3);
     display: flex;
@@ -184,11 +187,14 @@ body {
 .figure-content {
     flex: 1;
     padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: #34495e;
     display: flex;
     flex-direction: column;
     align-items: center;
+    min-height: 0;
 }
 
 .figure-empty {
@@ -288,8 +294,11 @@ body {
 .control-content {
     flex: 1;
     padding: 20px;
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
     overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     background: #34495e;
+    min-height: 0;
 }
 
 .documents-panel {
@@ -617,11 +626,9 @@ body {
 
 .chat-input-container {
     padding: 15px;
-    padding-bottom: calc(15px + env(safe-area-inset-bottom));
     background: #1e2a3a;
     border-top: 1px solid #4a5f7a;
-    position: sticky;
-    bottom: 0;
+    flex-shrink: 0;
     z-index: 100;
 }
 
@@ -696,6 +703,7 @@ body {
     .app-container {
         height: 100vh;
         height: 100dvh;
+        overflow: hidden;
     }
 
     .chat-container {
@@ -703,6 +711,7 @@ body {
         height: 100%;
         display: flex;
         flex-direction: column;
+        overflow: hidden;
     }
 
     .control-toggle-btn {
@@ -750,6 +759,13 @@ body {
     .control-panel {
         width: 100%;
         max-width: 100%;
+        height: 100vh;
+        height: 100dvh;
+    }
+    
+    .figure-panel {
+        height: 100vh;
+        height: 100dvh;
     }
 
     .chat-messages {
@@ -761,12 +777,10 @@ body {
 
     .chat-input-container {
         padding: 12px;
-        padding-bottom: calc(12px + env(safe-area-inset-bottom));
         flex-shrink: 0;
         background: #1e2a3a;
         border-top: 1px solid #4a5f7a;
-        position: sticky;
-        bottom: 0;
+        position: relative;
         z-index: 100;
     }
 
