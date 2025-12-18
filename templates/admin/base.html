@@ -334,6 +334,7 @@
             <nav class="nav">
                 <a href="{{ url_for('admin.index') }}" {% if request.endpoint == 'admin.index' %}class="active"{% endif %}>Dashboard</a>
                 <a href="{{ url_for('admin.new_figure') }}" {% if request.endpoint == 'admin.new_figure' %}class="active"{% endif %}>New Figure</a>
+                <a href="{{ url_for('admin.logs') }}" {% if request.endpoint == 'admin.logs' %}class="active"{% endif %}>Logs</a>
                 <a href="/" target="_blank">Chat Interface</a>
                 <a href="{{ url_for('admin.logout') }}" style="color: #e74c3c;">Logout</a>
             </nav>

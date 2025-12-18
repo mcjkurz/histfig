@@ -888,7 +888,9 @@
 
             /* Control panel always visible on desktop */
             .control-panel {
-                position: relative;
+                position: relative !important;
+                right: auto !important;
+                top: auto !important;
                 width: 380px;
                 height: auto;
                 border-radius: 20px;
@@ -896,10 +898,14 @@
                 transition: none;
                 z-index: auto;
                 order: 3;
+                box-shadow: 0 20px 40px rgba(0,0,0,0.3);
             }
 
+            /* Override the closed/open classes on desktop for control panel */
+            .control-panel.closed,
             .control-panel.open {
-                right: auto;
+                right: auto !important;
+                position: relative !important;
             }
 
             .control-toggle-btn {

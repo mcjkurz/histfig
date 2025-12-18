@@ -53,21 +53,21 @@
                     <div class="form-group">
                         <label for="birth_year">Birth Year</label>
                         <input type="text" id="birth_year" name="birth_year" class="form-control"
-                               value="{{ figure.metadata.birth_year if figure.metadata and figure.metadata.birth_year else '' }}"
-                               pattern="[0-9]{1,4}"
-                               maxlength="4"
-                               title="Enter a year (e.g., 750 for 8th century, 1769 for modern)">
-                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 750 or 1769)</small>
+                               value="{{ figure.metadata.birth_year if figure.metadata and figure.metadata.birth_year is not none else '' }}"
+                               pattern="-?[0-9]{1,4}"
+                               maxlength="5"
+                               title="Enter a year (e.g., -551 for BCE, 1769 for CE)">
+                        <small style="color: #666; font-size: 0.8rem;">Use negative numbers for BCE (e.g., -551 for 551 BCE)</small>
                     </div>
 
                     <div class="form-group">
                         <label for="death_year">Death Year</label>
                         <input type="text" id="death_year" name="death_year" class="form-control"
-                               value="{{ figure.metadata.death_year if figure.metadata and figure.metadata.death_year else '' }}"
-                               pattern="[0-9]{1,4}"
-                               maxlength="4"
-                               title="Enter a year (e.g., 814 for 9th century, 1821 for modern)">
-                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 814 or 1821)</small>
+                               value="{{ figure.metadata.death_year if figure.metadata and figure.metadata.death_year is not none else '' }}"
+                               pattern="-?[0-9]{1,4}"
+                               maxlength="5"
+                               title="Enter a year (e.g., -479 for BCE, 1821 for CE)">
+                        <small style="color: #666; font-size: 0.8rem;">Use negative numbers for BCE (e.g., -479 for 479 BCE)</small>
                     </div>
 
                     <div class="form-group">
@@ -118,7 +118,7 @@
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
-                <div style="font-size: 1.5rem; font-weight: bold; color: #3498db;">{{ figure.document_count or 0 }}</div>
+                <div style="font-size: 1.5rem; font-weight: bold; color: #3498db;">{{ stats.document_count or 0 }}</div>
                 <div style="color: #666; font-size: 0.9rem;">Documents</div>
             </div>
             <div style="background: #f8f9fa; padding: 1rem; border-radius: 8px; text-align: center;">
@@ -136,6 +136,203 @@
         </div>
     </div>
 </div>
+
+<!-- Upload Documents Section -->
+<div class="card" id="upload-section">
+    <div class="card-header">
+        <h3>Upload Documents</h3>
+    </div>
+    <div class="card-body">
+        <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('admin.upload_documents', figure_id=figure.figure_id) }}" accept-charset="utf-8">
+            <div class="file-upload">
+                <p style="color: #666; margin-bottom: 1.5rem;">Upload PDF, DOCX, or text files containing this figure's writings, speeches, letters, or other relevant content.</p>
+                
+                <input type="file" id="fileInput" name="files" multiple accept=".pdf,.txt,.text,.docx" required
+                       style="margin: 1rem 0; padding: 0.5rem; border: 2px solid #ddd; border-radius: 4px; width: 100%; max-width: 500px;">
+                
+                <!-- Document Chunking Settings (collapsible) -->
+                <details style="margin: 1.5rem auto; padding: 1rem; background: #f8f9fa; border-radius: 8px; border: 1px solid #e9ecef; max-width: 500px; text-align: left;">
+                    <summary style="cursor: pointer; font-weight: 500; color: #495057;">Advanced: Chunking Settings</summary>
+                    <div style="margin-top: 1rem;">
+                        <div style="margin-bottom: 1rem;">
+                            <label for="max_chunk_chars" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Max Characters per Chunk</label>
+                            <input type="number" id="max_chunk_chars" name="max_chunk_chars" 
+                                   value="1000" min="500" max="3000" step="100"
+                                   style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                            <small style="color: #666; font-size: 0.8rem;">Primary chunking (500-3000 chars, default: 1000)</small>
+                        </div>
+                        
+                        <div style="margin-bottom: 1rem;">
+                            <label for="max_length" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Max Words per Chunk</label>
+                            <input type="number" id="max_length" name="max_length" 
+                                   value="250" min="50" max="1000" step="50"
+                                   style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                            <small style="color: #666; font-size: 0.8rem;">Secondary parameter (50-1000 words, default: 250)</small>
+                        </div>
+                        
+                        <div>
+                            <label for="overlap_percent" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Chunk Overlap (%)</label>
+                            <input type="number" id="overlap_percent" name="overlap_percent" 
+                                   value="20" min="0" max="50" step="5"
+                                   style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
+                            <small style="color: #666; font-size: 0.8rem;">Overlap between chunks (0-50%, default: 25%)</small>
+                        </div>
+                    </div>
+                </details>
+                
+                <div style="margin-top: 1rem;">
+                    <button type="submit" id="uploadButton" class="btn btn-success" style="padding: 0.75rem 2rem;">
+                        Upload & Process Documents
+                    </button>
+                </div>
+            </div>
+        </form>
+        
+        <!-- Progress Section (hidden by default) -->
+        <div id="progressSection" style="display: none; margin-top: 2rem; padding: 1.5rem; background: #f8f9fa; border-radius: 8px;">
+            <h4 style="color: #2c3e50; margin-bottom: 1rem;">Upload Progress</h4>
+            <div id="progressContainer"></div>
+        </div>
+
+        <!-- Supported file types -->
+        <div style="margin-top: 1.5rem; display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+            <span style="background: #e8f5e8; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; color: #155724;">📄 PDF</span>
+            <span style="background: #e8f5e8; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; color: #155724;">📝 TXT</span>
+            <span style="background: #e8f5e8; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; color: #155724;">📃 DOCX</span>
+            <span style="background: #f8f9fa; padding: 0.5rem 1rem; border-radius: 20px; font-size: 0.85rem; color: #666;">Max 50MB per file</span>
+        </div>
+    </div>
+</div>
+
+<!-- Clean Documents Section -->
+{% if stats and stats.document_count and stats.document_count > 0 %}
+<div class="card">
+    <div class="card-header">
+        <h3>Manage Documents</h3>
+    </div>
+    <div class="card-body">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <p style="margin: 0; color: #666;">This figure currently has <strong>{{ stats.document_count }}</strong> document chunks in its knowledge base.</p>
+                <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #856404;">⚠️ Cleaning documents will remove all content from this figure's knowledge base.</p>
+            </div>
+            <form method="POST" action="{{ url_for('admin.clean_figure_documents', figure_id=figure.figure_id) }}" onsubmit="return confirmClean('{{ figure.name }}')">
+                <button type="submit" class="btn btn-warning">Clean All Documents</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<style>
+    .file-upload {
+        text-align: center;
+        padding: 1rem;
+    }
+    
+    .file-progress {
+        margin-bottom: 1.5rem;
+        padding: 1rem;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    
+    .file-progress-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.5rem;
+    }
+    
+    .file-progress-name {
+        font-weight: bold;
+        color: #2c3e50;
+    }
+    
+    .file-progress-status {
+        font-size: 0.9rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    .status-processing {
+        background: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-success {
+        background: #d4edda;
+        color: #155724;
+    }
+    
+    .status-error {
+        background: #f8d7da;
+        color: #721c24;
+    }
+    
+    .progress-bar-container {
+        width: 100%;
+        height: 30px;
+        background: #e9ecef;
+        border-radius: 15px;
+        overflow: hidden;
+        position: relative;
+        margin: 0.5rem 0;
+    }
+    
+    .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #3498db, #2980b9);
+        border-radius: 15px;
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.9rem;
+        font-weight: 500;
+        min-width: 40px;
+    }
+    
+    .progress-bar.success {
+        background: linear-gradient(90deg, #27ae60, #229954);
+    }
+    
+    .progress-bar.error {
+        background: linear-gradient(90deg, #e74c3c, #c0392b);
+    }
+    
+    .chunk-info {
+        font-size: 0.85rem;
+        color: #666;
+        margin-top: 0.25rem;
+    }
+    
+    .upload-summary {
+        margin-top: 1.5rem;
+        padding: 1rem;
+        background: #e8f5e9;
+        border-left: 4px solid #27ae60;
+        border-radius: 4px;
+    }
+    
+    .upload-summary.has-errors {
+        background: #fff3cd;
+        border-left-color: #ffc107;
+    }
+    
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.6; }
+        100% { opacity: 1; }
+    }
+    
+    .processing-animation {
+        animation: pulse 1.5s infinite;
+    }
+</style>
 
 <script>
     // Character counters
@@ -155,7 +352,7 @@
                 }
             };
             input.addEventListener('input', updateCount);
-            updateCount(); // Initial count
+            updateCount();
         }
     }
     
@@ -163,53 +360,63 @@
     updateCharCounter('description', 'desc-counter', 400);
     updateCharCounter('personality_prompt', 'prompt-counter', 400);
     
-    // Validate year inputs (numbers only, up to 4 digits)
+    // Validate year inputs (allow negative numbers for BCE)
     ['birth_year', 'death_year'].forEach(id => {
         const input = document.getElementById(id);
         if (input) {
             input.addEventListener('input', function() {
-                // Remove non-numeric characters
-                this.value = this.value.replace(/[^0-9]/g, '');
-                // Limit to 4 digits
-                if (this.value.length > 4) {
-                    this.value = this.value.slice(0, 4);
+                // Allow minus sign at start, then numbers only
+                let val = this.value;
+                // Keep minus if at start
+                let isNegative = val.startsWith('-');
+                // Remove all non-numeric (except leading minus)
+                val = val.replace(/[^0-9-]/g, '');
+                // Ensure minus is only at start
+                val = val.replace(/-/g, '');
+                if (isNegative || this.value.startsWith('-')) {
+                    val = '-' + val;
                 }
+                // Limit length (5 chars for -9999)
+                if (val.length > 5) {
+                    val = val.slice(0, 5);
+                }
+                this.value = val;
             });
         }
     });
 
-    // Form validation
-    document.querySelector('form').addEventListener('submit', function(e) {
+    // Edit form validation
+    const editForm = document.querySelector('form[action*="update_figure"]');
+    if (editForm) {
+    editForm.addEventListener('submit', function(e) {
         const name = document.getElementById('name').value;
         const birthYear = document.getElementById('birth_year').value;
         const deathYear = document.getElementById('death_year').value;
         const description = document.getElementById('description').value;
         const personality = document.getElementById('personality_prompt').value;
         
-        // Required fields
         if (!name.trim()) {
             e.preventDefault();
             alert('Display Name is required!');
             return false;
         }
         
-        // Name validation (allow Unicode characters, reject special characters and numbers)
         if (/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~]/.test(name)) {
             e.preventDefault();
             alert('Display Name cannot contain numbers or special characters!');
             return false;
         }
         
-        // Year validation
-        if (birthYear && !/^\d{1,4}$/.test(birthYear)) {
+        // Year validation (allow negative for BCE)
+        if (birthYear && !/^-?\d{1,4}$/.test(birthYear)) {
             e.preventDefault();
-            alert('Birth year must be a 1-4 digit number (e.g., 750 or 1769)!');
+            alert('Birth year must be a number between -9999 and 9999!');
             return false;
         }
         
-        if (deathYear && !/^\d{1,4}$/.test(deathYear)) {
+        if (deathYear && !/^-?\d{1,4}$/.test(deathYear)) {
             e.preventDefault();
-            alert('Death year must be a 1-4 digit number (e.g., 814 or 1821)!');
+            alert('Death year must be a number between -9999 and 9999!');
             return false;
         }
         
@@ -224,7 +431,6 @@
             }
         }
         
-        // Length validation
         if (description.length > 400) {
             e.preventDefault();
             alert('Description must be 400 characters or less!');
@@ -237,6 +443,7 @@
             return false;
         }
     });
+    }
 
     // Auto-resize textareas
     document.querySelectorAll('textarea').forEach(textarea => {
@@ -245,5 +452,283 @@
             this.style.height = this.scrollHeight + 'px';
         });
     });
+    
+    // Confirm clean documents
+    function confirmClean(figureName) {
+        return confirm(`Are you sure you want to remove ALL documents from ${figureName}?\n\nThis will delete all document chunks from the knowledge base. This action cannot be undone.`);
+    }
+    
+    // Upload functionality
+    const uploadForm = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const uploadButton = document.getElementById('uploadButton');
+    const progressSection = document.getElementById('progressSection');
+    const progressContainer = document.getElementById('progressContainer');
+    
+    // Only set up upload functionality if all required elements exist
+    if (uploadForm && fileInput && uploadButton && progressSection && progressContainer) {
+    
+    // File upload preview
+    fileInput.addEventListener('change', function(e) {
+        const files = e.target.files;
+        
+        if (files.length > 0) {
+            let preview = document.getElementById('file-preview');
+            if (!preview) {
+                preview = document.createElement('div');
+                preview.id = 'file-preview';
+                preview.style.marginTop = '1rem';
+                preview.style.padding = '1rem';
+                preview.style.background = 'white';
+                preview.style.borderRadius = '8px';
+                preview.style.border = '1px solid #ddd';
+                preview.style.maxWidth = '500px';
+                preview.style.margin = '1rem auto';
+                preview.style.textAlign = 'left';
+                this.parentNode.insertBefore(preview, this.nextSibling);
+            }
+            
+            preview.innerHTML = '<h5 style="margin-bottom: 0.5rem; color: #2c3e50;">Selected Files:</h5>';
+            
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const fileInfo = document.createElement('div');
+                fileInfo.style.padding = '0.5rem';
+                fileInfo.style.background = '#f8f9fa';
+                fileInfo.style.borderRadius = '4px';
+                fileInfo.style.marginBottom = '0.5rem';
+                fileInfo.style.display = 'flex';
+                fileInfo.style.justifyContent = 'space-between';
+                fileInfo.style.alignItems = 'center';
+                
+                const size = (file.size / 1024 / 1024).toFixed(2);
+                fileInfo.innerHTML = `
+                    <span>${file.name}</span>
+                    <span style="color: #666; font-size: 0.8rem;">${size} MB</span>
+                `;
+                preview.appendChild(fileInfo);
+            }
+        }
+    });
+
+    // AJAX upload with progress tracking
+    uploadForm.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const files = fileInput.files;
+        
+        if (files.length === 0) {
+            alert('Please select at least one file to upload!');
+            return;
+        }
+        
+        for (let i = 0; i < files.length; i++) {
+            if (files[i].size > 50 * 1024 * 1024) {
+                alert(`File "${files[i].name}" is too large. Maximum size is 50MB.`);
+                return;
+            }
+        }
+        
+        uploadButton.disabled = true;
+        uploadButton.innerHTML = 'Uploading...';
+        progressSection.style.display = 'block';
+        progressContainer.innerHTML = '';
+        
+        // Scroll to progress section so user can see the progress bars
+        setTimeout(() => {
+            progressSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
+        
+        const fileProgressElements = {};
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            const progressId = `progress-${i}`;
+            
+            const progressHtml = `
+                <div class="file-progress" id="${progressId}">
+                    <div class="file-progress-header">
+                        <span class="file-progress-name">${file.name}</span>
+                        <span class="file-progress-status status-processing processing-animation">Uploading...</span>
+                    </div>
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" style="width: 1%">0%</div>
+                    </div>
+                    <div class="chunk-info">Uploading to server...</div>
+                </div>
+            `;
+            progressContainer.insertAdjacentHTML('beforeend', progressHtml);
+            fileProgressElements[i] = document.getElementById(progressId);
+        }
+        
+        const formData = new FormData();
+        for (let i = 0; i < files.length; i++) {
+            formData.append('files', files[i]);
+        }
+        formData.append('max_chunk_chars', document.getElementById('max_chunk_chars').value);
+        formData.append('max_length', document.getElementById('max_length').value);
+        formData.append('overlap_percent', document.getElementById('overlap_percent').value);
+        
+        try {
+            const streamUrl = uploadForm.action.replace('/upload', '/upload-stream');
+            
+            fetch(streamUrl, {
+                method: 'POST',
+                body: formData
+            }).then(response => {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                function processStream() {
+                    reader.read().then(({ done, value }) => {
+                        if (done) return;
+                        
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || '';
+                        
+                        for (const line of lines) {
+                            if (line.startsWith('data: ')) {
+                                try {
+                                    const data = JSON.parse(line.slice(6));
+                                    handleStreamEvent(data);
+                                } catch (e) {
+                                    console.error('Error parsing SSE data:', e);
+                                }
+                            }
+                        }
+                        processStream();
+                    });
+                }
+                processStream();
+            }).catch(error => {
+                handleUploadError(error.message);
+            });
+            
+            function handleStreamEvent(data) {
+                const { event, file_index } = data;
+                
+                switch (event) {
+                    case 'file_start':
+                        if (fileProgressElements[file_index]) {
+                            const progressBar = fileProgressElements[file_index].querySelector('.progress-bar');
+                            progressBar.style.width = '1%';
+                            progressBar.textContent = '0%';
+                            fileProgressElements[file_index].querySelector('.chunk-info').textContent = 'Reading file...';
+                        }
+                        break;
+                        
+                    case 'chunks_count':
+                        if (fileProgressElements[file_index]) {
+                            const progressBar = fileProgressElements[file_index].querySelector('.progress-bar');
+                            progressBar.style.width = '2%';
+                            progressBar.textContent = '0%';
+                            fileProgressElements[file_index].querySelector('.chunk-info').textContent = `Ready to process ${data.total_chunks} chunks...`;
+                        }
+                        break;
+                        
+                    case 'chunk_progress':
+                        if (fileProgressElements[file_index]) {
+                            const progressBar = fileProgressElements[file_index].querySelector('.progress-bar');
+                            const progress = Math.round(data.progress);
+                            progressBar.style.width = progress + '%';
+                            progressBar.textContent = progress + '%';
+                            fileProgressElements[file_index].querySelector('.chunk-info').textContent = 
+                                `Processing chunk ${data.chunks_processed} of ${data.total_chunks}...`;
+                        }
+                        break;
+                        
+                    case 'file_complete':
+                        if (fileProgressElements[file_index]) {
+                            const progressEl = fileProgressElements[file_index];
+                            const progressBar = progressEl.querySelector('.progress-bar');
+                            const statusEl = progressEl.querySelector('.file-progress-status');
+                            const chunkInfo = progressEl.querySelector('.chunk-info');
+                            
+                            progressBar.style.width = '100%';
+                            progressBar.textContent = '100%';
+                            progressBar.classList.add('success');
+                            statusEl.classList.remove('processing-animation');
+                            statusEl.className = 'file-progress-status status-success';
+                            statusEl.textContent = 'Complete';
+                            chunkInfo.textContent = `Successfully processed ${data.chunks_added} chunks`;
+                        }
+                        break;
+                        
+                    case 'file_error':
+                        if (fileProgressElements[file_index]) {
+                            const progressEl = fileProgressElements[file_index];
+                            const progressBar = progressEl.querySelector('.progress-bar');
+                            const statusEl = progressEl.querySelector('.file-progress-status');
+                            const chunkInfo = progressEl.querySelector('.chunk-info');
+                            
+                            progressBar.style.width = '100%';
+                            progressBar.textContent = 'Error';
+                            progressBar.classList.add('error');
+                            statusEl.classList.remove('processing-animation');
+                            statusEl.className = 'file-progress-status status-error';
+                            statusEl.textContent = 'Failed';
+                            chunkInfo.textContent = data.error || 'Processing failed';
+                        }
+                        break;
+                        
+                    case 'upload_complete':
+                        handleUploadComplete(data.successful_uploads, data.total_files);
+                        break;
+                        
+                    case 'error':
+                        handleUploadError(data.error);
+                        break;
+                }
+            }
+            
+            function handleUploadComplete(successfulUploads, totalFiles) {
+                const summaryClass = successfulUploads < totalFiles ? 'has-errors' : '';
+                const summaryHtml = `
+                    <div class="upload-summary ${summaryClass}">
+                        <h5 style="margin: 0 0 0.5rem 0; color: #2c3e50;">Upload Summary</h5>
+                        <p style="margin: 0;">
+                            Successfully processed: <strong>${successfulUploads}/${totalFiles}</strong> files
+                        </p>
+                        ${successfulUploads > 0 ? 
+                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem;">Documents have been added to the knowledge base. Refresh the page to see updated count.</p>' : 
+                            '<p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #721c24;">Please check the errors above and try again.</p>'
+                        }
+                    </div>
+                `;
+                progressContainer.insertAdjacentHTML('beforeend', summaryHtml);
+                
+                uploadButton.disabled = false;
+                uploadButton.innerHTML = 'Upload More Documents';
+                
+                // Reset file input
+                fileInput.value = '';
+                const preview = document.getElementById('file-preview');
+                if (preview) preview.remove();
+            }
+            
+            function handleUploadError(errorMessage) {
+                const errorHtml = `
+                    <div class="upload-summary has-errors">
+                        <h5 style="margin: 0 0 0.5rem 0; color: #721c24;">Upload Failed</h5>
+                        <p style="margin: 0; color: #721c24;">${errorMessage}</p>
+                    </div>
+                `;
+                progressContainer.insertAdjacentHTML('beforeend', errorHtml);
+                uploadButton.disabled = false;
+                uploadButton.innerHTML = 'Upload & Process Documents';
+            }
+            
+        } catch (error) {
+            handleUploadError(error.message);
+        }
+    });
+    
+    } // End of upload functionality if block
+    
+    // Scroll to upload section if hash is present
+    if (window.location.hash === '#upload-section') {
+        document.getElementById('upload-section').scrollIntoView({ behavior: 'smooth' });
+    }
 </script>
 {% endblock %}

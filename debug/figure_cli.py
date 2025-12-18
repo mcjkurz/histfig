@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import List, Dict, Any
 import logging
 
-# Add the current directory to Python path for imports
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+# Add scripts directory to path (parent directory)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
@@ -311,3 +311,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+

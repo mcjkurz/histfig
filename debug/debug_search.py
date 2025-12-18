@@ -3,7 +3,9 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
+
+# Add scripts directory to path (parent directory)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 from figure_manager import get_figure_manager
 from text_processor import text_processor
@@ -114,5 +116,4 @@ def debug_search(figure_id="zhenghe", query="你去過東南亞、南亞、中�
 if __name__ == "__main__":
     query = sys.argv[1] if len(sys.argv) > 1 else "你去過東南亞、南亞、中東和東非，你覺得哪裡最有趣？"
     debug_search("zhenghe", query)
-
 

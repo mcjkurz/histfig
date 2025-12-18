@@ -6,17 +6,74 @@ Single Flask application that handles all functionality on one port.
 
 from flask import Flask, jsonify, request
 import logging
+from logging.handlers import RotatingFileHandler
 import signal
 import sys
 import os
 import secrets
+from datetime import datetime
+from pathlib import Path
 
 from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
 from chat_routes import chat_bp
 from admin_routes import admin_bp
 
+# Create logs directory
+LOGS_DIR = Path(__file__).parent.parent / "logs"
+LOGS_DIR.mkdir(exist_ok=True)
+
+def setup_logging():
+    """Setup logging with dated log files."""
+    # Create log filename with timestamp
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_filename = LOGS_DIR / f"server_{timestamp}.log"
+    
+    # Create formatters
+    file_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+    console_formatter = logging.Formatter(
+        '%(asctime)s | %(levelname)-8s | %(message)s',
+        datefmt='%H:%M:%S'
+    )
+    
+    # Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    
+    # Clear existing handlers
+    root_logger.handlers.clear()
+    
+    # File handler (rotates at 10MB, keeps 5 backups)
+    file_handler = RotatingFileHandler(
+        log_filename,
+        maxBytes=10*1024*1024,
+        backupCount=5,
+        encoding='utf-8'
+    )
+    file_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+    
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(console_formatter)
+    root_logger.addHandler(console_handler)
+    
+    logging.info(f"Logging initialized. Log file: {log_filename}")
+    return str(log_filename)
+
+# Setup logging
+current_log_file = setup_logging()
+
 # Create main Flask application
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
+
+# Store current log file path in app config for access from routes
+app.config['CURRENT_LOG_FILE'] = current_log_file
+app.config['LOGS_DIR'] = str(LOGS_DIR)
 
 # Configuration
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
@@ -24,9 +81,6 @@ app.config['MAX_FORM_MEMORY_SIZE'] = None
 app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
 app.config['SESSION_TYPE'] = 'filesystem'
 app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
-
-# Setup logging
-logging.basicConfig(level=logging.INFO if not DEBUG_MODE else logging.DEBUG)
 
 # Register blueprints
 app.register_blueprint(chat_bp)  # Chat routes at root (/)

@@ -16,30 +16,33 @@ from config import CHUNK_SIZE, CHUNK_OVERLAP
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = None, chunk_overlap: int = None, 
-                 max_chunk_chars: int = 1000, char_overlap: int = None):
+                 max_chunk_chars: int = 1000, char_overlap: int = None,
+                 overlap_percent: int = 20):
         """
         Initialize document processor with character-based and word-based chunking.
         
         Args:
             chunk_size: Target size for text chunks (in words, used for semantic chunking)
-            chunk_overlap: Overlap between chunks (in words). If None, defaults to 25% of chunk_size
+            chunk_overlap: Overlap between chunks (in words). If None, defaults to overlap_percent of chunk_size
             max_chunk_chars: Maximum characters per chunk (default 1000)
-            char_overlap: Character-based overlap. If None, defaults to 25% of max_chunk_chars
+            char_overlap: Character-based overlap. If None, defaults to overlap_percent of max_chunk_chars
+            overlap_percent: Percentage of chunk size to use as overlap (default 20, range 0-50)
         """
+        # Clamp overlap_percent to valid range
+        self.overlap_percent = max(0, min(50, overlap_percent))
+        
         self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
         if chunk_overlap is not None:
             self.chunk_overlap = chunk_overlap
         else:
-            # Default to 25% of chunk size for overlap
-            self.chunk_overlap = int(self.chunk_size * 0.25)
+            self.chunk_overlap = int(self.chunk_size * self.overlap_percent / 100)
         
         # Character-based chunking parameters
         self.max_chunk_chars = max_chunk_chars
         if char_overlap is not None:
             self.char_overlap = char_overlap
         else:
-            # Default to 25% of max_chunk_chars for overlap
-            self.char_overlap = int(self.max_chunk_chars * 0.25)
+            self.char_overlap = int(self.max_chunk_chars * self.overlap_percent / 100)
         
         # Download NLTK data for sentence tokenization
         try:
@@ -252,10 +255,24 @@ class DocumentProcessor:
                 chunk_index += 1
             
             # Move to next chunk with overlap
-            # Subtract overlap from the break point to create overlapping chunks
-            start_pos = best_break - overlap_size
+            # Calculate target overlap position
+            target_overlap_start = best_break - overlap_size
             
-            # Make sure we don't go backwards
+            # Find a good break point for the overlap start (avoid mid-word)
+            # Search forward from target position to find a space or punctuation
+            overlap_break_chars = ' \n。！？；.!?;'
+            overlap_start = target_overlap_start
+            
+            # Search within 50 chars forward to find a good start point
+            search_end = min(target_overlap_start + 50, best_break)
+            for i in range(target_overlap_start, search_end):
+                if text[i] in overlap_break_chars:
+                    overlap_start = i + 1  # Start after the break char
+                    break
+            
+            start_pos = overlap_start
+            
+            # Make sure we don't go backwards or stay at the same position
             if start_pos <= chunks[-1]["metadata"]["start_char"]:
                 start_pos = best_break
         

@@ -92,7 +92,7 @@ def validate_personality_prompt(prompt: str) -> Tuple[bool, Optional[str]]:
 def validate_year(year_str: str, field_name: str = "Year") -> Tuple[bool, Optional[str]]:
     """
     Validate year format.
-    Must be a numeric year (1-4 digits for ancient to modern dates).
+    Supports negative years for BCE dates (-9999 to 9999).
     
     Args:
         year_str: The year string to validate
@@ -104,15 +104,15 @@ def validate_year(year_str: str, field_name: str = "Year") -> Tuple[bool, Option
     if not year_str:
         return True, None  # Year is optional
     
-    # Check if it's a valid integer
+    # Check if it's a valid integer (including negative)
     try:
         year = int(year_str)
     except ValueError:
         return False, f"{field_name} must be a number"
     
-    # Reasonable range check (1-9999 for ancient to modern dates)
-    if not (1 <= year <= 9999):
-        return False, f"{field_name} must be between 1 and 9999 (e.g., 750 for 8th century, 1950 for modern)"
+    # Range check (-9999 to 9999 for BCE to modern dates)
+    if not (-9999 <= year <= 9999):
+        return False, f"{field_name} must be between -9999 and 9999 (negative for BCE)"
     
     return True, None
 

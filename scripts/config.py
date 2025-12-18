@@ -56,7 +56,7 @@ CHUNK_OVERLAP = int(os.environ.get("CHUNK_OVERLAP", "62"))  # Overlap in words (
 
 # Character-based chunking (primary chunking method)
 MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))  # Maximum characters per chunk
-CHAR_OVERLAP = int(os.environ.get("CHAR_OVERLAP", "250"))  # Character overlap (25% of MAX_CHUNK_CHARS)
+CHAR_OVERLAP = int(os.environ.get("CHAR_OVERLAP", "200"))  # Character overlap (20% of MAX_CHUNK_CHARS)
 
 # File Upload Settings
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'md'}

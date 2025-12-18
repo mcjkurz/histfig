@@ -16,6 +16,10 @@ from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
 from config import ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR, ADMIN_PASSWORD, TEMP_UPLOAD_DIR
+from flask import current_app
+from datetime import datetime
+import glob
+import re
 
 # Create blueprint with /admin prefix
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates', static_folder='../static')
@@ -175,7 +179,7 @@ def figure_detail(figure_id):
 @admin_bp.route('/figure/<figure_id>/edit')
 @login_required
 def edit_figure(figure_id):
-    """Form to edit a figure."""
+    """Form to edit a figure (includes upload and clean documents)."""
     try:
         figure_manager = get_figure_manager()
         metadata = figure_manager.get_figure_metadata(figure_id)
@@ -183,7 +187,8 @@ def edit_figure(figure_id):
             flash(f'Figure {figure_id} not found', 'error')
             return redirect(url_for('admin.index'))
         
-        return render_template('admin/edit_figure.html', figure=metadata)
+        stats = figure_manager.get_figure_stats(figure_id)
+        return render_template('admin/edit_figure.html', figure=metadata, stats=stats)
     except Exception as e:
         flash(f'Error loading figure: {str(e)}', 'error')
         return redirect(url_for('admin.index'))
@@ -279,18 +284,8 @@ def update_figure(figure_id):
 @admin_bp.route('/figure/<figure_id>/upload')
 @login_required
 def upload_documents_form(figure_id):
-    """Form to upload documents to a figure."""
-    try:
-        figure_manager = get_figure_manager()
-        metadata = figure_manager.get_figure_metadata(figure_id)
-        if not metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
-        
-        return render_template('admin/upload_documents.html', figure=metadata)
-    except Exception as e:
-        flash(f'Error loading figure: {str(e)}', 'error')
-        return redirect(url_for('admin.index'))
+    """Redirect to edit page which now includes upload functionality."""
+    return redirect(url_for('admin.edit_figure', figure_id=figure_id) + '#upload-section')
 
 @admin_bp.route('/figure/<figure_id>/upload', methods=['POST'])
 @login_required
@@ -327,9 +322,16 @@ def upload_documents(figure_id):
         except (ValueError, TypeError):
             max_chunk_chars = 1000
         
+        try:
+            overlap_percent = int(request.form.get('overlap_percent', '20'))
+            overlap_percent = max(0, min(50, overlap_percent))
+        except (ValueError, TypeError):
+            overlap_percent = 20
+        
         document_processor = DocumentProcessor(
             chunk_size=max_length,
-            max_chunk_chars=max_chunk_chars
+            max_chunk_chars=max_chunk_chars,
+            overlap_percent=overlap_percent
         )
         
         if 'files' not in request.files:
@@ -473,6 +475,12 @@ def upload_documents_stream(figure_id):
         max_chunk_chars = 1000
     
     try:
+        overlap_percent = int(request.form.get('overlap_percent', '25'))
+        overlap_percent = max(0, min(50, overlap_percent))
+    except (ValueError, TypeError):
+        overlap_percent = 25
+    
+    try:
         files = request.files.getlist('files')
         for file in files:
             if file.filename:
@@ -503,7 +511,8 @@ def upload_documents_stream(figure_id):
             
             document_processor = DocumentProcessor(
                 chunk_size=max_length,
-                max_chunk_chars=max_chunk_chars
+                max_chunk_chars=max_chunk_chars,
+                overlap_percent=overlap_percent
             )
             
             if not files_data:
@@ -648,8 +657,169 @@ def api_figure_stats(figure_id):
 def serve_figure_image(filename):
     """Serve figure images."""
     try:
-        return send_from_directory(FIGURE_IMAGES_DIR, filename)
+        # Use absolute path to ensure correct resolution
+        figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
+        full_path = os.path.join(figure_images_path, filename)
+        logging.info(f"Serving figure image {filename} from {figure_images_path}")
+        logging.info(f"Full path: {full_path}, exists: {os.path.exists(full_path)}")
+        return send_from_directory(figure_images_path, filename)
     except Exception as e:
         logging.error(f"Error serving figure image {filename}: {str(e)}")
+        logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
         return jsonify({'error': 'Image not found'}), 404
+
+
+# ============== LOGS MANAGEMENT ==============
+
+def get_logs_dir():
+    """Get the logs directory path."""
+    return current_app.config.get('LOGS_DIR', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs'))
+
+def get_log_files():
+    """Get list of available log files sorted by modification time (newest first)."""
+    logs_dir = get_logs_dir()
+    if not os.path.exists(logs_dir):
+        return []
+    
+    log_files = []
+    for filepath in glob.glob(os.path.join(logs_dir, 'server_*.log*')):
+        stat = os.stat(filepath)
+        filename = os.path.basename(filepath)
+        
+        # Parse date from filename (format: server_YYYY-MM-DD_HH-MM-SS.log)
+        match = re.match(r'server_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.log', filename)
+        if match:
+            date_str = match.group(1)
+            try:
+                created = datetime.strptime(date_str, '%Y-%m-%d_%H-%M-%S')
+            except ValueError:
+                created = datetime.fromtimestamp(stat.st_mtime)
+        else:
+            created = datetime.fromtimestamp(stat.st_mtime)
+        
+        log_files.append({
+            'filename': filename,
+            'filepath': filepath,
+            'size': stat.st_size,
+            'size_human': format_file_size(stat.st_size),
+            'modified': datetime.fromtimestamp(stat.st_mtime),
+            'created': created,
+            'is_current': filepath == current_app.config.get('CURRENT_LOG_FILE', '')
+        })
+    
+    # Sort by creation date (newest first)
+    log_files.sort(key=lambda x: x['created'], reverse=True)
+    return log_files
+
+def format_file_size(size_bytes):
+    """Format file size in human readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"
+
+@admin_bp.route('/logs')
+@login_required
+def logs():
+    """Display log files viewer."""
+    log_files = get_log_files()
+    return render_template('admin/logs.html', log_files=log_files)
+
+@admin_bp.route('/api/logs')
+@login_required
+def api_logs_list():
+    """API endpoint to get list of log files."""
+    log_files = get_log_files()
+    # Convert datetime objects to strings for JSON
+    for f in log_files:
+        f['modified'] = f['modified'].isoformat()
+        f['created'] = f['created'].isoformat()
+        del f['filepath']  # Don't expose full paths
+    return jsonify(log_files)
+
+@admin_bp.route('/api/logs/<filename>')
+@login_required
+def api_log_content(filename):
+    """API endpoint to get content of a specific log file."""
+    # Sanitize filename to prevent directory traversal
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
+        return jsonify({'error': 'Invalid log file name'}), 400
+    
+    logs_dir = get_logs_dir()
+    filepath = os.path.join(logs_dir, safe_filename)
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Log file not found'}), 404
+    
+    try:
+        # Get optional parameters
+        lines = request.args.get('lines', type=int)
+        search = request.args.get('search', '')
+        level = request.args.get('level', '')
+        
+        with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
+            content = f.readlines()
+        
+        # Filter by level if specified
+        if level:
+            level_upper = level.upper()
+            content = [line for line in content if f'| {level_upper}' in line or level_upper in line[:50]]
+        
+        # Filter by search term if specified
+        if search:
+            search_lower = search.lower()
+            content = [line for line in content if search_lower in line.lower()]
+        
+        # Limit to last N lines if specified
+        if lines and lines > 0:
+            content = content[-lines:]
+        
+        return jsonify({
+            'filename': safe_filename,
+            'content': ''.join(content),
+            'total_lines': len(content),
+            'is_current': filepath == current_app.config.get('CURRENT_LOG_FILE', '')
+        })
+    except Exception as e:
+        logging.error(f"Error reading log file {filename}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+@admin_bp.route('/api/logs/<filename>/download')
+@login_required
+def download_log(filename):
+    """Download a log file."""
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
+        return jsonify({'error': 'Invalid log file name'}), 400
+    
+    logs_dir = get_logs_dir()
+    return send_from_directory(logs_dir, safe_filename, as_attachment=True)
+
+@admin_bp.route('/api/logs/<filename>/delete', methods=['POST'])
+@login_required
+def delete_log(filename):
+    """Delete a log file (cannot delete current log)."""
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
+        return jsonify({'error': 'Invalid log file name'}), 400
+    
+    logs_dir = get_logs_dir()
+    filepath = os.path.join(logs_dir, safe_filename)
+    
+    # Prevent deleting current log file
+    if filepath == current_app.config.get('CURRENT_LOG_FILE', ''):
+        return jsonify({'error': 'Cannot delete the current active log file'}), 400
+    
+    if not os.path.exists(filepath):
+        return jsonify({'error': 'Log file not found'}), 404
+    
+    try:
+        os.remove(filepath)
+        logging.info(f"Deleted log file: {safe_filename}")
+        return jsonify({'success': True, 'message': f'Deleted {safe_filename}'})
+    except Exception as e:
+        logging.error(f"Error deleting log file {filename}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
 

@@ -7,8 +7,7 @@
     <div class="card-header">
         <h2>{{ figure.name }}</h2>
         <div style="display: flex; gap: 0.5rem;">
-            <a href="{{ url_for('admin.edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">Edit</a>
-            <a href="{{ url_for('admin.upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success">Upload Documents</a>
+            <a href="{{ url_for('admin.edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">Edit Figure</a>
             <form method="POST" action="{{ url_for('admin.delete_figure', figure_id=figure.figure_id) }}" style="display: inline;" onsubmit="return confirmDelete('{{ figure.name }}')">
                 <button type="submit" class="btn btn-danger">Delete</button>
             </form>
@@ -82,14 +81,8 @@
                 <div style="margin-top: 2rem;">
                     <h4 style="color: #2c3e50; margin-bottom: 1rem;">Quick Actions</h4>
                     <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                        <a href="{{ url_for('admin.upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success" style="width: 100%;">Upload Documents</a>
+                        <a href="{{ url_for('admin.edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="width: 100%;">Edit Figure & Documents</a>
                         <a href="http://localhost:5001" target="_blank" class="btn btn-primary" style="width: 100%;">Chat with {{ figure.name }}</a>
-                        <a href="{{ url_for('admin.edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary" style="width: 100%;">Edit Figure</a>
-                        {% if stats.document_count and stats.document_count > 0 %}
-                        <form method="POST" action="{{ url_for('admin.clean_figure_documents', figure_id=figure.figure_id) }}" style="width: 100%;" onsubmit="return confirmClean('{{ figure.name }}')">
-                            <button type="submit" class="btn btn-warning" style="width: 100%;">Clean Documents</button>
-                        </form>
-                        {% endif %}
                     </div>
                 </div>
 
@@ -116,31 +109,11 @@
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.5rem;">
             <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Upload Documents</h4>
-                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Add PDF or text files containing this figure's writings, speeches, or other relevant content.</p>
-                <a href="{{ url_for('admin.upload_documents_form', figure_id=figure.figure_id) }}" class="btn btn-success">Upload Files</a>
-            </div>
-            
-            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Search Documents</h4>
-                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Test document retrieval using the command line interface.</p>
-                <code style="background: white; padding: 0.5rem; border-radius: 4px; font-size: 0.8rem; display: block; margin-bottom: 1rem;">python scripts/figure_cli.py search {{ figure.figure_id }} "your query"</code>
-            </div>
-            
-            <div style="padding: 1.5rem; background: #f8f9fa; border-radius: 8px; text-align: center;">
-                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Edit Settings</h4>
-                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Modify the figure's personality prompt, description, and metadata.</p>
+                <h4 style="margin-bottom: 1rem; color: #2c3e50;">Edit & Upload</h4>
+                <p style="color: #666; margin-bottom: 1rem; font-size: 0.9rem;">Modify figure settings, upload documents, or clean the knowledge base.</p>
                 <a href="{{ url_for('admin.edit_figure', figure_id=figure.figure_id) }}" class="btn btn-secondary">Edit Figure</a>
-            </div>
-        </div>
-    </div>
-</div>
 
-<div class="card">
-    <div class="card-header">
-        <h3>Testing & Preview</h3>
-    </div>
-    <div class="card-body">
+                
         <div style="background: #f8f9fa; padding: 2rem; border-radius: 8px; text-align: center;">
             <h4 style="color: #2c3e50; margin-bottom: 1rem;">Ready to Chat?</h4>
             <p style="color: #666; margin-bottom: 2rem;">Open the chat interface and select "{{ figure.name }}" from the figure dropdown to start a conversation.</p>

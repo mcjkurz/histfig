@@ -8,8 +8,8 @@ import os
 import json
 import random
 
-# Add scripts directory to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scripts'))
+# Add scripts directory to path (parent directory)
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 
 import chromadb
 from chromadb.config import Settings
@@ -17,8 +17,8 @@ from chromadb.config import Settings
 def peek_database(figure_id="zhenghe"):
     """Peek into database and show both segmented and non-segmented text"""
     
-    # Initialize ChromaDB client
-    db_path = "./chroma_db"
+    # Initialize ChromaDB client (path relative to project root)
+    db_path = os.path.join(os.path.dirname(__file__), '..', 'chroma_db')
     client = chromadb.PersistentClient(
         path=db_path,
         settings=Settings(
@@ -110,5 +110,4 @@ def peek_database(figure_id="zhenghe"):
 if __name__ == "__main__":
     figure_id = sys.argv[1] if len(sys.argv) > 1 else "zhenghe"
     peek_database(figure_id)
-
 

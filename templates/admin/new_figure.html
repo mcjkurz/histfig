@@ -54,21 +54,21 @@
                     <div class="form-group">
                         <label for="birth_year">Birth Year</label>
                         <input type="text" id="birth_year" name="birth_year" class="form-control"
-                               placeholder="e.g., 750 or 1769" 
-                               pattern="[0-9]{1,4}"
-                               maxlength="4"
-                               title="Enter a year (e.g., 750 for 8th century, 1769 for modern)">
-                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 750 or 1769)</small>
+                               placeholder="e.g., -551 or 1769" 
+                               pattern="-?[0-9]{1,4}"
+                               maxlength="5"
+                               title="Enter a year (e.g., -551 for BCE, 1769 for CE)">
+                        <small style="color: #666; font-size: 0.8rem;">Use negative numbers for BCE (e.g., -551 for 551 BCE)</small>
                     </div>
 
                     <div class="form-group">
                         <label for="death_year">Death Year</label>
                         <input type="text" id="death_year" name="death_year" class="form-control"
-                               placeholder="e.g., 814 or 1821" 
-                               pattern="[0-9]{1,4}"
-                               maxlength="4"
-                               title="Enter a year (e.g., 814 for 9th century, 1821 for modern)">
-                        <small style="color: #666; font-size: 0.8rem;">Year format (1-4 digits, e.g., 814 or 1821)</small>
+                               placeholder="e.g., -479 or 1821" 
+                               pattern="-?[0-9]{1,4}"
+                               maxlength="5"
+                               title="Enter a year (e.g., -479 for BCE, 1821 for CE)">
+                        <small style="color: #666; font-size: 0.8rem;">Use negative numbers for BCE (e.g., -479 for 479 BCE)</small>
                     </div>
 
                     <div class="form-group">
@@ -172,17 +172,22 @@
         this.value = this.value.replace(/[^a-zA-Z]/g, '');
     });
     
-    // Validate year inputs (numbers only, up to 4 digits)
+    // Validate year inputs (allow negative numbers for BCE)
     ['birth_year', 'death_year'].forEach(id => {
         const input = document.getElementById(id);
         if (input) {
             input.addEventListener('input', function() {
-                // Remove non-numeric characters
-                this.value = this.value.replace(/[^0-9]/g, '');
-                // Limit to 4 digits
-                if (this.value.length > 4) {
-                    this.value = this.value.slice(0, 4);
+                let val = this.value;
+                let isNegative = val.startsWith('-');
+                val = val.replace(/[^0-9-]/g, '');
+                val = val.replace(/-/g, '');
+                if (isNegative || this.value.startsWith('-')) {
+                    val = '-' + val;
                 }
+                if (val.length > 5) {
+                    val = val.slice(0, 5);
+                }
+                this.value = val;
             });
         }
     });
@@ -217,16 +222,16 @@
             return false;
         }
         
-        // Year validation
-        if (birthYear && !/^\d{1,4}$/.test(birthYear)) {
+        // Year validation (allow negative for BCE)
+        if (birthYear && !/^-?\d{1,4}$/.test(birthYear)) {
             e.preventDefault();
-            alert('Birth year must be a 1-4 digit number (e.g., 750 or 1769)!');
+            alert('Birth year must be a number between -9999 and 9999!');
             return false;
         }
         
-        if (deathYear && !/^\d{1,4}$/.test(deathYear)) {
+        if (deathYear && !/^-?\d{1,4}$/.test(deathYear)) {
             e.preventDefault();
-            alert('Death year must be a 1-4 digit number (e.g., 814 or 1821)!');
+            alert('Death year must be a number between -9999 and 9999!');
             return false;
         }
         
