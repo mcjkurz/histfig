@@ -23,13 +23,13 @@ Before running, export your API credentials:
 
 ```bash
 export EXTERNAL_API_KEY="your-api-key"
-export EXTERNAL_BASE_URL="https://api.openai.com/v1"  # or your provider
+export EXTERNAL_BASE_URL="https://api.poe.com/v1"  # default
 export ADMIN_PASSWORD="your-secure-password"
 
-# Optional: Query augmentation
+# Optional: Query augmentation (uses same EXTERNAL_API_KEY)
 export QUERY_AUGMENTATION_ENABLED="true"
-export QUERY_AUGMENTATION_MODEL="gpt-4"
-export QUERY_AUGMENTATION_API_URL="https://api.openai.com/v1"
+export QUERY_AUGMENTATION_MODEL="GPT-5-nano"  # default
+export QUERY_AUGMENTATION_API_URL="https://api.poe.com/v1"
 ```
 
 ### 3. Run
