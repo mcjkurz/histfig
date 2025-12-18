@@ -1,11 +1,7 @@
 #!/bin/bash
 
-# Historical Figures Chat System - FOREGROUND MODE
-# 
-# This script runs the server in the TERMINAL (foreground mode).
-# - The server will run while this terminal is open
-# - Press Ctrl+C to stop the server
-# - Closing the terminal will stop the server
+# Historical Figures Chat System - Background Mode
+# Runs the server in background with timestamped log files
 
 echo "🚀 Starting Historical Figures Chat System..."
 echo "================================================"
@@ -19,22 +15,52 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Initialize application (creates directories, checks dependencies)
-python scripts/init_app.py || exit 1
-
 # Get port configuration
-APP_PORT=$(python scripts/get_ports.py app)
+APP_PORT=$(python3 scripts/get_ports.py app 2>/dev/null || echo "5001")
 
-echo ""
-echo "🌐 Access URLs:"
-echo "   Chat Interface: http://localhost:$APP_PORT/"
-echo "   Admin Interface: http://localhost:$APP_PORT/admin/"
-echo ""
-echo "Press Ctrl+C to stop the application"
+# Check if already running
+RUNNING_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
+if [ ! -z "$RUNNING_PIDS" ]; then
+    echo "⚠️  Server already running on port $APP_PORT"
+    echo "💡 Run ./kill_ports.sh first to stop existing server"
+    exit 1
+fi
+
+# Create logs directory if needed
+mkdir -p logs
+
+# Create timestamped log file
+LOG_FILE="logs/server_$(date +%Y-%m-%d_%H-%M-%S).log"
+
+echo "📝 Log file: $LOG_FILE"
+
+# Start server in background
+(
+    source venv/bin/activate
+    python scripts/init_app.py
+    python scripts/main.py
+) >> "$LOG_FILE" 2>&1 &
+
+# Wait for startup
+sleep 3
+
+# Check if started successfully
+STARTED_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
+if [ ! -z "$STARTED_PIDS" ]; then
+    echo "✅ Server started successfully!"
+    echo ""
+    echo "🌐 Access URLs:"
+    echo "   Chat Interface: http://localhost:$APP_PORT/"
+    echo "   Admin Interface: http://localhost:$APP_PORT/admin/"
+    echo ""
+    echo "💡 Commands:"
+    echo "   Check status: ./check_status.sh"
+    echo "   Stop server:  ./kill_ports.sh"
+    echo "   View logs:    tail -f $LOG_FILE"
+else
+    echo "❌ Failed to start. Check logs:"
+    tail -20 "$LOG_FILE" 2>/dev/null
+    exit 1
+fi
+
 echo "================================================"
-
-# Start unified application
-python scripts/main.py

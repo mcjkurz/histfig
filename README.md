@@ -9,7 +9,7 @@ Chat with historical figures using RAG-enhanced AI. Upload documents and have co
 ### 1. Clone & Install
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/mcjkurz/histfig.git
 cd histfig
 
 python3 -m venv venv
@@ -39,11 +39,11 @@ export QUERY_AUGMENTATION_API_KEY="your-key"  # optional, uses EXTERNAL_API_KEY 
 ./start.sh
 ```
 
-Access at: `http://localhost:5001/`
+The server runs in background. Access at:
+- Chat: `http://localhost:5001/`
+- Admin: `http://localhost:5001/admin/`
 
-Admin panel: `http://localhost:5001/admin/`
-
-Press `Ctrl+C` to stop.
+Logs are saved to `logs/server_<timestamp>.log`
 
 ## Utility Scripts
 
