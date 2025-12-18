@@ -26,10 +26,11 @@ export EXTERNAL_API_KEY="your-api-key"
 export EXTERNAL_BASE_URL="https://api.poe.com/v1"  # default
 export ADMIN_PASSWORD="your-secure-password"
 
-# Optional: Query augmentation (uses same EXTERNAL_API_KEY)
+# Optional: Query augmentation (defaults to EXTERNAL_API_KEY if not set)
 export QUERY_AUGMENTATION_ENABLED="true"
 export QUERY_AUGMENTATION_MODEL="GPT-5-nano"  # default
 export QUERY_AUGMENTATION_API_URL="https://api.poe.com/v1"
+export QUERY_AUGMENTATION_API_KEY="your-key"  # optional, uses EXTERNAL_API_KEY by default
 ```
 
 ### 3. Run

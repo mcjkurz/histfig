@@ -11,7 +11,7 @@ from config import (
     QUERY_AUGMENTATION_ENABLED,
     QUERY_AUGMENTATION_MODEL,
     QUERY_AUGMENTATION_API_URL,
-    EXTERNAL_API_KEY
+    QUERY_AUGMENTATION_API_KEY
 )
 
 
@@ -33,7 +33,7 @@ def augment_query(query: str, figure_name: str = "a historical figure", api_key:
         return query
     
     # Use provided API key or fall back to config
-    key = api_key or EXTERNAL_API_KEY
+    key = api_key or QUERY_AUGMENTATION_API_KEY
     if not key or not key.strip():
         logging.warning("No API key available for query augmentation, using original query")
         return query

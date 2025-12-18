@@ -29,9 +29,12 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")  # Change in produ
 
 # Available Models for External API
 AVAILABLE_MODELS = [
+    "GPT-5.2",
+    "GPT-5.2-Instant",
+    "GPT-5.1",
+    "GPT-5.1-Instant",
     "GPT-5-mini",
     "GPT-5-nano", 
-    "GPT-4.1-mini",
     "Gemini-2.5-Flash",
     "Nova-Micro-1.0",
     "Grok-4-Fast-Non-Reasoning",
@@ -68,3 +71,4 @@ RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
 QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")
+QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", EXTERNAL_API_KEY)  # Defaults to EXTERNAL_API_KEY
