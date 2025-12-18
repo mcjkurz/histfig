@@ -54,10 +54,7 @@ Logs are saved to `logs/server_<timestamp>.log`
 
 ## Configuration
 
-Edit `scripts/config.py` to change:
-- `APP_PORT` - Server port (default: 5001)
-- `OLLAMA_URL` / `OLLAMA_MODEL` - For local Ollama setup
-- `MAX_CONTENT_LENGTH` - Max upload size
+Other settings (port, Ollama config, upload limits, etc.) can be changed in `scripts/config.py`.
 
 ## Requirements
 
