@@ -54,7 +54,7 @@ Logs are saved to `logs/server_<timestamp>.log`
 
 ## Configuration
 
-Other settings (port, Ollama config, upload limits, etc.) can be changed in `scripts/config.py`.
+Other settings (port, Ollama config, embedding model, upload limits, etc.) can be changed in `scripts/config.py`.
 
 ## Requirements
 

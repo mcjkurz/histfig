@@ -41,8 +41,8 @@ temp/
 tests/
 test/
 
-# Static files (user-specific content like figure images)
-static/
+# Static files - only ignore user-generated content
+static/figure_images/
 
 # ChromaDB persist directory (can be large)
 chroma_db/
