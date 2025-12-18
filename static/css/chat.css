@@ -661,6 +661,7 @@ body {
     transition: border-color 0.2s;
     -webkit-appearance: none;
     appearance: none;
+    align-self: stretch;
 }
 
 .chat-input:focus {
@@ -681,6 +682,8 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    align-self: center;
+    flex-shrink: 0;
 }
 
 .send-button:hover:not(:disabled) {
@@ -706,6 +709,8 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    align-self: center;
+    flex-shrink: 0;
 }
 
 .stop-button:hover {
@@ -884,6 +889,8 @@ body {
         justify-content: center;
         max-width: 1600px;
         margin: 0 auto;
+        height: 100vh;
+        height: 100dvh;
     }
 
     .figure-panel {
@@ -891,7 +898,7 @@ body {
         left: 0 !important;
         top: auto !important;
         width: 350px;
-        height: auto !important;
+        max-height: 100%;
         border-radius: 20px;
         border: 1px solid #4a5f7a;
         order: 1;
@@ -903,6 +910,7 @@ body {
         display: flex !important;
         visibility: visible !important;
         opacity: 1 !important;
+        flex-shrink: 0;
     }
     
     .figure-panel.closed,
@@ -922,6 +930,9 @@ body {
         border-radius: 20px;
         transition: margin-right 0.3s ease;
         order: 2;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
     }
 
     .control-panel {
@@ -929,13 +940,14 @@ body {
         right: auto !important;
         top: auto !important;
         width: 380px;
-        height: auto;
+        max-height: 100%;
         border-radius: 20px;
         border: 1px solid #4a5f7a;
         transition: none;
         z-index: auto;
         order: 3;
         box-shadow: 0 20px 40px rgba(0,0,0,0.3);
+        flex-shrink: 0;
     }
 
     .control-panel.closed,
