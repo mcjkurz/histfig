@@ -269,10 +269,16 @@ class ChatApp {
     getSelectedModelName() {
         // If "Other" is selected, use the custom input value
         if (this.modelSelect.value === 'Other') {
-            return this.customModelName.value || 'GPT-5-mini';  // fallback
+            return this.customModelName.value || '';
         }
-        // Otherwise use the selected dropdown value
-        return this.modelSelect.value || 'GPT-5-mini';
+        // Return the selected dropdown value (may be empty if no models available)
+        return this.modelSelect.value || '';
+    }
+
+    hasValidModel() {
+        // Check if a valid model is selected (not empty, not "no models" placeholder)
+        const modelName = this.getSelectedModelName();
+        return modelName && modelName.trim() !== '';
     }
 
     updateModelListForSource() {
@@ -288,11 +294,14 @@ class ChatApp {
                     option.textContent = model;
                     this.modelSelect.appendChild(option);
                 });
+                this.modelSelect.disabled = false;
             } else {
                 const option = document.createElement('option');
                 option.value = '';
                 option.textContent = 'No local models available';
+                option.disabled = true;
                 this.modelSelect.appendChild(option);
+                this.modelSelect.disabled = true;
             }
             // Hide custom model name input for local
             if (this.customModelName) {
@@ -300,6 +309,7 @@ class ChatApp {
             }
         } else {
             // Show external models
+            this.modelSelect.disabled = false;
             if (this.externalModels && this.externalModels.length > 0) {
                 // Use configured external models
                 this.externalModels.forEach(model => {
@@ -313,9 +323,21 @@ class ChatApp {
                 otherOption.value = 'Other';
                 otherOption.textContent = 'Other';
                 this.modelSelect.appendChild(otherOption);
-            } else {
+            } else if (this.externalModels === null) {
                 // No configured external models - fetch from external API or show defaults
                 this.loadExternalModelsFromApi();
+            } else {
+                // External models explicitly set to empty array in config
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No external models configured';
+                option.disabled = true;
+                this.modelSelect.appendChild(option);
+                // Still add "Other" option so user can enter custom model
+                const otherOption = document.createElement('option');
+                otherOption.value = 'Other';
+                otherOption.textContent = 'Other (enter custom)';
+                this.modelSelect.appendChild(otherOption);
             }
         }
     }
@@ -696,26 +718,70 @@ class ChatApp {
             console.log('Local models:', this.localModels);
             console.log('External models:', this.externalModels);
             
-            // Set default source to external
-            this.currentSource = 'external';
+            // Determine which sources have models available
+            const hasLocalModels = this.localModels && this.localModels.length > 0;
+            const hasExternalModels = this.externalModels && this.externalModels.length > 0;
+            
+            // Update source selector availability
+            this.updateSourceSelectorOptions(hasLocalModels, hasExternalModels);
+            
+            // Set default source: prefer external if available, otherwise local
+            if (hasExternalModels || !hasLocalModels) {
+                this.currentSource = 'external';
+            } else {
+                this.currentSource = 'local';
+            }
+            
             if (this.modelSourceSelect) {
-                this.modelSourceSelect.value = 'external';
+                this.modelSourceSelect.value = this.currentSource;
             }
             
             // Update model list for current source
             this.updateModelListForSource();
             
-            // Show external API config since it's the default
+            // Show/hide external API config based on source
             if (this.externalApiConfig) {
-                this.externalApiConfig.style.display = 'block';
+                this.externalApiConfig.style.display = this.currentSource === 'external' ? 'block' : 'none';
             }
-            this.loadExternalApiKeyStatus();
+            if (this.currentSource === 'external') {
+                this.loadExternalApiKeyStatus();
+            }
         } catch (error) {
             console.error('Failed to load models:', error);
             // Fallback to default behavior
             this.localModels = [];
             this.externalModels = null;
+            this.updateSourceSelectorOptions(false, false);
             this.updateModelListForSource();
+        }
+    }
+
+    updateSourceSelectorOptions(hasLocalModels, hasExternalModels) {
+        if (!this.modelSourceSelect) return;
+        
+        const externalOption = this.modelSourceSelect.querySelector('option[value="external"]');
+        const localOption = this.modelSourceSelect.querySelector('option[value="local"]');
+        
+        // Update option text to indicate availability
+        if (localOption) {
+            if (!hasLocalModels) {
+                localOption.textContent = 'Local (no models)';
+                localOption.style.color = '#888';
+            } else {
+                localOption.textContent = 'Local';
+                localOption.style.color = '';
+            }
+        }
+        
+        // External models can be fetched dynamically, so only mark unavailable if explicitly empty
+        if (externalOption) {
+            if (this.externalModels && this.externalModels.length === 0) {
+                externalOption.textContent = 'External API (no models configured)';
+                externalOption.style.color = '#888';
+            } else {
+                externalOption.textContent = 'External API';
+                externalOption.style.color = '';
+            }
         }
     }
 
@@ -1099,6 +1165,13 @@ class ChatApp {
         if (this.isStreaming) return;
         const message = this.messageInput.value.trim();
         if (!message) return;
+        
+        // Check if a valid model is selected
+        if (!this.hasValidModel()) {
+            const sourceName = this.currentSource === 'local' ? 'local' : 'external';
+            this.showError(`No ${sourceName} model available. Please select a different source or configure models.`);
+            return;
+        }
         
         // Check if External API is selected but no API key provided
         if (this.currentSource === 'external') {

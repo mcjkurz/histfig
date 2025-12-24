@@ -301,6 +301,9 @@ def chat():
         if not message:
             return jsonify({'error': 'Message is required'}), 400
         
+        if not model:
+            return jsonify({'error': 'No model specified. Please select a model.'}), 400
+        
         conversation_messages = build_conversation_messages()
         add_to_conversation_history("user", message)
         
