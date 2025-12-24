@@ -6,8 +6,6 @@ Chat with historical figures using RAG-enhanced AI. Upload documents and have co
 
 ## Quick Start
 
-### 1. Clone & Install
-
 ```bash
 git clone https://github.com/mcjkurz/histfig.git
 cd histfig
@@ -17,45 +15,32 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Set Environment Variables
-
-Before running, export your API credentials:
+### Environment Variables
 
 ```bash
-# LLM Configuration (OpenAI-compatible API)
-export LLM_PROVIDER="local"  # "local" for Ollama, "external" for remote API
-export LLM_API_URL="http://localhost:11434/v1"  # For Ollama, or "https://api.poe.com/v1" etc.
-export LLM_API_KEY="your-api-key"  # Required for external APIs
-export DEFAULT_MODEL="gpt-oss:120b"
-
+export LLM_API_URL="http://localhost:11434/v1"  # Any OpenAI-compatible endpoint
+export LLM_API_KEY="your-api-key"               # Required for most APIs
+export DEFAULT_MODEL="your-model-name"
 export ADMIN_PASSWORD="your-secure-password"
-
-# Optional: Query augmentation (uses LLM_API_KEY by default)
-export QUERY_AUGMENTATION_ENABLED="true"
-export QUERY_AUGMENTATION_MODEL="GPT-5-nano"
-export QUERY_AUGMENTATION_API_URL="https://api.poe.com/v1"
-export QUERY_AUGMENTATION_API_KEY="your-key"  # optional
 ```
 
-### 3. Run
+### Run
 
 ```bash
 ./start.sh
 ```
 
-The server runs in background. Access at:
+Access at:
 - Chat: `http://localhost:5001/`
 - Admin: `http://localhost:5001/admin/`
 
-Logs are saved to `logs/server_<timestamp>.log`
-
-## Utility Scripts
+## Scripts
 
 | Script | Purpose |
 |--------|---------|
-| `./check_status.sh` | Check if server is running |
-| `./kill_ports.sh` | Stop the server |
+| `./check_status.sh` | Check server status |
+| `./kill_ports.sh` | Stop server |
 
 ## Configuration
 
-All settings can be changed in `config.py` including: port, embedding model, upload limits, chunk size, etc.
+All settings in `config.py`: port, models, upload limits, chunking, etc.
