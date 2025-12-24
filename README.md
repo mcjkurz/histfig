@@ -48,7 +48,6 @@ Access at:
 | Script | Purpose |
 |--------|---------|
 | `./start.sh` | Start server in background |
-| `./restart.sh` | Restart server |
 | `./utils/check_status.sh` | Check server status |
 | `./utils/kill_ports.sh` | Stop server |
 | `./utils/clean_logs.sh` | Remove log files |
