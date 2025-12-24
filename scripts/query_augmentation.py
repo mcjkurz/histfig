@@ -77,7 +77,6 @@ Augmented query:"""
         if 'choices' in result and len(result['choices']) > 0:
             augmented = result['choices'][0]['message']['content'].strip()
             
-            # Validation: ensure augmented query is not shorter than original
             if augmented and len(augmented) >= len(query) and len(augmented) < 2000:
                 logging.info(f"Query augmented: '{query}' -> '{augmented}'")
                 return augmented

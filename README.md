@@ -22,7 +22,16 @@ export LLM_API_URL="http://localhost:11434/v1"  # Any OpenAI-compatible endpoint
 export LLM_API_KEY="your-api-key"               # Required for most APIs
 export DEFAULT_MODEL="your-model-name"
 export ADMIN_PASSWORD="your-secure-password"
+
+# Model source selection (External API is default in UI)
+export EXTERNAL_MODELS="GPT-5-mini,GPT-5-nano,Claude-3"  # Models for external API
+export LOCAL_MODELS="gpt-oss:20b,llama2,mistral"           # Models for local source
 ```
+
+**Model Source Notes:**
+- Leave `EXTERNAL_MODELS` empty to fetch available models from the external API
+- Leave `LOCAL_MODELS` empty to fetch available models from local LLM API
+- UI defaults to External API source
 
 ### Run
 

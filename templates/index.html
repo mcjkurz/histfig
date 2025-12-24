@@ -113,35 +113,29 @@
                     <div class="control-section-header">AI Model</div>
                     <div class="control-section-content">
                         <div class="control-item">
-                            <label class="control-label">Select Model</label>
-                            <select id="model-select" class="control-select">
-                                <option value="llama2">llama2</option>
+                            <label class="control-label">Source</label>
+                            <select id="model-source-select" class="control-select">
                                 <option value="external">External API</option>
+                                <option value="local">Local</option>
                             </select>
                         </div>
+                        <div class="control-item">
+                            <label class="control-label">Select Model</label>
+                            <select id="model-select" class="control-select">
+                                <option value="">Loading models...</option>
+                            </select>
+                            <input type="text" id="custom-model-name" class="control-input" 
+                                   placeholder="Enter custom model name" 
+                                   style="display: none; margin-top: 10px;">
+                        </div>
                         
-                        <!-- External API Configuration (hidden by default) -->
-                        <div id="external-api-config" style="display: none; margin-top: 15px;">
+                        <!-- External API Configuration (shown when external source selected) -->
+                        <div id="external-api-config" style="margin-top: 15px;">
                             <div class="control-item">
                                 <label class="control-label">API Endpoint</label>
                                 <input type="text" id="external-api-url" class="control-input" 
                                        placeholder="https://api.poe.com/v1" 
                                        value="https://api.poe.com/v1">
-                            </div>
-                            <div class="control-item">
-                                <label class="control-label">Model Name</label>
-                                <select id="external-model-select" class="control-select">
-                                    <option value="GPT-5-mini">GPT-5-mini</option>
-                                    <option value="GPT-5-nano">GPT-5-nano</option>
-                                    <option value="GPT-4.1-mini">GPT-4.1-mini</option>
-                                    <option value="Gemini-2.5-Flash">Gemini-2.5-Flash</option>
-                                    <option value="Nova-Micro-1.0">Nova-Micro-1.0</option>
-                                    <option value="Grok-4-Fast-Non-Reasoning">Grok-4-Fast-Non-Reasoning</option>
-                                    <option value="Other">Other</option>
-                                </select>
-                                <input type="text" id="external-model-name" class="control-input" 
-                                       placeholder="Enter custom model name" 
-                                       style="display: none; margin-top: 10px;">
                             </div>
                             <div class="control-item">
                                 <label class="control-label">API Key</label>

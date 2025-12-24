@@ -4,15 +4,16 @@ Simple utility to get port configuration for shell scripts.
 Usage: python get_ports.py [port_name]
 """
 import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from config import APP_PORT
 
 ports = {
     'app': APP_PORT,
     'main': APP_PORT,
-    # Legacy aliases for compatibility
-    'proxy': APP_PORT,
-    'chat': APP_PORT, 
-    'admin': APP_PORT
 }
 
 if len(sys.argv) == 2:

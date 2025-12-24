@@ -7,6 +7,10 @@ Creates necessary directories and ensures the app is ready to run.
 import os
 import sys
 from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from config import FIGURES_DIR, CHROMA_DB_PATH, TEMP_UPLOAD_DIR, FIGURE_IMAGES_DIR
 
 def init_directories():

@@ -42,7 +42,7 @@ echo "📝 Log file: $LOG_FILE"
 ) >> "$LOG_FILE" 2>&1 &
 
 # Wait for startup
-sleep 3
+sleep 5
 
 # Check if started successfully
 STARTED_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)

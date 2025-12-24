@@ -6,8 +6,8 @@ Works with local Ollama (/v1 endpoint) or any OpenAI-compatible external API.
 import requests
 import json
 import logging
-from typing import List, Dict, Generator, Optional
-from config import LLM_API_URL, LLM_API_KEY, LLM_PROVIDER
+from typing import List, Dict, Generator
+from config import LLM_API_URL, LLM_API_KEY
 
 
 class LLMProvider:
@@ -124,13 +124,7 @@ class LLMProvider:
         return [self.default_model] if self.default_model else []
 
 
-def get_model_provider(provider_name: Optional[str] = None) -> LLMProvider:
+def get_model_provider() -> LLMProvider:
     """Factory function to get the LLM provider"""
-    # Provider name is now just for logging/info, we always use unified LLMProvider
-    provider = provider_name or LLM_PROVIDER
-    logging.debug(f"Creating LLM provider (mode: {provider})")
+    logging.debug(f"Creating LLM provider for {LLM_API_URL}")
     return LLMProvider()
-
-
-# Backwards compatibility alias
-ExternalProvider = LLMProvider

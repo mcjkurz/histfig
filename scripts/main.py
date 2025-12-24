@@ -4,15 +4,19 @@ Historical Figures Chat System - Unified Application
 Single Flask application that handles all functionality on one port.
 """
 
+import sys
+from pathlib import Path
+
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from flask import Flask, jsonify, request
 import logging
 from logging.handlers import RotatingFileHandler
 import signal
-import sys
 import os
 import secrets
 from datetime import datetime
-from pathlib import Path
 
 from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
 from chat_routes import chat_bp

@@ -32,3 +32,28 @@ GENERIC_ASSISTANT_PROMPT = """You are a helpful AI assistant.
 
 CRITICAL: You MUST respond in the same language that the user is using. If the user asks in English, respond in English. If Chinese, respond in Chinese."""
 
+# Thinking instructions by intensity level
+THINKING_INSTRUCTIONS = {
+    'none': {
+        'instruction': "\n\nPlease respond directly to the user's message. You are not allowed to analyze the query or provide any other information, please respond directly.",
+        'response_start': "<think></think>\n\n"
+    },
+    'low': {
+        'instruction': "\n\nPlease think briefly (3-4 sentences only, not more than 6 sentences) before answering.",
+        'response_start': ""
+    },
+    'normal': {
+        'instruction': "\n\nThink through your answer before responding, but do not spend too much time on it.",
+        'response_start': ""
+    },
+    'high': {
+        'instruction': "\n\nPlease think deeply and thoroughly about this question. Consider multiple perspectives and implications before answering.",
+        'response_start': ""
+    }
+}
+
+def get_thinking_instructions(intensity):
+    """Get thinking instruction and response start based on intensity level"""
+    config = THINKING_INSTRUCTIONS.get(intensity, THINKING_INSTRUCTIONS['normal'])
+    return config['instruction'], config['response_start']
+

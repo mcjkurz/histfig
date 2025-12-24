@@ -5,29 +5,24 @@ import os
 APP_PORT = int(os.environ.get("APP_PORT", "5001"))
 
 # LLM API (must be OpenAI-compatible)
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "local")  # "local" or "external"
 LLM_API_URL = os.environ.get("LLM_API_URL", "http://localhost:11434/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-
-# Default model depends on provider if not explicitly set
-_default_model = "gpt-oss:120b" if LLM_PROVIDER == "local" else "GPT-5-mini"
-DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", _default_model)
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "")
 
 # Admin
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-# Model presets for external APIs
-EXTERNAL_API_MODELS = [
-    "GPT-5.2",
-    "GPT-5.2-Instant",
-    "GPT-5.1",
-    "GPT-5.1-Instant",
-    "GPT-5-mini",
-    "GPT-5-nano",
-    "Gemini-2.5-Flash",
-    "Gemini-3-Flash",
-    "Grok-4-Fast-Non-Reasoning",
-]
+# Model whitelist (comma-separated, empty = all models allowed)
+_models_env = os.environ.get("ALLOWED_MODELS", "")
+ALLOWED_MODELS = [m.strip() for m in _models_env.split(",") if m.strip()] if _models_env else None
+
+# Local models list (comma-separated, empty = fetch from local API)
+_local_models_env = os.environ.get("LOCAL_MODELS", "")
+LOCAL_MODELS = [m.strip() for m in _local_models_env.split(",") if m.strip()] if _local_models_env else None
+
+# External models list (comma-separated, empty = fetch from external API)
+_external_models_env = os.environ.get("EXTERNAL_MODELS", "")
+EXTERNAL_MODELS = [m.strip() for m in _external_models_env.split(",") if m.strip()] if _external_models_env else None
 
 # File uploads
 MAX_FILES_PER_REQUEST = 10
@@ -59,7 +54,7 @@ ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 # RAG
 RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
 
-# Query augmentation (optional, uses separate API for enriching search queries)
+# Query augmentation (optional but enabled by default, uses separate API for enriching search queries)
 QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
 QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")

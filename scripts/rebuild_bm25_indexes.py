@@ -10,9 +10,8 @@ import os
 import logging
 from pathlib import Path
 
-# Add scripts directory to path
-script_dir = Path(__file__).parent
-sys.path.insert(0, str(script_dir))
+# Add parent directory to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from figure_manager import FigureManager
 from config import CHROMA_DB_PATH, FIGURES_DIR

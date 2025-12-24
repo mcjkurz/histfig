@@ -387,17 +387,14 @@ class HybridSearchDatabase(VectorDatabase):
         return fused_results
     
     def hybrid_search(self, query: str, n_results: int = 5, 
-                     vector_weight: float = 0.5, bm25_weight: float = 0.5,
                      min_cosine_similarity: float = 0.05) -> List[Dict[str, Any]]:
         """
-        Perform hybrid search combining vector and BM25 results.
+        Perform hybrid search combining vector and BM25 results using RRF.
         Only returns results with meaningful cosine similarity.
         
         Args:
             query: Search query
             n_results: Number of final results to return
-            vector_weight: Weight for vector search (not used in RRF, kept for compatibility)
-            bm25_weight: Weight for BM25 search (not used in RRF, kept for compatibility)
             min_cosine_similarity: Minimum cosine similarity threshold (default 0.05)
             
         Returns:

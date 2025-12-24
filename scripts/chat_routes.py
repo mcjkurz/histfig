@@ -22,12 +22,13 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_PROVIDER, LLM_API_KEY, LLM_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL
+from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
 from model_provider import get_model_provider, LLMProvider
 from query_augmentation import augment_query
 from prompts import (
     FIGURE_SYSTEM_PROMPT, DEFAULT_FIGURE_INSTRUCTION,
-    USER_MESSAGE_WITH_RAG, USER_MESSAGE_NO_RAG, GENERIC_ASSISTANT_PROMPT
+    USER_MESSAGE_WITH_RAG, USER_MESSAGE_NO_RAG, GENERIC_ASSISTANT_PROMPT,
+    get_thinking_instructions
 )
 
 # Create blueprint
@@ -81,23 +82,6 @@ def clean_thinking_content(text):
     import re
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned.strip()
-
-def get_thinking_instructions(intensity):
-    """Get thinking instruction and response start based on intensity level"""
-    if intensity == 'none':
-        instruction = "\n\nPlease respond directly to the user's message. You are not allowed to analyze the query or provide any other information, please respond directly."
-        response_start = "<think></think>\n\n"
-    elif intensity == 'low':
-        instruction = "\n\nPlease think briefly (3-4 sentences only, not more than 6 sentences) before answering."
-        response_start = ""
-    elif intensity == 'high':
-        instruction = "\n\nPlease think deeply and thoroughly about this question. Consider multiple perspectives and implications before answering."
-        response_start = ""
-    else:
-        instruction = "\n\nThink through your answer before responding, but do not spend too much time on it."
-        response_start = ""
-    
-    return instruction, response_start
 
 def get_session_id():
     """Get or create a session ID for the current user"""
@@ -217,17 +201,58 @@ def favicon():
 
 @chat_bp.route('/api/models')
 def get_models():
-    """Get list of available models from current provider"""
+    """Get list of available local models from current provider, filtered by ALLOWED_MODELS"""
     try:
+        # If LOCAL_MODELS is configured, use that
+        if LOCAL_MODELS:
+            return jsonify(LOCAL_MODELS)
+        
+        # Otherwise fetch from local API
         provider = get_model_provider()
         models = provider.get_available_models()
+        
+        # Filter by allowed models if configured
+        if models and ALLOWED_MODELS:
+            models = [m for m in models if m in ALLOWED_MODELS]
+        
         if models:
             return jsonify(models)
         else:
-            return jsonify([DEFAULT_MODEL])
+            return jsonify([DEFAULT_MODEL] if not ALLOWED_MODELS or DEFAULT_MODEL in ALLOWED_MODELS else [])
     except Exception as e:
         logging.error(f"Error fetching models: {e}")
-        return jsonify([DEFAULT_MODEL])
+        return jsonify([DEFAULT_MODEL] if not ALLOWED_MODELS or DEFAULT_MODEL in ALLOWED_MODELS else [])
+
+@chat_bp.route('/api/models-by-source')
+def get_models_by_source():
+    """Get model lists for both local and external sources"""
+    try:
+        # Get local models
+        local_models = []
+        if LOCAL_MODELS:
+            local_models = LOCAL_MODELS
+        else:
+            # Fetch from local API
+            try:
+                provider = get_model_provider()
+                models = provider.get_available_models()
+                if models and ALLOWED_MODELS:
+                    models = [m for m in models if m in ALLOWED_MODELS]
+                local_models = models if models else []
+            except Exception as e:
+                logging.warning(f"Could not fetch local models: {e}")
+                local_models = [DEFAULT_MODEL] if DEFAULT_MODEL else []
+        
+        # Get external models (None means "fetch from API dynamically")
+        external_models = EXTERNAL_MODELS if EXTERNAL_MODELS else None
+        
+        return jsonify({
+            'local': local_models,
+            'external': external_models  # None means client should fetch from external API
+        })
+    except Exception as e:
+        logging.error(f"Error fetching models by source: {e}")
+        return jsonify({'local': [], 'external': None})
 
 @chat_bp.route('/api/external-api-key-status')
 def get_external_api_key_status():
@@ -300,8 +325,6 @@ def chat():
         if QUERY_AUGMENTATION_ENABLED and use_query_augmentation and use_rag and k > 0:
             try:
                 augmented_query = augment_query(message, figure_name=figure_name or "a historical figure")
-                if augmented_query and augmented_query != message:
-                    logging.info(f"Query augmented: '{message}' -> '{augmented_query}'")
             except Exception as e:
                 logging.warning(f"Query augmentation failed: {e}")
                 augmented_query = None
@@ -525,28 +548,27 @@ def health_check():
     """Check if the model provider is accessible"""
     try:
         provider = get_model_provider()
-        provider_name = LLM_PROVIDER
         
         models = provider.get_available_models()
         
         if models:
             return jsonify({
                 'status': 'healthy', 
-                'provider': provider_name,
+                'api_url': LLM_API_URL,
                 'connected': True,
                 'models_available': len(models)
             })
         else:
             return jsonify({
                 'status': 'unhealthy', 
-                'provider': provider_name,
+                'api_url': LLM_API_URL,
                 'connected': False,
                 'error': 'No models available'
             }), 503
     except Exception as e:
         return jsonify({
             'status': 'unhealthy', 
-            'provider': LLM_PROVIDER,
+            'api_url': LLM_API_URL,
             'connected': False,
             'error': str(e)
         }), 503

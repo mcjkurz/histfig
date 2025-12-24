@@ -38,13 +38,18 @@ class ChatApp {
         this.temperatureValue = document.getElementById('temperature-value');
         this.saveConversationBtn = document.getElementById('save-conversation-btn');
         
-        // External API configuration elements
+        // Model source and API configuration elements
+        this.modelSourceSelect = document.getElementById('model-source-select');
         this.externalApiConfig = document.getElementById('external-api-config');
         this.externalApiUrl = document.getElementById('external-api-url');
-        this.externalModelSelect = document.getElementById('external-model-select');
-        this.externalModelName = document.getElementById('external-model-name');
+        this.customModelName = document.getElementById('custom-model-name');
         this.externalApiKey = document.getElementById('external-api-key');
         this.apiKeyStatus = document.getElementById('api-key-status');
+        
+        // Model lists from server
+        this.localModels = [];
+        this.externalModels = null;  // null means fetch dynamically
+        this.currentSource = 'external';  // default source
         
         // Control panel elements
         this.controlPanel = document.getElementById('control-panel');
@@ -100,7 +105,7 @@ class ChatApp {
         this.setupEventListeners();
         this.checkHealth();
         await this.loadFeatureFlags();  // Load config-based feature flags first
-        this.loadModels();  // Also calls loadExternalApiKeyStatus() internally
+        await this.loadModels();  // Load models and update UI
         this.loadFigures();
         await this.loadCurrentFigure();
         this.autoResizeTextarea();
@@ -138,34 +143,35 @@ class ChatApp {
         }
         this.figureSelect.addEventListener('change', (e) => this.handleFigureChange(e));
         
-        // Model select - show/hide external API configuration
-        this.modelSelect.addEventListener('change', (e) => {
-            if (e.target.value === 'external') {
-                this.externalApiConfig.style.display = 'block';
-                this.updateApiKeyStatus();
-                // Load pre-configured API key if available
-                this.loadExternalApiKeyStatus();
-            } else {
-                this.externalApiConfig.style.display = 'none';
-                if (this.apiKeyStatus) {
-                    this.apiKeyStatus.style.display = 'none';
-                }
-            }
-        });
-        
-        // External model select - show/hide custom model name input
-        if (this.externalModelSelect) {
-            this.externalModelSelect.addEventListener('change', (e) => {
-                if (e.target.value === 'Other') {
-                    this.externalModelName.style.display = 'block';
-                    this.externalModelName.value = '';
-                    this.externalModelName.focus();
+        // Source select - show/hide external API configuration
+        if (this.modelSourceSelect) {
+            this.modelSourceSelect.addEventListener('change', (e) => {
+                this.currentSource = e.target.value;
+                this.updateModelListForSource();
+                
+                if (e.target.value === 'external') {
+                    this.externalApiConfig.style.display = 'block';
+                    this.updateApiKeyStatus();
+                    this.loadExternalApiKeyStatus();
                 } else {
-                    this.externalModelName.style.display = 'none';
-                    this.externalModelName.value = e.target.value;
+                    this.externalApiConfig.style.display = 'none';
+                    if (this.apiKeyStatus) {
+                        this.apiKeyStatus.style.display = 'none';
+                    }
                 }
             });
         }
+        
+        // Model select - show/hide custom model name input for "Other"
+        this.modelSelect.addEventListener('change', (e) => {
+            if (e.target.value === 'Other') {
+                this.customModelName.style.display = 'block';
+                this.customModelName.value = '';
+                this.customModelName.focus();
+            } else {
+                this.customModelName.style.display = 'none';
+            }
+        });
         
         // API Key input validation
         if (this.externalApiKey) {
@@ -260,13 +266,119 @@ class ChatApp {
         });
     }
 
-    getExternalModelName() {
+    getSelectedModelName() {
         // If "Other" is selected, use the custom input value
-        if (this.externalModelSelect && this.externalModelSelect.value === 'Other') {
-            return this.externalModelName.value || 'GPT-5-mini';  // fallback
+        if (this.modelSelect.value === 'Other') {
+            return this.customModelName.value || 'GPT-5-mini';  // fallback
         }
         // Otherwise use the selected dropdown value
-        return this.externalModelSelect ? this.externalModelSelect.value : this.externalModelName.value || 'GPT-5-mini';
+        return this.modelSelect.value || 'GPT-5-mini';
+    }
+
+    updateModelListForSource() {
+        const source = this.currentSource;
+        this.modelSelect.innerHTML = '';
+        
+        if (source === 'local') {
+            // Show local models
+            if (this.localModels && this.localModels.length > 0) {
+                this.localModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    this.modelSelect.appendChild(option);
+                });
+            } else {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'No local models available';
+                this.modelSelect.appendChild(option);
+            }
+            // Hide custom model name input for local
+            if (this.customModelName) {
+                this.customModelName.style.display = 'none';
+            }
+        } else {
+            // Show external models
+            if (this.externalModels && this.externalModels.length > 0) {
+                // Use configured external models
+                this.externalModels.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    this.modelSelect.appendChild(option);
+                });
+                // Add "Other" option for custom model
+                const otherOption = document.createElement('option');
+                otherOption.value = 'Other';
+                otherOption.textContent = 'Other';
+                this.modelSelect.appendChild(otherOption);
+            } else {
+                // No configured external models - fetch from external API or show defaults
+                this.loadExternalModelsFromApi();
+            }
+        }
+    }
+
+    async loadExternalModelsFromApi() {
+        // Try to fetch models from external API
+        try {
+            const apiUrl = this.externalApiUrl ? this.externalApiUrl.value : 'https://api.poe.com/v1';
+            const apiKey = this.externalApiKey ? this.externalApiKey.value : '';
+            
+            const headers = { 'Content-Type': 'application/json' };
+            if (apiKey && apiKey.trim()) {
+                headers['Authorization'] = `Bearer ${apiKey}`;
+            }
+            
+            const response = await fetch(`${apiUrl}/models`, { headers });
+            if (response.ok) {
+                const data = await response.json();
+                const models = data.data || [];
+                
+                this.modelSelect.innerHTML = '';
+                models.forEach(model => {
+                    const modelId = model.id || model.name || model;
+                    const option = document.createElement('option');
+                    option.value = modelId;
+                    option.textContent = modelId;
+                    this.modelSelect.appendChild(option);
+                });
+                
+                // Add "Other" option
+                const otherOption = document.createElement('option');
+                otherOption.value = 'Other';
+                otherOption.textContent = 'Other';
+                this.modelSelect.appendChild(otherOption);
+                return;
+            }
+        } catch (e) {
+            console.log('Could not fetch models from external API, using defaults');
+        }
+        
+        // Fallback to default external models
+        const defaultModels = [
+            'GPT-5-mini',
+            'GPT-5-nano',
+            'GPT-4.1-mini',
+            'Gemini-2.5-Flash',
+            'Nova-Micro-1.0',
+            'Grok-4-Fast-Non-Reasoning'
+        ];
+        
+        this.modelSelect.innerHTML = '';
+        defaultModels.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model;
+            option.textContent = model;
+            this.modelSelect.appendChild(option);
+        });
+        
+        // Add "Other" option
+        const otherOption = document.createElement('option');
+        otherOption.value = 'Other';
+        otherOption.textContent = 'Other';
+        this.modelSelect.appendChild(otherOption);
     }
 
     toggleControlPanel() {
@@ -572,33 +684,38 @@ class ChatApp {
 
     async loadModels() {
         try {
-            const response = await fetch('/api/models');
-            const models = await response.json();
+            const response = await fetch('/api/models-by-source');
+            const data = await response.json();
             
-            this.modelSelect.innerHTML = '';
+            console.log('Models loaded from server:', data);
             
-            // Add External API option first (it will be the default)
-            const externalOption = document.createElement('option');
-            externalOption.value = 'external';
-            externalOption.textContent = 'External API';
-            this.modelSelect.appendChild(externalOption);
+            // Store model lists
+            this.localModels = data.local || [];
+            this.externalModels = data.external;  // null means fetch dynamically
             
-            // Add local models
-            models.forEach(model => {
-                const option = document.createElement('option');
-                option.value = model;
-                option.textContent = model;
-                this.modelSelect.appendChild(option);
-            });
+            console.log('Local models:', this.localModels);
+            console.log('External models:', this.externalModels);
             
-            // Set External API as default
-            this.modelSelect.value = 'external';
+            // Set default source to external
+            this.currentSource = 'external';
+            if (this.modelSourceSelect) {
+                this.modelSourceSelect.value = 'external';
+            }
+            
+            // Update model list for current source
+            this.updateModelListForSource();
             
             // Show external API config since it's the default
-            this.externalApiConfig.style.display = 'block';
+            if (this.externalApiConfig) {
+                this.externalApiConfig.style.display = 'block';
+            }
             this.loadExternalApiKeyStatus();
         } catch (error) {
             console.error('Failed to load models:', error);
+            // Fallback to default behavior
+            this.localModels = [];
+            this.externalModels = null;
+            this.updateModelListForSource();
         }
     }
 
@@ -607,8 +724,8 @@ class ChatApp {
             const response = await fetch('/api/external-api-key-status');
             const data = await response.json();
             
-            // Only pre-populate if external API is selected and we have a pre-configured key
-            if (this.modelSelect.value === 'external' && data.has_key && data.masked_key) {
+            // Only pre-populate if external source is selected and we have a pre-configured key
+            if (this.currentSource === 'external' && data.has_key && data.masked_key) {
                 // Pre-populate the API key field with masked value
                 if (this.externalApiKey && !this.externalApiKey.value.trim()) {
                     this.externalApiKey.value = data.masked_key;
@@ -984,9 +1101,9 @@ class ChatApp {
         if (!message) return;
         
         // Check if External API is selected but no API key provided
-        if (this.modelSelect.value === 'external') {
-            const apiKey = this.externalApiKey.value.trim();
-            const isMasked = this.externalApiKey.getAttribute('data-is-masked') === 'true';
+        if (this.currentSource === 'external') {
+            const apiKey = this.externalApiKey ? this.externalApiKey.value.trim() : '';
+            const isMasked = this.externalApiKey && this.externalApiKey.getAttribute('data-is-masked') === 'true';
             // If no API key and it's not a masked pre-configured key, show warning
             if (!apiKey && !isMasked) {
                 this.showApiKeyWarning('Please provide an API key to use External API');
@@ -1073,19 +1190,19 @@ class ChatApp {
                 },
                 body: JSON.stringify({
                     message: message,
-                    model: this.modelSelect.value === 'external' ? this.getExternalModelName() : this.modelSelect.value,
+                    model: this.getSelectedModelName(),
                     use_rag: this.ragEnabled,
                     k: parseInt(this.docsCountSelect.value),
                     thinking_intensity: this.thinkingIntensity || 'normal',
                     temperature: this.temperature || 1.0,
                     query_augmentation: this.queryAugmentationEnabled,
-                    // Include external API config if using external model
-                    ...(this.modelSelect.value === 'external' && {
+                    // Include external API config if using external source
+                    ...(this.currentSource === 'external' && {
                         external_config: {
-                            base_url: this.externalApiUrl.value,
-                            model: this.getExternalModelName(),
+                            base_url: this.externalApiUrl ? this.externalApiUrl.value : 'https://api.poe.com/v1',
+                            model: this.getSelectedModelName(),
                             // If the API key is masked, send empty string (server will use pre-configured key)
-                            api_key: this.externalApiKey.getAttribute('data-is-masked') === 'true' ? '' : this.externalApiKey.value
+                            api_key: this.externalApiKey && this.externalApiKey.getAttribute('data-is-masked') === 'true' ? '' : (this.externalApiKey ? this.externalApiKey.value : '')
                         }
                     })
                 }),
@@ -1127,7 +1244,7 @@ class ChatApp {
                             if (data.error) {
                                 // Check if it's an API key related error
                                 const errorMsg = data.error.toLowerCase();
-                                if (this.modelSelect.value === 'external' && 
+                                if (this.currentSource === 'external' && 
                                     (errorMsg.includes('api key') || 
                                      errorMsg.includes('unauthorized') || 
                                      errorMsg.includes('401') ||
@@ -1488,7 +1605,7 @@ class ChatApp {
         if (!this.apiKeyStatus || !this.externalApiKey) return;
         
         const apiKey = this.externalApiKey.value.trim();
-        const isExternalSelected = this.modelSelect.value === 'external';
+        const isExternalSelected = this.currentSource === 'external';
         const isMasked = this.externalApiKey.getAttribute('data-is-masked') === 'true';
         
         if (isExternalSelected) {
@@ -1629,7 +1746,7 @@ class ChatApp {
                 figure_name: cleanFigureName,
                 figure_data: figureData,
                 document_count: documentCount,
-                model: this.modelSelect.value === 'external' ? this.getExternalModelName() : this.modelSelect.value,
+                model: this.getSelectedModelName(),
                 temperature: this.temperature.toString(),
                 thinking_enabled: this.thinkingVisible,
                 rag_enabled: this.ragEnabled,

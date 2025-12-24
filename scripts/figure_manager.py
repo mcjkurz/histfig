@@ -19,7 +19,6 @@ import numpy as np
 from rank_bm25 import BM25Okapi
 from config import EMBEDDING_MODEL
 from text_processor import text_processor
-from query_augmentation import augment_query
 
 class FigureManager:
     def __init__(self, figures_dir: str = "./figures", db_path: str = "./chroma_db"):
@@ -476,7 +475,7 @@ class FigureManager:
         
         Args:
             figure_id: Figure identifier
-            query: Search query (will be augmented if enabled)
+            query: Search query (should be pre-augmented by caller if needed)
             n_results: Number of results to return
             min_cosine_similarity: Minimum cosine similarity threshold (default 0.05)
             
@@ -484,18 +483,8 @@ class FigureManager:
             List of similar documents ranked by hybrid search with both metrics
         """
         try:
-            # Get figure name for query augmentation
-            figure_metadata = self.get_figure_metadata(figure_id)
-            figure_name = figure_metadata.get('name', figure_id) if figure_metadata else figure_id
-            
-            # Augment query if enabled (transparent to user)
-            augmented_query = augment_query(query, figure_name=figure_name)
-            logging.info(f"Original query: '{query}'")
-            if augmented_query != query:
-                logging.info(f"Using augmented query: '{augmented_query}'")
-            
-            # Use augmented query for search
-            search_query = augmented_query
+            # Query is expected to be already augmented by the caller (chat_routes.py)
+            search_query = query
             
             # Preload BM25 index for efficient searching
             self.preload_bm25_index(figure_id)
