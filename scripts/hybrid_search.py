@@ -6,14 +6,19 @@ Uses Reciprocal Rank Fusion (RRF) to combine results from both methods.
 import os
 import logging
 import pickle
+import json
 from typing import List, Dict, Any, Optional, Tuple
 from rank_bm25 import BM25Okapi
 from text_processor import text_processor
-from vector_db import VectorDatabase
+import chromadb
+from chromadb.config import Settings
+from sentence_transformers import SentenceTransformer
+import torch
 import numpy as np
 
-class HybridSearchDatabase(VectorDatabase):
-    """Extended VectorDatabase with hybrid search capabilities."""
+
+class HybridSearchDatabase:
+    """Hybrid search database combining ChromaDB vector search with BM25 keyword search."""
     
     def __init__(self, db_path: str = "./chroma_db", model_name: str = "all-MiniLM-L6-v2"):
         """
@@ -23,13 +28,30 @@ class HybridSearchDatabase(VectorDatabase):
             db_path: Path to store ChromaDB and BM25 data
             model_name: Sentence transformer model for embeddings
         """
-        # Initialize parent class first
-        try:
-            super().__init__(db_path, model_name)
-            logging.info("Parent VectorDatabase initialized successfully")
-        except Exception as e:
-            logging.error(f"Failed to initialize parent VectorDatabase: {e}")
-            raise e
+        self.db_path = db_path
+        self.model_name = model_name
+        self.chunk_counter_file = os.path.join(db_path, "chunk_counter.json")
+        
+        # Detect best available device
+        if model_name == "all-MiniLM-L6-v2":
+            self.device = "cpu"
+            logging.info("Using CPU for embeddings (test mode)")
+        elif torch.backends.mps.is_available():
+            self.device = "mps"
+            logging.info("Using Apple Silicon GPU (MPS) for embeddings")
+        elif torch.cuda.is_available():
+            self.device = "cuda"
+            logging.info("Using CUDA GPU for embeddings")
+        else:
+            self.device = "cpu"
+            logging.info("Using CPU for embeddings")
+        
+        # Initialize sentence transformer
+        self.encoder = self._initialize_sentence_transformer(model_name)
+        logging.info(f"Initialized SentenceTransformer '{model_name}' on device: {self.device}")
+        
+        # Initialize ChromaDB
+        self._initialize_database()
         
         # BM25 storage paths
         self.bm25_index_path = os.path.join(db_path, "bm25_index.pkl")
@@ -38,14 +60,129 @@ class HybridSearchDatabase(VectorDatabase):
         
         # Initialize BM25 components
         self.bm25_index = None
-        self.bm25_documents = []  # List of processed token lists
-        self.bm25_metadata = []   # List of metadata for each document
-        self.chunk_id_to_bm25_idx = {}  # Map chunk_id to BM25 index
+        self.bm25_documents = []
+        self.bm25_metadata = []
+        self.chunk_id_to_bm25_idx = {}
         
         # Load existing BM25 data if available
         self._load_bm25_data()
         
         logging.info("Hybrid search database initialized")
+    
+    def _initialize_sentence_transformer(self, model_name: str) -> SentenceTransformer:
+        """Initialize SentenceTransformer with device handling and model-specific configurations."""
+        model_kwargs = {}
+        tokenizer_kwargs = {}
+        
+        if "qwen" in model_name.lower():
+            model_kwargs = {
+                "attn_implementation": "flash_attention_2", 
+                "device_map": "auto"
+            }
+            tokenizer_kwargs = {"padding_side": "left"}
+            logging.info(f"Detected Qwen model, using optimized settings")
+        
+        try:
+            if model_kwargs or tokenizer_kwargs:
+                self.encoder = SentenceTransformer(
+                    model_name, 
+                    device=self.device,
+                    model_kwargs=model_kwargs,
+                    tokenizer_kwargs=tokenizer_kwargs
+                )
+            else:
+                self.encoder = SentenceTransformer(model_name, device=self.device)
+            return self.encoder
+        except Exception as e:
+            logging.warning(f"Failed to initialize SentenceTransformer with device={self.device}: {e}")
+            try:
+                if model_kwargs or tokenizer_kwargs:
+                    self.encoder = SentenceTransformer(
+                        model_name,
+                        model_kwargs=model_kwargs,
+                        tokenizer_kwargs=tokenizer_kwargs
+                    )
+                else:
+                    self.encoder = SentenceTransformer(model_name)
+                self.encoder = self.encoder.to(self.device)
+                logging.info(f"Successfully moved SentenceTransformer to {self.device}")
+                return self.encoder
+            except Exception as e2:
+                logging.warning(f"Failed to move to {self.device}, falling back to CPU: {e2}")
+                self.device = "cpu"
+                if model_kwargs or tokenizer_kwargs:
+                    self.encoder = SentenceTransformer(
+                        model_name,
+                        model_kwargs=model_kwargs,
+                        tokenizer_kwargs=tokenizer_kwargs
+                    )
+                else:
+                    self.encoder = SentenceTransformer(model_name)
+                logging.info("Using CPU for embeddings (fallback)")
+                return self.encoder
+    
+    def _initialize_database(self):
+        """Initialize ChromaDB client and collection."""
+        self.client = chromadb.PersistentClient(
+            path=self.db_path,
+            settings=Settings(
+                anonymized_telemetry=False,
+                allow_reset=True
+            )
+        )
+        
+        self.collection = self.client.get_or_create_collection(
+            name="documents",
+            metadata={"hnsw:space": "cosine"}
+        )
+        
+        self._initialize_chunk_counter()
+        
+        logging.info(f"Vector database initialized with {self.collection.count()} documents")
+    
+    def _encode_text(self, text: str):
+        """Encode document text."""
+        with torch.no_grad():
+            return self.encoder.encode(text)
+    
+    def _encode_query(self, query: str):
+        """Encode query text with model-specific handling."""
+        with torch.no_grad():
+            if "qwen" in self.model_name.lower():
+                try:
+                    return self.encoder.encode(query, prompt_name="query")
+                except:
+                    return self.encoder.encode(query)
+            return self.encoder.encode(query)
+    
+    def _initialize_chunk_counter(self):
+        """Initialize or load the chunk counter."""
+        os.makedirs(self.db_path, exist_ok=True)
+        
+        if os.path.exists(self.chunk_counter_file):
+            try:
+                with open(self.chunk_counter_file, 'r') as f:
+                    data = json.load(f)
+                    self.next_chunk_id = data.get('next_chunk_id', 0)
+            except (json.JSONDecodeError, FileNotFoundError):
+                self.next_chunk_id = 0
+        else:
+            self.next_chunk_id = 0
+    
+    def _save_chunk_counter(self):
+        """Save the current chunk counter to file."""
+        try:
+            with open(self.chunk_counter_file, 'w') as f:
+                json.dump({'next_chunk_id': self.next_chunk_id}, f)
+        except Exception as e:
+            logging.error(f"Error saving chunk counter: {e}")
+    
+    def _get_next_chunk_id(self) -> int:
+        """Get the next available chunk ID and increment counter."""
+        chunk_id = self.next_chunk_id
+        self.next_chunk_id += 1
+        self._save_chunk_counter()
+        return chunk_id
     
     def _load_bm25_data(self):
         """Load BM25 index and documents from disk."""
@@ -63,7 +200,6 @@ class HybridSearchDatabase(VectorDatabase):
                 with open(self.bm25_metadata_path, 'rb') as f:
                     self.bm25_metadata = pickle.load(f)
                 
-                # Rebuild chunk_id mapping
                 self.chunk_id_to_bm25_idx = {}
                 for idx, metadata in enumerate(self.bm25_metadata):
                     chunk_id = metadata.get("absolute_chunk_id")
@@ -117,28 +253,37 @@ class HybridSearchDatabase(VectorDatabase):
         Returns:
             Absolute chunk ID
         """
-        # Add to vector database (parent class)
-        chunk_id = super().add_document(text, metadata)
+        # Get next sequential chunk ID
+        chunk_id = self._get_next_chunk_id()
+        doc_id = str(chunk_id)
+        
+        # Add chunk ID to metadata
+        metadata_with_id = {**metadata, "absolute_chunk_id": chunk_id}
+        
+        # Generate embedding and add to ChromaDB
+        embedding = self._encode_text(text).tolist()
+        self.collection.add(
+            documents=[text],
+            embeddings=[embedding],
+            metadatas=[metadata_with_id],
+            ids=[doc_id]
+        )
+        
+        logging.info(f"Added document chunk with ID: {chunk_id}")
         
         # Process text for BM25
         processed_tokens = text_processor.process_text(text)
         
-        if processed_tokens:  # Only add if we have tokens
-            # Add to BM25 data structures
+        if processed_tokens:
             bm25_idx = len(self.bm25_documents)
             self.bm25_documents.append(processed_tokens)
             
-            # Store metadata with chunk_id
             bm25_metadata = {**metadata, "absolute_chunk_id": chunk_id}
             self.bm25_metadata.append(bm25_metadata)
             
-            # Update mapping
             self.chunk_id_to_bm25_idx[chunk_id] = bm25_idx
             
-            # Rebuild BM25 index
             self._rebuild_bm25_index()
-            
-            # Save to disk
             self._save_bm25_data()
             
             logging.debug(f"Added document to BM25 index: chunk_id={chunk_id}, tokens={len(processed_tokens)}")
@@ -147,45 +292,62 @@ class HybridSearchDatabase(VectorDatabase):
         
         return chunk_id
     
-    def _calculate_term_scores(self, query_tokens: List[str], doc_tokens: List[str], doc_idx: int) -> Dict[str, float]:
+    def search_similar(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
         """
-        Calculate BM25 contribution score for each query term in a document.
+        Search for similar documents using semantic similarity.
         
         Args:
-            query_tokens: Processed query tokens
-            doc_tokens: Processed document tokens
-            doc_idx: Document index in BM25 corpus
+            query: Search query text
+            n_results: Number of results to return
             
         Returns:
-            Dictionary mapping terms to their BM25 contribution scores
+            List of similar documents with metadata
         """
+        query_embedding = self._encode_query(query).tolist()
+        
+        results = self.collection.query(
+            query_embeddings=[query_embedding],
+            n_results=n_results,
+            include=["documents", "metadatas", "distances"]
+        )
+        
+        formatted_results = []
+        if results["documents"] and results["documents"][0]:
+            for i in range(len(results["documents"][0])):
+                metadata = results["metadatas"][0][i]
+                distance = results["distances"][0][i]
+                similarity = 1.0 - distance
+                
+                formatted_results.append({
+                    "text": results["documents"][0][i],
+                    "metadata": metadata,
+                    "similarity": similarity,
+                    "chunk_id": metadata.get("absolute_chunk_id", 0)
+                })
+        
+        return formatted_results
+    
+    def _calculate_term_scores(self, query_tokens: List[str], doc_tokens: List[str], doc_idx: int) -> Dict[str, float]:
+        """Calculate BM25 contribution score for each query term in a document."""
         term_scores = {}
         
         if not self.bm25_index:
             return term_scores
         
-        # Get document frequencies and IDF values
         doc_len = len(doc_tokens)
         avgdl = self.bm25_index.avgdl
-        
-        # BM25 parameters
         k1 = self.bm25_index.k1
         b = self.bm25_index.b
         
-        # Calculate score contribution for each query term
         for term in query_tokens:
             if term in doc_tokens:
-                # Get term frequency in document
                 tf = doc_tokens.count(term)
                 
-                # Get IDF value from BM25 index
                 if hasattr(self.bm25_index, 'idf') and term in self.bm25_index.idf:
                     idf = self.bm25_index.idf[term]
                 else:
-                    # Default IDF if not found
                     idf = 0
                 
-                # BM25 formula for this term
                 numerator = tf * (k1 + 1)
                 denominator = tf + k1 * (1 - b + b * doc_len / avgdl)
                 term_score = idf * (numerator / denominator)
@@ -195,34 +357,20 @@ class HybridSearchDatabase(VectorDatabase):
         return term_scores
     
     def search_bm25(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-        """
-        Search using BM25 keyword matching.
-        
-        Args:
-            query: Search query
-            n_results: Number of results to return
-            
-        Returns:
-            List of search results with BM25 scores and top matching words
-        """
+        """Search using BM25 keyword matching."""
         if not self.bm25_index or not self.bm25_documents:
             logging.warning("BM25 index is empty or not initialized")
             return []
         
-        # Process query
         query_tokens = text_processor.process_query(query)
         
         if not query_tokens:
             logging.warning("No tokens extracted from query")
             return []
         
-        # Get BM25 scores
         scores = self.bm25_index.get_scores(query_tokens)
-        
-        # Get top results
         top_indices = np.argsort(scores)[::-1][:n_results]
         
-        # Normalize BM25 scores to similarity range [0, 1]
         max_score = max(scores) if len(scores) > 0 else 1.0
         min_score = min(s for s in scores if s > 0) if any(s > 0 for s in scores) else 0.0
         score_range = max_score - min_score if max_score > min_score else 1.0
@@ -231,13 +379,10 @@ class HybridSearchDatabase(VectorDatabase):
         for idx in top_indices:
             if idx < len(self.bm25_metadata) and scores[idx] > 0:
                 metadata = self.bm25_metadata[idx]
-                
-                # Get original text from ChromaDB using chunk_id
                 chunk_id = metadata.get("absolute_chunk_id")
                 text = ""
                 
                 try:
-                    # Query ChromaDB for the original text
                     chroma_results = self.collection.get(
                         ids=[str(chunk_id)],
                         include=["documents"]
@@ -247,28 +392,20 @@ class HybridSearchDatabase(VectorDatabase):
                 except Exception as e:
                     logging.warning(f"Could not retrieve text for chunk_id {chunk_id}: {e}")
                 
-                # Normalize BM25 score to similarity [0, 1]
                 normalized_similarity = (scores[idx] - min_score) / score_range if score_range > 0 else 0.5
                 
-                # Calculate per-term BM25 scores and rank by importance
                 doc_tokens = self.bm25_documents[idx]
                 term_scores = self._calculate_term_scores(query_tokens, doc_tokens, idx)
-                
-                # Sort terms by their BM25 contribution (highest first)
                 sorted_terms = sorted(term_scores.items(), key=lambda x: x[1], reverse=True)
                 
-                # Filter out stopwords and bigrams containing stopwords
                 filtered_terms = []
                 for term, score in sorted_terms:
-                    # Check if term is a bigram (contains underscore)
                     if '_' in term:
-                        # Filter bigrams where any component is a stopword
                         components = term.split('_')
                         if any(comp.lower() in text_processor.stopwords for comp in components):
                             continue
                         display_term = term.replace('_', ' ')
                     else:
-                        # Skip unigram stopwords
                         if term.lower() in text_processor.stopwords:
                             continue
                         display_term = term
@@ -288,40 +425,19 @@ class HybridSearchDatabase(VectorDatabase):
         return results
     
     def search_vector(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
-        """
-        Search using vector similarity (wrapper around parent method).
-        
-        Args:
-            query: Search query
-            n_results: Number of results to return
-            
-        Returns:
-            List of search results with similarity scores
-        """
+        """Search using vector similarity (wrapper around search_similar)."""
         return self.search_similar(query, n_results)
     
     def reciprocal_rank_fusion(self, vector_results: List[Dict[str, Any]], 
                               bm25_results: List[Dict[str, Any]], 
                               k: int = 60) -> List[Dict[str, Any]]:
-        """
-        Combine vector and BM25 results using Reciprocal Rank Fusion.
-        Preserves cosine similarity and BM25 matching words for each result.
-        
-        Args:
-            vector_results: Results from vector search (with cosine similarity)
-            bm25_results: Results from BM25 search (with top matching words)
-            k: RRF parameter (typically 60)
-            
-        Returns:
-            Fused and re-ranked results with both metrics
-        """
-        # Create mappings from chunk_id to rank and result
+        """Combine vector and BM25 results using Reciprocal Rank Fusion."""
         vector_ranks = {}
         vector_results_map = {}
         for rank, result in enumerate(vector_results):
             chunk_id = result.get("chunk_id")
             if chunk_id is not None:
-                vector_ranks[chunk_id] = rank + 1  # 1-based ranking
+                vector_ranks[chunk_id] = rank + 1
                 vector_results_map[chunk_id] = result
         
         bm25_ranks = {}
@@ -329,42 +445,31 @@ class HybridSearchDatabase(VectorDatabase):
         for rank, result in enumerate(bm25_results):
             chunk_id = result.get("chunk_id")
             if chunk_id is not None:
-                bm25_ranks[chunk_id] = rank + 1  # 1-based ranking
+                bm25_ranks[chunk_id] = rank + 1
                 bm25_results_map[chunk_id] = result
         
-        # Calculate RRF scores
         all_chunk_ids = set(vector_ranks.keys()) | set(bm25_ranks.keys())
         rrf_scores = {}
         
         for chunk_id in all_chunk_ids:
             rrf_score = 0
-            
-            # Add vector contribution
             if chunk_id in vector_ranks:
                 rrf_score += 1 / (k + vector_ranks[chunk_id])
-            
-            # Add BM25 contribution
             if chunk_id in bm25_ranks:
                 rrf_score += 1 / (k + bm25_ranks[chunk_id])
-            
             rrf_scores[chunk_id] = rrf_score
         
-        # Sort by RRF score and create final results
         sorted_chunk_ids = sorted(rrf_scores.keys(), key=lambda x: rrf_scores[x], reverse=True)
         
         fused_results = []
         for chunk_id in sorted_chunk_ids:
-            # Start with vector result if available, otherwise BM25 result
             if chunk_id in vector_results_map:
                 result = vector_results_map[chunk_id].copy()
-                # Store the original cosine similarity from vector search
                 result["cosine_similarity"] = result.get("similarity", 0)
             else:
                 result = bm25_results_map[chunk_id].copy()
-                # No vector match, cosine similarity is 0
                 result["cosine_similarity"] = 0
             
-            # Add BM25 information if available
             if chunk_id in bm25_results_map:
                 bm25_result = bm25_results_map[chunk_id]
                 result["bm25_score"] = bm25_result.get("bm25_score", 0)
@@ -373,13 +478,9 @@ class HybridSearchDatabase(VectorDatabase):
                 result["bm25_score"] = 0
                 result["top_matching_words"] = []
             
-            # Add RRF score and ranking information
             result["rrf_score"] = rrf_scores[chunk_id]
             result["vector_rank"] = vector_ranks.get(chunk_id, None)
             result["bm25_rank"] = bm25_ranks.get(chunk_id, None)
-            
-            # Keep the unified similarity field for backward compatibility
-            # Use cosine similarity as the primary metric
             result["similarity"] = result["cosine_similarity"]
             
             fused_results.append(result)
@@ -391,23 +492,12 @@ class HybridSearchDatabase(VectorDatabase):
         """
         Perform hybrid search combining vector and BM25 results using RRF.
         Only returns results with meaningful cosine similarity.
-        
-        Args:
-            query: Search query
-            n_results: Number of final results to return
-            min_cosine_similarity: Minimum cosine similarity threshold (default 0.05)
-            
-        Returns:
-            Hybrid search results ranked by RRF with both cosine and BM25 metrics
         """
-        # Get more results from each method to improve fusion
         search_multiplier = 3
         extended_n_results = min(n_results * search_multiplier, 30)
         
-        # Perform vector search first
         vector_results = self.search_vector(query, extended_n_results)
         
-        # Filter vector results to only those with meaningful cosine similarity
         filtered_vector_results = [
             r for r in vector_results 
             if r.get("similarity", 0) >= min_cosine_similarity
@@ -416,39 +506,102 @@ class HybridSearchDatabase(VectorDatabase):
         logging.info(f"Vector search: {len(vector_results)} results, "
                     f"{len(filtered_vector_results)} after filtering (min similarity: {min_cosine_similarity})")
         
-        # If no vector results pass the filter, return empty results
         if not filtered_vector_results:
             logging.warning("No results with sufficient cosine similarity found")
             return []
         
-        # Get BM25 results, but only for documents that have meaningful vector similarity
-        # This prevents pure keyword matches with no semantic relevance
         bm25_results = self.search_bm25(query, extended_n_results)
         
         logging.info(f"Hybrid search: vector={len(filtered_vector_results)}, bm25={len(bm25_results)} results")
         
-        # Fuse results using RRF
         fused_results = self.reciprocal_rank_fusion(filtered_vector_results, bm25_results)
         
-        # Final filter: only return results with meaningful cosine similarity
         final_results = [
             r for r in fused_results 
             if r.get("cosine_similarity", 0) >= min_cosine_similarity
         ]
         
-        # Return top n_results
         return final_results[:n_results]
     
     def get_collection_stats(self) -> Dict[str, Any]:
         """Get statistics about both vector and BM25 collections."""
-        vector_stats = super().get_collection_stats()
-        
-        bm25_stats = {
-            "bm25_documents": len(self.bm25_documents),
-            "bm25_index_exists": self.bm25_index is not None
-        }
-        
-        return {**vector_stats, **bm25_stats}
+        try:
+            count = self.collection.count()
+            return {
+                "total_documents": count,
+                "model_name": self.model_name,
+                "db_path": self.db_path,
+                "bm25_documents": len(self.bm25_documents),
+                "bm25_index_exists": self.bm25_index is not None
+            }
+        except Exception as e:
+            logging.error(f"Error getting collection stats: {e}")
+            return {
+                "total_documents": 0,
+                "model_name": self.model_name,
+                "db_path": self.db_path,
+                "bm25_documents": len(self.bm25_documents),
+                "bm25_index_exists": self.bm25_index is not None,
+                "error": str(e)
+            }
+    
+    def delete_document(self, doc_id: str) -> bool:
+        """Delete a document from the vector database."""
+        try:
+            self.collection.delete(ids=[doc_id])
+            logging.info(f"Deleted document: {doc_id}")
+            return True
+        except Exception as e:
+            logging.error(f"Error deleting document {doc_id}: {e}")
+            return False
+    
+    def clear_collection(self) -> bool:
+        """Clear all documents from the collection."""
+        try:
+            self.client.delete_collection("documents")
+            self.collection = self.client.get_or_create_collection(
+                name="documents",
+                metadata={"hnsw:space": "cosine"}
+            )
+            
+            self.next_chunk_id = 0
+            self._save_chunk_counter()
+            
+            # Clear BM25 data
+            self.bm25_index = None
+            self.bm25_documents = []
+            self.bm25_metadata = []
+            self.chunk_id_to_bm25_idx = {}
+            self._save_bm25_data()
+            
+            logging.info("Cleared all documents from collection and reset chunk counter")
+            return True
+        except Exception as e:
+            logging.error(f"Error clearing collection: {e}")
+            return False
+    
+    def get_documents_by_filename(self, filename: str) -> List[Dict[str, Any]]:
+        """Get all document chunks for a specific filename."""
+        try:
+            results = self.collection.get(
+                where={"filename": filename},
+                include=["documents", "metadatas"]
+            )
+            
+            formatted_results = []
+            if results["documents"]:
+                for i in range(len(results["documents"])):
+                    formatted_results.append({
+                        "text": results["documents"][i],
+                        "metadata": results["metadatas"][i],
+                        "id": results["ids"][i]
+                    })
+            
+            return formatted_results
+        except Exception as e:
+            logging.error(f"Error getting documents for {filename}: {e}")
+            return []
+
 
 # Global instance
 hybrid_db = None

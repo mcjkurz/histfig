@@ -199,30 +199,6 @@ def favicon():
     """Serve favicon from static folder"""
     return send_from_directory(current_app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
-@chat_bp.route('/api/models')
-def get_models():
-    """Get list of available local models from Ollama, filtered by ALLOWED_MODELS"""
-    try:
-        # If LOCAL_MODELS is configured, use that
-        if LOCAL_MODELS:
-            return jsonify(LOCAL_MODELS)
-        
-        # Otherwise fetch from local Ollama API
-        provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
-        models = provider.get_available_models()
-        
-        # Filter by allowed models if configured
-        if models and ALLOWED_MODELS:
-            models = [m for m in models if m in ALLOWED_MODELS]
-        
-        if models:
-            return jsonify(models)
-        else:
-            return jsonify([DEFAULT_MODEL] if not ALLOWED_MODELS or DEFAULT_MODEL in ALLOWED_MODELS else [])
-    except Exception as e:
-        logging.error(f"Error fetching models: {e}")
-        return jsonify([DEFAULT_MODEL] if not ALLOWED_MODELS or DEFAULT_MODEL in ALLOWED_MODELS else [])
-
 @chat_bp.route('/api/models-by-source')
 def get_models_by_source():
     """Get model lists for both local and external sources"""
@@ -421,9 +397,9 @@ def chat():
                     provider = LLMProvider(
                         base_url=base_url,
                         api_key=api_key,
-                        model=external_config.get('model', 'GPT-5-mini')
+                        model=external_config.get('model', DEFAULT_MODEL)
                     )
-                    model_to_use = external_config.get('model', 'GPT-5-mini')
+                    model_to_use = external_config.get('model', DEFAULT_MODEL)
                 else:
                     # No external_config means using local model (e.g., Ollama)
                     provider = LLMProvider(
@@ -570,11 +546,7 @@ def health_check():
             'external_models_available': len(external_models) if external_models else 0,
             'local_api_url': LOCAL_API_URL,
             'local_connected': bool(local_models),
-            'local_models_available': len(local_models) if local_models else 0,
-            # Keep backward compatible fields
-            'api_url': LLM_API_URL,
-            'connected': bool(external_models or local_models),
-            'models_available': (len(external_models) if external_models else 0) + (len(local_models) if local_models else 0)
+            'local_models_available': len(local_models) if local_models else 0
         })
     except Exception as e:
         return jsonify({
@@ -598,22 +570,6 @@ def rag_stats():
             return jsonify({'total_documents': 0, 'message': 'No figure selected'}), 404
     except Exception as e:
         logging.error(f"Error getting RAG stats: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@chat_bp.route('/api/rag/reset', methods=['POST'])
-def reset_rag():
-    """Reset figure-specific RAG collections"""
-    try:
-        user_session = get_session_data()
-        current_figure = user_session['current_figure']
-        if current_figure:
-            figure_manager = get_figure_manager()
-            stats = figure_manager.get_figure_stats(current_figure)
-            return jsonify({'message': 'Figure RAG reset successfully', 'stats': stats})
-        else:
-            return jsonify({'message': 'No figure selected, nothing to reset'}), 404
-    except Exception as e:
-        logging.error(f"Error resetting figure RAG: {e}")
         return jsonify({'error': str(e)}), 500
 
 @chat_bp.route('/api/debug/rag')
