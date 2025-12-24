@@ -22,7 +22,7 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
+from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
 from model_provider import get_model_provider, LLMProvider
 from query_augmentation import augment_query
 from prompts import (
@@ -201,14 +201,14 @@ def favicon():
 
 @chat_bp.route('/api/models')
 def get_models():
-    """Get list of available local models from current provider, filtered by ALLOWED_MODELS"""
+    """Get list of available local models from Ollama, filtered by ALLOWED_MODELS"""
     try:
         # If LOCAL_MODELS is configured, use that
         if LOCAL_MODELS:
             return jsonify(LOCAL_MODELS)
         
-        # Otherwise fetch from local API
-        provider = get_model_provider()
+        # Otherwise fetch from local Ollama API
+        provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
         models = provider.get_available_models()
         
         # Filter by allowed models if configured
@@ -227,14 +227,14 @@ def get_models():
 def get_models_by_source():
     """Get model lists for both local and external sources"""
     try:
-        # Get local models
+        # Get local models from Ollama
         local_models = []
         if LOCAL_MODELS:
             local_models = LOCAL_MODELS
         else:
-            # Fetch from local API
+            # Fetch from local Ollama API
             try:
-                provider = get_model_provider()
+                provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
                 models = provider.get_available_models()
                 if models and ALLOWED_MODELS:
                     models = [m for m in models if m in ALLOWED_MODELS]
@@ -408,7 +408,7 @@ def chat():
         def generate():
             try:
                 if external_config:
-                    # Use user-provided config, fall back to server config
+                    # Use external API with user-provided config, fall back to server config
                     api_key = external_config.get('api_key', '').strip()
                     if not api_key and LLM_API_KEY:
                         api_key = LLM_API_KEY.strip()
@@ -422,7 +422,12 @@ def chat():
                     )
                     model_to_use = external_config.get('model', 'GPT-5-mini')
                 else:
-                    provider = get_model_provider()
+                    # No external_config means using local model (e.g., Ollama)
+                    provider = LLMProvider(
+                        base_url=LOCAL_API_URL,
+                        api_key=None,  # Local APIs typically don't need auth
+                        model=model
+                    )
                     model_to_use = model
                 
                 stream = provider.chat_stream(messages, model_to_use, temperature)
@@ -545,26 +550,29 @@ def chat():
 
 @chat_bp.route('/api/health')
 def health_check():
-    """Check if the model provider is accessible"""
+    """Check if both local and external model providers are accessible"""
     try:
-        provider = get_model_provider()
+        # Check external API
+        external_provider = LLMProvider(base_url=LLM_API_URL, api_key=LLM_API_KEY)
+        external_models = external_provider.get_available_models()
         
-        models = provider.get_available_models()
+        # Check local API
+        local_provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
+        local_models = local_provider.get_available_models()
         
-        if models:
-            return jsonify({
-                'status': 'healthy', 
-                'api_url': LLM_API_URL,
-                'connected': True,
-                'models_available': len(models)
-            })
-        else:
-            return jsonify({
-                'status': 'unhealthy', 
-                'api_url': LLM_API_URL,
-                'connected': False,
-                'error': 'No models available'
-            }), 503
+        return jsonify({
+            'status': 'healthy' if (external_models or local_models) else 'unhealthy',
+            'external_api_url': LLM_API_URL,
+            'external_connected': bool(external_models),
+            'external_models_available': len(external_models) if external_models else 0,
+            'local_api_url': LOCAL_API_URL,
+            'local_connected': bool(local_models),
+            'local_models_available': len(local_models) if local_models else 0,
+            # Keep backward compatible fields
+            'api_url': LLM_API_URL,
+            'connected': bool(external_models or local_models),
+            'models_available': (len(external_models) if external_models else 0) + (len(local_models) if local_models else 0)
+        })
     except Exception as e:
         return jsonify({
             'status': 'unhealthy', 

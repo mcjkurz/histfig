@@ -1,7 +1,11 @@
 #!/bin/bash
 
 # Historical Figures Chat System - Status Checker
-# Quick script to check if the system is running
+
+# Get project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
 
 echo "🔍 Checking Historical Figures Chat System Status..."
 echo "=================================="
@@ -25,3 +29,4 @@ else
 fi
 
 echo "=================================="
+

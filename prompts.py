@@ -22,10 +22,12 @@ Your Documents:
 
 User's Current Question: {message}{thinking_instruction}
 
+Respond in the language of the user's query.
+
 {response_start}"""
 
 # User message template without RAG context
-USER_MESSAGE_NO_RAG = "{message}{thinking_instruction}\n\n{response_start}"
+USER_MESSAGE_NO_RAG = "{message}{thinking_instruction}\n\nRespond in the language of the user's query.\n\n{response_start}"
 
 # System prompt for generic assistant (no figure selected)
 GENERIC_ASSISTANT_PROMPT = """You are a helpful AI assistant.

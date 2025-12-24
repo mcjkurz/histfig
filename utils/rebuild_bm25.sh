@@ -1,7 +1,11 @@
 #!/bin/bash
 
 # Script to rebuild BM25 indexes for all figures
-# This should be run when you want to refresh the BM25 search indexes
+
+# Get project root directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+cd "$PROJECT_ROOT"
 
 echo "=============================================="
 echo "  BM25 Index Rebuild Tool"

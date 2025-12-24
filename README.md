@@ -47,8 +47,12 @@ Access at:
 
 | Script | Purpose |
 |--------|---------|
-| `./check_status.sh` | Check server status |
-| `./kill_ports.sh` | Stop server |
+| `./start.sh` | Start server in background |
+| `./restart.sh` | Restart server |
+| `./utils/check_status.sh` | Check server status |
+| `./utils/kill_ports.sh` | Stop server |
+| `./utils/clean_logs.sh` | Remove log files |
+| `./utils/rebuild_bm25.sh` | Rebuild search indexes |
 
 ## Configuration
 
