@@ -22,8 +22,8 @@ from reportlab.lib import colors
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, MODEL_PROVIDER, EXTERNAL_API_KEY, EXTERNAL_BASE_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL
-from model_provider import get_model_provider, ExternalProvider
+from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_PROVIDER, LLM_API_KEY, LLM_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL
+from model_provider import get_model_provider, LLMProvider
 from query_augmentation import augment_query
 from prompts import (
     FIGURE_SYSTEM_PROMPT, DEFAULT_FIGURE_INSTRUCTION,
@@ -231,12 +231,12 @@ def get_models():
 
 @chat_bp.route('/api/external-api-key-status')
 def get_external_api_key_status():
-    """Check if external API key is pre-configured"""
+    """Check if LLM API key is pre-configured"""
     try:
-        has_key = bool(EXTERNAL_API_KEY and EXTERNAL_API_KEY.strip())
+        has_key = bool(LLM_API_KEY and LLM_API_KEY.strip())
         masked_key = ""
         if has_key:
-            key = EXTERNAL_API_KEY.strip()
+            key = LLM_API_KEY.strip()
             if len(key) > 6:
                 masked_key = key[:3] + '*' * (len(key) - 6) + key[-3:]
             else:
@@ -247,7 +247,7 @@ def get_external_api_key_status():
             'masked_key': masked_key
         })
     except Exception as e:
-        logging.error(f"Error checking external API key status: {e}")
+        logging.error(f"Error checking LLM API key status: {e}")
         return jsonify({'has_key': False, 'masked_key': ''})
 
 @chat_bp.route('/api/feature-flags')
@@ -385,13 +385,14 @@ def chat():
         def generate():
             try:
                 if external_config:
+                    # Use user-provided config, fall back to server config
                     api_key = external_config.get('api_key', '').strip()
-                    if not api_key and EXTERNAL_API_KEY:
-                        api_key = EXTERNAL_API_KEY.strip()
+                    if not api_key and LLM_API_KEY:
+                        api_key = LLM_API_KEY.strip()
                     
-                    base_url = external_config.get('base_url', EXTERNAL_BASE_URL)
+                    base_url = external_config.get('base_url', LLM_API_URL)
                     
-                    provider = ExternalProvider(
+                    provider = LLMProvider(
                         base_url=base_url,
                         api_key=api_key,
                         model=external_config.get('model', 'GPT-5-mini')
@@ -524,7 +525,7 @@ def health_check():
     """Check if the model provider is accessible"""
     try:
         provider = get_model_provider()
-        provider_name = MODEL_PROVIDER
+        provider_name = LLM_PROVIDER
         
         models = provider.get_available_models()
         
@@ -545,7 +546,7 @@ def health_check():
     except Exception as e:
         return jsonify({
             'status': 'unhealthy', 
-            'provider': MODEL_PROVIDER,
+            'provider': LLM_PROVIDER,
             'connected': False,
             'error': str(e)
         }), 503

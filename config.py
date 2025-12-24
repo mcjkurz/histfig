@@ -7,28 +7,23 @@ import os
 # Port Configuration (single-port setup)
 APP_PORT = 5001        # Application port for all services (chat, admin, uploads)
 
-# Legacy port aliases for backward compatibility
-PROXY_PORT = APP_PORT
-CHAT_PORT = APP_PORT
-ADMIN_PORT = APP_PORT
-UPLOAD_PORT = APP_PORT
+# LLM Provider Configuration
+# "local" = local Ollama instance, "external" = remote API (e.g., OpenAI, Poe)
+# Both must be OpenAI-compatible endpoints
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "local")
 
-# Model Provider Configuration
-MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "ollama")  # Options: "ollama"
-
-# Ollama Configuration
-OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
-DEFAULT_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:20b")
-
-# External API Configuration
-EXTERNAL_API_KEY = os.environ.get("EXTERNAL_API_KEY", "")
-EXTERNAL_BASE_URL = os.environ.get("EXTERNAL_BASE_URL", "https://api.poe.com/v1")
+# LLM API Configuration (OpenAI-compatible endpoint)
+# For local Ollama: http://localhost:11434/v1
+# For external APIs: https://api.poe.com/v1, https://api.openai.com/v1, etc.
+LLM_API_URL = os.environ.get("LLM_API_URL", "http://localhost:11434/v1")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")  # Required for external APIs
+DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "gpt-oss:120b")
 
 # Admin Panel Configuration
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")  # Change in production!
 
-# Available Models for External API
-AVAILABLE_MODELS = [
+# Available Models for External API (only used when LLM_PROVIDER="external")
+EXTERNAL_API_MODELS = [
     "GPT-5.2",
     "GPT-5.2-Instant",
     "GPT-5.1",
@@ -36,13 +31,15 @@ AVAILABLE_MODELS = [
     "GPT-5-mini",
     "GPT-5-nano", 
     "Gemini-2.5-Flash",
-    "Nova-Micro-1.0",
+    "Gemini-3-Flash",
     "Grok-4-Fast-Non-Reasoning",
 ]
 
-# Application Settings
-MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500MB max total request size (individual 50MB file limit enforced client-side)
-MAX_FILE_SIZE = 50 * 1024 * 1024        # 50MB max per individual file
+# File Upload Limits
+MAX_FILES_PER_REQUEST = 10                              # Max files in single upload
+MAX_FILE_SIZE = 50 * 1024 * 1024                        # 50MB per file
+MAX_CONTENT_LENGTH = MAX_FILES_PER_REQUEST * MAX_FILE_SIZE  # Total request size
+
 MAX_CONTEXT_MESSAGES = 15              # Keep last 15 exchanges
 DEBUG_MODE = False                     # Set to True for development
 
@@ -71,4 +68,4 @@ RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
 QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")
-QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", EXTERNAL_API_KEY)  # Defaults to EXTERNAL_API_KEY
+QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", LLM_API_KEY)  # Defaults to LLM_API_KEY
