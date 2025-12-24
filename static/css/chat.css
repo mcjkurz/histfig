@@ -1115,5 +1115,48 @@ body {
     }
 }
 
+/* Loading indicator for AI thinking */
+.loading-indicator {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #7dd3fc;
+    padding: 4px 0;
+}
+
+.loading-indicator .loading-dots {
+    display: flex;
+    gap: 4px;
+}
+
+.loading-indicator .dot {
+    animation: loadingPulse 1.4s ease-in-out infinite;
+    font-size: 0.8em;
+    opacity: 0.4;
+}
+
+.loading-indicator .dot:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.loading-indicator .dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.loading-indicator .dot:nth-child(3) {
+    animation-delay: 0.4s;
+}
+
+@keyframes loadingPulse {
+    0%, 60%, 100% {
+        opacity: 0.4;
+        transform: scale(1);
+    }
+    30% {
+        opacity: 1;
+        transform: scale(1.2);
+    }
+}
+
 
 

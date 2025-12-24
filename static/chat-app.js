@@ -1182,6 +1182,10 @@ class ChatApp {
         // Create abort controller for this request
         this.abortController = new AbortController();
         
+        // Show loading indicator immediately
+        this.currentMessageElement = this.addMessage('', 'assistant');
+        this.showLoadingIndicator();
+        
         try {
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -1213,7 +1217,8 @@ class ChatApp {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            this.currentMessageElement = this.addMessage('', 'assistant');
+            // Remove loading indicator now that response is starting
+            this.hideLoadingIndicator();
             
             // Reset streaming state
             this.currentResponseElement = null;
@@ -1242,6 +1247,8 @@ class ChatApp {
                             const data = JSON.parse(line.slice(6));
                             
                             if (data.error) {
+                                // Hide loading indicator on error
+                                this.hideLoadingIndicator();
                                 // Check if it's an API key related error
                                 const errorMsg = data.error.toLowerCase();
                                 if (this.currentSource === 'external' && 
@@ -1281,6 +1288,9 @@ class ChatApp {
                 }
             }
         } catch (error) {
+            // Hide loading indicator on error
+            this.hideLoadingIndicator();
+            
             if (error.name === 'AbortError') {
                 console.log('Request was cancelled');
                 // Add a message indicating generation was stopped
@@ -1629,6 +1639,30 @@ class ChatApp {
 
     scrollToBottom() {
         this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+    }
+    
+    showLoadingIndicator() {
+        if (!this.currentMessageElement) return;
+        
+        // Create loading indicator
+        this.loadingIndicator = document.createElement('div');
+        this.loadingIndicator.className = 'loading-indicator';
+        this.loadingIndicator.innerHTML = `
+            <span class="loading-dots">
+                <span class="dot">●</span>
+                <span class="dot">●</span>
+                <span class="dot">●</span>
+            </span>
+        `;
+        this.currentMessageElement.appendChild(this.loadingIndicator);
+        this.scrollToBottom();
+    }
+    
+    hideLoadingIndicator() {
+        if (this.loadingIndicator && this.loadingIndicator.parentNode) {
+            this.loadingIndicator.parentNode.removeChild(this.loadingIndicator);
+            this.loadingIndicator = null;
+        }
     }
     
     stopGeneration() {
