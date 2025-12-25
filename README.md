@@ -23,19 +23,27 @@ pip install -r requirements.txt
 
 ```bash
 export LLM_API_URL="https://api.poe.com/v1"  # Any OpenAI-compatible endpoint
-export LLM_API_KEY="your-api-key"               # Required for most APIs
-export DEFAULT_MODEL="your-model-name"
+export LLM_API_KEY="your-api-key"            # Required for external APIs
 export ADMIN_PASSWORD="your-admin-password"
 
-# Model source selection (External API is default in UI)
-export EXTERNAL_MODELS="GPT-5-mini,GPT-5-nano,Gemini-2.5-Flash"  # Models for external API
-export LOCAL_MODELS="gpt-oss:20b,llama2,mistral"           # Models for local source
+# Model lists (comma-separated)
+export EXTERNAL_MODELS="GPT-5-mini,GPT-5-nano,Gemini-2.5-Flash"
+export LOCAL_MODELS="llama2,mistral,qwen2"
 ```
 
-**Model Source Notes:**
-- Leave `EXTERNAL_MODELS` empty to fetch available models from the external API
-- Leave `LOCAL_MODELS` empty to fetch available models from local LLM API
-- UI defaults to External API source
+**Model Configuration:**
+
+You can use external API only, local models only, or both. Configure only what you need:
+
+| Scenario | Configuration |
+|----------|---------------|
+| External API only | Set `EXTERNAL_MODELS`, leave `LOCAL_MODELS` empty |
+| Local models only | Set `LOCAL_MODELS`, leave `EXTERNAL_MODELS` empty |
+| Both sources | Set both variables |
+
+- **Empty variable** = system tries to auto-detect available models from that API
+- **Not set / omitted** = same as empty, auto-detection attempted
+- The UI shows which sources have models available and defaults to the first available source
 
 ### Run
 
