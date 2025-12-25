@@ -13,7 +13,7 @@ import uuid
 import datetime
 from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 from figure_manager import get_figure_manager
-from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
+from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS
 from search_utils import format_search_result_for_response
 from model_provider import LLMProvider
 from query_augmentation import augment_query
@@ -174,8 +174,6 @@ def get_models_by_source():
             try:
                 provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
                 models = provider.get_available_models()
-                if models and ALLOWED_MODELS:
-                    models = [m for m in models if m in ALLOWED_MODELS]
                 local_models = models if models else []
             except Exception as e:
                 logging.warning(f"Could not fetch local models: {e}")

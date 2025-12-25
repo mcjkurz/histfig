@@ -18,10 +18,6 @@ DEFAULT_EXTERNAL_MODEL = os.environ.get("DEFAULT_EXTERNAL_MODEL", "GPT-5-mini")
 # Admin
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
-# Model whitelist (comma-separated, empty = all models allowed)
-_models_env = os.environ.get("ALLOWED_MODELS", "")
-ALLOWED_MODELS = [m.strip() for m in _models_env.split(",") if m.strip()] if _models_env else None
-
 # Local models list (comma-separated, empty = fetch from local API)
 _local_models_env = os.environ.get("LOCAL_MODELS", "")
 LOCAL_MODELS = [m.strip() for m in _local_models_env.split(",") if m.strip()] if _local_models_env else None

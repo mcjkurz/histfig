@@ -22,8 +22,10 @@ pip install -r requirements.txt
 ### Environment Variables
 
 ```bash
-export LLM_API_URL="https://api.poe.com/v1"  # Any OpenAI-compatible endpoint
-export LLM_API_KEY="your-api-key"            # Required for external APIs
+export APP_PORT="5001"                        # Server port (default: 5001)
+export LLM_API_URL="https://api.poe.com/v1"   # External API endpoint
+export LLM_API_KEY="your-api-key"             # Required for external APIs
+export LOCAL_API_URL="http://localhost:11434/v1"  # Local LLM endpoint (e.g., Ollama)
 export ADMIN_PASSWORD="your-admin-password"
 
 # Model lists (comma-separated)
