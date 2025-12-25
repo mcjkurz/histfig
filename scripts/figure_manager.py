@@ -494,7 +494,7 @@ class FigureManager:
             return False
     
     def search_figure_documents(self, figure_id: str, query: str, n_results: int = 5, 
-                               min_cosine_similarity: float = 0.05) -> List[Dict[str, Any]]:
+                               min_cosine_similarity: float = MIN_COSINE_SIMILARITY) -> List[Dict[str, Any]]:
         """
         Search for similar documents in a figure's collection using hybrid search.
         Only returns results with meaningful cosine similarity.

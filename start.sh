@@ -37,7 +37,6 @@ echo "📝 Log file: $LOG_FILE"
 # Start server in background
 (
     source venv/bin/activate
-    python scripts/init_app.py
     python scripts/main.py
 ) >> "$LOG_FILE" 2>&1 &
 
