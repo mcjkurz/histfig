@@ -4,10 +4,6 @@ Chat with historical figures using RAG-enhanced AI. Upload documents and have co
 
 ![Screenshot](img/screenshot_1.png)
 
-## Hardware Acceleration
-
-Supports CUDA (NVIDIA GPUs), MPS (Apple Silicon), and CPU. Hardware is detected automatically.
-
 ## Quick Start
 
 ```bash
@@ -58,3 +54,7 @@ Access at:
 ## Configuration
 
 All settings in `config.py`: port, models, upload limits, chunking, etc.
+
+## Hardware Acceleration
+
+Supports CUDA (NVIDIA GPUs), MPS (Apple Silicon), and CPU. Hardware is detected automatically.
