@@ -31,19 +31,7 @@ export EXTERNAL_MODELS="GPT-5-mini,GPT-5-nano,Gemini-2.5-Flash"
 export LOCAL_MODELS="llama2,mistral,qwen2"
 ```
 
-**Model Configuration:**
-
-You can use external API only, local models only, or both. Configure only what you need:
-
-| Scenario | Configuration |
-|----------|---------------|
-| External API only | Set `EXTERNAL_MODELS`, leave `LOCAL_MODELS` empty |
-| Local models only | Set `LOCAL_MODELS`, leave `EXTERNAL_MODELS` empty |
-| Both sources | Set both variables |
-
-- **Empty variable** = system tries to auto-detect available models from that API
-- **Not set / omitted** = same as empty, auto-detection attempted
-- The UI shows which sources have models available and defaults to the first available source
+You can use external API, local models, or both. Leave empty (`""`) if a source is not available.
 
 ### Run
 
