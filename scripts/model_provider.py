@@ -7,15 +7,15 @@ import requests
 import json
 import logging
 from typing import List, Dict, Generator
-from config import LLM_API_URL, LLM_API_KEY
+from config import EXTERNAL_API_URL, EXTERNAL_API_KEY
 
 
 class LLMProvider:
     """Unified OpenAI-compatible LLM provider"""
     
     def __init__(self, base_url: str = None, api_key: str = None, model: str = None):
-        self.base_url = (base_url or LLM_API_URL).rstrip('/')
-        self.api_key = api_key or LLM_API_KEY
+        self.base_url = (base_url or EXTERNAL_API_URL).rstrip('/')
+        self.api_key = api_key or EXTERNAL_API_KEY
         self.default_model = model
         
     def chat_stream(self, messages: List[Dict], model: str, temperature: float) -> Generator:
@@ -126,5 +126,5 @@ class LLMProvider:
 
 def get_model_provider() -> LLMProvider:
     """Factory function to get the LLM provider"""
-    logging.debug(f"Creating LLM provider for {LLM_API_URL}")
+    logging.debug(f"Creating LLM provider for {EXTERNAL_API_URL}")
     return LLMProvider()

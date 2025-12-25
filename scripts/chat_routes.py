@@ -13,7 +13,7 @@ import uuid
 import datetime
 from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 from figure_manager import get_figure_manager
-from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS
+from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS
 from search_utils import format_search_result_for_response
 from model_provider import LLMProvider
 from query_augmentation import augment_query
@@ -194,10 +194,10 @@ def get_models_by_source():
 def get_external_api_key_status():
     """Check if LLM API key is pre-configured"""
     try:
-        has_key = bool(LLM_API_KEY and LLM_API_KEY.strip())
+        has_key = bool(EXTERNAL_API_KEY and EXTERNAL_API_KEY.strip())
         masked_key = ""
         if has_key:
-            key = LLM_API_KEY.strip()
+            key = EXTERNAL_API_KEY.strip()
             if len(key) > 6:
                 masked_key = key[:3] + '*' * (len(key) - 6) + key[-3:]
             else:
@@ -335,10 +335,10 @@ def chat():
             try:
                 if external_config:
                     api_key = external_config.get('api_key', '').strip()
-                    if not api_key and LLM_API_KEY:
-                        api_key = LLM_API_KEY.strip()
+                    if not api_key and EXTERNAL_API_KEY:
+                        api_key = EXTERNAL_API_KEY.strip()
                     
-                    base_url = external_config.get('base_url', LLM_API_URL)
+                    base_url = external_config.get('base_url', EXTERNAL_API_URL)
                     model_to_use = external_config.get('model') or DEFAULT_EXTERNAL_MODEL
                     
                     provider = LLMProvider(
@@ -415,7 +415,7 @@ def chat():
 def health_check():
     """Check if both local and external model providers are accessible"""
     try:
-        external_provider = LLMProvider(base_url=LLM_API_URL, api_key=LLM_API_KEY)
+        external_provider = LLMProvider(base_url=EXTERNAL_API_URL, api_key=EXTERNAL_API_KEY)
         external_models = external_provider.get_available_models()
         
         local_provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
@@ -423,7 +423,7 @@ def health_check():
         
         return jsonify({
             'status': 'healthy' if (external_models or local_models) else 'unhealthy',
-            'external_api_url': LLM_API_URL,
+            'external_api_url': EXTERNAL_API_URL,
             'external_connected': bool(external_models),
             'external_models_available': len(external_models) if external_models else 0,
             'local_api_url': LOCAL_API_URL,
@@ -433,7 +433,7 @@ def health_check():
     except Exception as e:
         return jsonify({
             'status': 'unhealthy', 
-            'api_url': LLM_API_URL,
+            'api_url': EXTERNAL_API_URL,
             'connected': False,
             'error': str(e)
         }), 503

@@ -23,8 +23,8 @@ pip install -r requirements.txt
 
 ```bash
 export APP_PORT="5001"                        # Server port (default: 5001)
-export LLM_API_URL="https://api.poe.com/v1"   # External API endpoint
-export LLM_API_KEY="your-api-key"             # Required for external APIs
+export EXTERNAL_API_URL="https://api.poe.com/v1"   # External API endpoint
+export EXTERNAL_API_KEY="your-api-key"             # Required for external APIs
 export LOCAL_API_URL="http://localhost:11434/v1"  # Local LLM endpoint (e.g., Ollama)
 export ADMIN_PASSWORD="your-admin-password"
 

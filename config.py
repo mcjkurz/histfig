@@ -5,11 +5,11 @@ import os
 APP_PORT = int(os.environ.get("APP_PORT", "5001"))
 
 # LLM API (must be OpenAI-compatible)
-# LLM_API_URL is used for external API (e.g., Poe API) - this is the default when external source is selected
+# EXTERNAL_API_URL is used for external API (e.g., Poe API) - this is the default when external source is selected
 # LOCAL_API_URL is used for local models (e.g., Ollama) - this is used when local source is selected
-LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.poe.com/v1")
+EXTERNAL_API_URL = os.environ.get("EXTERNAL_API_URL", "https://api.poe.com/v1")
 LOCAL_API_URL = os.environ.get("LOCAL_API_URL", "http://localhost:11434/v1")
-LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+EXTERNAL_API_KEY = os.environ.get("EXTERNAL_API_KEY", "")
 
 # Default models for each source (fallback when no model is specified)
 DEFAULT_LOCAL_MODEL = os.environ.get("DEFAULT_LOCAL_MODEL", "")
@@ -60,7 +60,7 @@ RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
 QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")
-QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", LLM_API_KEY)
+QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", EXTERNAL_API_KEY)
 
 # Search tuning parameters
 MIN_COSINE_SIMILARITY = float(os.environ.get("MIN_COSINE_SIMILARITY", "0.05"))
