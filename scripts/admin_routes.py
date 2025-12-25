@@ -24,8 +24,6 @@ import re
 # Create blueprint with /admin prefix
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates', static_folder='../static')
 
-logging.basicConfig(level=logging.INFO)
-
 # Ensure directories exist
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 os.makedirs(FIGURE_IMAGES_DIR, exist_ok=True)
@@ -435,6 +433,10 @@ def upload_documents(figure_id):
             
             all_results.append(file_result)
         
+        # Sync document count after bulk upload
+        if successful_uploads > 0:
+            figure_manager.sync_document_count(figure_id)
+        
         if is_ajax:
             return jsonify({
                 'success': successful_uploads > 0,
@@ -575,6 +577,10 @@ def upload_documents_stream(figure_id):
                 
                 except Exception as e:
                     yield f"data: {json.dumps({'event': 'file_error', 'file_index': file_index, 'error': str(e)})}\n\n"
+            
+            # Sync document count after bulk upload
+            if successful_uploads > 0:
+                figure_manager.sync_document_count(figure_id)
             
             yield f"data: {json.dumps({'event': 'upload_complete', 'successful_uploads': successful_uploads, 'total_files': total_files})}\n\n"
             

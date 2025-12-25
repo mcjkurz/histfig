@@ -10,7 +10,10 @@ APP_PORT = int(os.environ.get("APP_PORT", "5001"))
 LLM_API_URL = os.environ.get("LLM_API_URL", "https://api.poe.com/v1")
 LOCAL_API_URL = os.environ.get("LOCAL_API_URL", "http://localhost:11434/v1")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
-DEFAULT_MODEL = os.environ.get("DEFAULT_MODEL", "")
+
+# Default models for each source (fallback when no model is specified)
+DEFAULT_LOCAL_MODEL = os.environ.get("DEFAULT_LOCAL_MODEL", "")
+DEFAULT_EXTERNAL_MODEL = os.environ.get("DEFAULT_EXTERNAL_MODEL", "GPT-5-mini")
 
 # Admin
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
@@ -51,7 +54,7 @@ MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))
 OVERLAP_PERCENT = int(os.environ.get("OVERLAP_PERCENT", "20"))
 
 # Allowed file types
-ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx', 'md'}
+ALLOWED_EXTENSIONS = {'txt', 'pdf', 'docx'}
 ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 
 # RAG
@@ -62,3 +65,9 @@ QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
 QUERY_AUGMENTATION_API_URL = os.environ.get("QUERY_AUGMENTATION_API_URL", "https://api.poe.com/v1")
 QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", LLM_API_KEY)
+
+# Search tuning parameters
+MIN_COSINE_SIMILARITY = float(os.environ.get("MIN_COSINE_SIMILARITY", "0.05"))
+SEARCH_MULTIPLIER = int(os.environ.get("SEARCH_MULTIPLIER", "3"))  # Fetch N times more results for fusion
+RRF_K = int(os.environ.get("RRF_K", "60"))  # Reciprocal Rank Fusion constant
+MAX_SEARCH_RESULTS = int(os.environ.get("MAX_SEARCH_RESULTS", "30"))

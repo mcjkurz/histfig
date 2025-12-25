@@ -112,8 +112,8 @@ class TextProcessor:
         for token in tokens:
             token = token.lower()
             
-            # Skip pure punctuation
-            if token in string.punctuation or token in ["。", "，", "、", "：", "？", "！", "：", "；", "，", "、", "：", "？", "！", "：", "；"]:
+            # Skip pure punctuation (Chinese and English)
+            if token in string.punctuation or token in ["。", "，", "、", "：", "？", "！", "；"]:
                 continue
                 
             # Skip empty or whitespace tokens

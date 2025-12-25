@@ -1,5 +1,3 @@
-console.log('Loading ChatApp v3.0 - Mobile Optimized');
-
 class ChatApp {
     constructor() {
         // Get all DOM elements
@@ -19,7 +17,6 @@ class ChatApp {
         this.sourceModalText = document.getElementById('source-modal-text');
         this.sourceModalClose = document.getElementById('source-modal-close');
         this.figureSelect = document.getElementById('figure-select');
-        this.figureInfo = document.getElementById('figure-info');
         this.figureName = document.getElementById('figure-name');
         this.figureDescription = document.getElementById('figure-description');
         this.ragToggleContainer = document.getElementById('rag-toggle-container');
@@ -375,32 +372,30 @@ class ChatApp {
                 return;
             }
         } catch (e) {
-            console.log('Could not fetch models from external API, using defaults');
+            console.log('Could not fetch models from external API');
         }
         
-        // Fallback to default external models
-        const defaultModels = [
-            'GPT-5-mini',
-            'GPT-5-nano',
-            'GPT-4.1-mini',
-            'Gemini-2.5-Flash',
-            'Nova-Micro-1.0',
-            'Grok-4-Fast-Non-Reasoning'
-        ];
-        
+        // No fallback defaults - show "Other" option only so user must specify model
+        // Server-side EXTERNAL_MODELS config should be used instead of hardcoding here
         this.modelSelect.innerHTML = '';
-        defaultModels.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model;
-            option.textContent = model;
-            this.modelSelect.appendChild(option);
-        });
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Enter model name below';
+        placeholder.disabled = true;
+        placeholder.selected = true;
+        this.modelSelect.appendChild(placeholder);
         
-        // Add "Other" option
+        // Add "Other" option for custom model entry
         const otherOption = document.createElement('option');
         otherOption.value = 'Other';
-        otherOption.textContent = 'Other';
+        otherOption.textContent = 'Other (enter custom)';
         this.modelSelect.appendChild(otherOption);
+        
+        // Auto-select "Other" to prompt user to enter model name
+        this.modelSelect.value = 'Other';
+        if (this.customModelName) {
+            this.customModelName.style.display = 'block';
+        }
     }
 
     toggleControlPanel() {

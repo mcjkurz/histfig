@@ -12,5 +12,3 @@ jieba
 nltk
 numpy
 rank_bm25
-openai
-reportlab

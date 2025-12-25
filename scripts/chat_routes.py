@@ -3,8 +3,7 @@ Chat Routes Blueprint
 Handles chat interface and conversation functionality.
 """
 
-from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
-import requests
+import re
 import json
 import logging
 import os
@@ -12,19 +11,13 @@ import markdown
 import secrets
 import uuid
 import datetime
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
-from reportlab.lib.enums import TA_JUSTIFY, TA_LEFT, TA_CENTER
-from reportlab.lib import colors
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
+from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 from figure_manager import get_figure_manager
-from config import DEFAULT_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
-from model_provider import get_model_provider, LLMProvider
+from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, LLM_API_KEY, LLM_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, ALLOWED_MODELS, LOCAL_MODELS, EXTERNAL_MODELS
+from search_utils import format_search_result_for_response
+from model_provider import LLMProvider
 from query_augmentation import augment_query
+from pdf_export import generate_conversation_pdf
 from prompts import (
     FIGURE_SYSTEM_PROMPT, DEFAULT_FIGURE_INSTRUCTION,
     USER_MESSAGE_WITH_RAG, USER_MESSAGE_NO_RAG, GENERIC_ASSISTANT_PROMPT,
@@ -37,51 +30,12 @@ chat_bp = Blueprint('chat', __name__, template_folder='../templates', static_fol
 # Store conversation history per session
 session_data = {}
 
-def register_unicode_fonts():
-    """Register Unicode-capable fonts for PDF generation"""
-    try:
-        import platform
-        system = platform.system()
-        
-        if system == "Darwin":  # macOS
-            font_paths = [
-                "/System/Library/Fonts/PingFang.ttc",
-                "/System/Library/Fonts/Hiragino Sans GB.ttc",
-                "/System/Library/Fonts/STHeiti Light.ttc",
-                "/System/Library/Fonts/Arial Unicode MS.ttf",
-            ]
-        elif system == "Linux":
-            font_paths = [
-                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-            ]
-        else:  # Windows
-            font_paths = [
-                "C:/Windows/Fonts/msyh.ttc",
-                "C:/Windows/Fonts/simsun.ttc",
-                "C:/Windows/Fonts/arial.ttf",
-            ]
-        
-        for font_path in font_paths:
-            try:
-                if os.path.exists(font_path):
-                    pdfmetrics.registerFont(TTFont('UnicodeFont', font_path))
-                    return 'UnicodeFont'
-            except Exception:
-                continue
-        
-        return 'Helvetica'
-        
-    except Exception as e:
-        logging.warning(f"Could not register Unicode fonts: {e}")
-        return 'Helvetica'
 
 def clean_thinking_content(text):
     """Remove thinking tags and content from text"""
-    import re
     cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
     return cleaned.strip()
+
 
 def get_session_id():
     """Get or create a session ID for the current user"""
@@ -89,6 +43,7 @@ def get_session_id():
         session['session_id'] = secrets.token_hex(16)
         session.permanent = True
     return session['session_id']
+
 
 def get_session_data():
     """Get session data for the current user"""
@@ -102,6 +57,7 @@ def get_session_data():
             'conversation_start_time': datetime.datetime.now().isoformat()
         }
     return session_data[session_id]
+
 
 def save_conversation_to_json(user_session, session_id):
     """Save conversation to JSON file automatically"""
@@ -134,6 +90,7 @@ def save_conversation_to_json(user_session, session_id):
     except Exception as e:
         logging.error(f"Error auto-saving conversation: {e}")
 
+
 def add_to_conversation_history(role, content, retrieved_documents=None):
     """Add a message to conversation history for current session"""
     user_session = get_session_data()
@@ -155,6 +112,7 @@ def add_to_conversation_history(role, content, retrieved_documents=None):
         
         save_conversation_to_json(user_session, get_session_id())
 
+
 def build_conversation_messages():
     """Build conversation messages list for current session"""
     user_session = get_session_data()
@@ -170,6 +128,7 @@ def build_conversation_messages():
             })
     
     return messages
+
 
 def truncate_messages_preserve_system(messages, system_message=None):
     """Truncate messages while preserving the system message"""
@@ -189,26 +148,29 @@ def truncate_messages_preserve_system(messages, system_message=None):
             return messages[-MAX_CONTEXT_MESSAGES * 2:]
         return messages
 
+
+# Routes
+
 @chat_bp.route('/')
 def index():
     """Serve the main chat interface"""
     return render_template('index.html')
+
 
 @chat_bp.route('/favicon.ico')
 def favicon():
     """Serve favicon from static folder"""
     return send_from_directory(current_app.static_folder, 'favicon.ico', mimetype='image/vnd.microsoft.icon')
 
+
 @chat_bp.route('/api/models-by-source')
 def get_models_by_source():
     """Get model lists for both local and external sources"""
     try:
-        # Get local models from Ollama
         local_models = []
         if LOCAL_MODELS:
             local_models = LOCAL_MODELS
         else:
-            # Fetch from local Ollama API
             try:
                 provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
                 models = provider.get_available_models()
@@ -217,18 +179,18 @@ def get_models_by_source():
                 local_models = models if models else []
             except Exception as e:
                 logging.warning(f"Could not fetch local models: {e}")
-                local_models = [DEFAULT_MODEL] if DEFAULT_MODEL else []
+                local_models = [DEFAULT_LOCAL_MODEL] if DEFAULT_LOCAL_MODEL else []
         
-        # Get external models (None means "fetch from API dynamically")
         external_models = EXTERNAL_MODELS if EXTERNAL_MODELS else None
         
         return jsonify({
             'local': local_models,
-            'external': external_models  # None means client should fetch from external API
+            'external': external_models
         })
     except Exception as e:
         logging.error(f"Error fetching models by source: {e}")
         return jsonify({'local': [], 'external': None})
+
 
 @chat_bp.route('/api/external-api-key-status')
 def get_external_api_key_status():
@@ -251,6 +213,7 @@ def get_external_api_key_status():
         logging.error(f"Error checking LLM API key status: {e}")
         return jsonify({'has_key': False, 'masked_key': ''})
 
+
 @chat_bp.route('/api/feature-flags')
 def get_feature_flags():
     """Get feature flags from server config"""
@@ -260,13 +223,14 @@ def get_feature_flags():
         'query_augmentation_model': QUERY_AUGMENTATION_MODEL
     })
 
+
 @chat_bp.route('/api/chat', methods=['POST'])
 def chat():
     """Handle chat requests and stream responses using messages format"""
     try:
         data = request.json
         message = data.get('message', '')
-        model = data.get('model', DEFAULT_MODEL)
+        model = data.get('model', '')
         use_rag = data.get('use_rag', True)
         k = data.get('k', 5)
         thinking_intensity = data.get('thinking_intensity', 'normal')
@@ -289,16 +253,12 @@ def chat():
         user_content = message
         augmented_query = None
         
-        # Get figure name early for query augmentation
-        figure_name = None
-        if use_rag:
-            user_session = get_session_data()
-            current_figure = user_session.get('current_figure')
-            if current_figure:
-                figure_manager = get_figure_manager()
-                figure_metadata = figure_manager.get_figure_metadata(current_figure)
-                if figure_metadata:
-                    figure_name = figure_metadata.get('name', current_figure)
+        # Get session and figure data once (avoid duplicate queries)
+        user_session = get_session_data()
+        current_figure = user_session.get('current_figure')
+        figure_manager = get_figure_manager() if current_figure else None
+        figure_metadata = figure_manager.get_figure_metadata(current_figure) if figure_manager and current_figure else None
+        figure_name = figure_metadata.get('name', current_figure) if figure_metadata else None
         
         # Apply query augmentation if enabled in config AND by user
         if QUERY_AUGMENTATION_ENABLED and use_query_augmentation and use_rag and k > 0:
@@ -312,46 +272,37 @@ def chat():
         
         if use_rag:
             try:
-                user_session = get_session_data()
-                current_figure = user_session['current_figure']
-                
-                if current_figure:
-                    figure_manager = get_figure_manager()
-                    figure_metadata = figure_manager.get_figure_metadata(current_figure)
+                if current_figure and figure_metadata:
+                    search_query = augmented_query if augmented_query else message
+                    search_results = figure_manager.search_figure_documents(current_figure, search_query, n_results=k)
+                    personality_prompt = figure_metadata.get('personality_prompt', '')
                     
-                    if figure_metadata:
-                        # Use augmented query for search if available
-                        search_query = augmented_query if augmented_query else message
-                        search_results = figure_manager.search_figure_documents(current_figure, search_query, n_results=k)
-                        personality_prompt = figure_metadata.get('personality_prompt', '')
-                        figure_name = figure_metadata.get('name', current_figure)
+                    base_instruction = DEFAULT_FIGURE_INSTRUCTION.format(figure_name=figure_name) if not personality_prompt else personality_prompt
+                    system_content = FIGURE_SYSTEM_PROMPT.format(
+                        base_instruction=base_instruction,
+                        figure_name=figure_name
+                    )
+                    
+                    if search_results:
+                        context_parts = []
+                        for result in search_results:
+                            filename = result['metadata'].get('filename', 'Unknown')
+                            context_parts.append(f"[{filename}]:\n{result['text']}")
                         
-                        base_instruction = DEFAULT_FIGURE_INSTRUCTION.format(figure_name=figure_name) if not personality_prompt else personality_prompt
-                        system_content = FIGURE_SYSTEM_PROMPT.format(
-                            base_instruction=base_instruction,
-                            figure_name=figure_name
+                        rag_context = "\n\n".join(context_parts)
+                        
+                        user_content = USER_MESSAGE_WITH_RAG.format(
+                            rag_context=rag_context,
+                            message=message,
+                            thinking_instruction=thinking_instruction,
+                            response_start=response_start
                         )
-                        
-                        if search_results:
-                            context_parts = []
-                            for result in search_results:
-                                filename = result['metadata'].get('filename', 'Unknown')
-                                context_parts.append(f"[{filename}]:\n{result['text']}")
-                            
-                            rag_context = "\n\n".join(context_parts)
-                            
-                            user_content = USER_MESSAGE_WITH_RAG.format(
-                                rag_context=rag_context,
-                                message=message,
-                                thinking_instruction=thinking_instruction,
-                                response_start=response_start
-                            )
-                        else:
-                            user_content = USER_MESSAGE_NO_RAG.format(
-                                message=message,
-                                thinking_instruction=thinking_instruction,
-                                response_start=response_start
-                            )
+                    else:
+                        user_content = USER_MESSAGE_NO_RAG.format(
+                            message=message,
+                            thinking_instruction=thinking_instruction,
+                            response_start=response_start
+                        )
                 else:
                     system_content = GENERIC_ASSISTANT_PROMPT
                     user_content = USER_MESSAGE_NO_RAG.format(
@@ -381,73 +332,37 @@ def chat():
         messages = truncate_messages_preserve_system(all_conversation_messages, system_message)
         
         session_id = get_session_id()
-        user_session = get_session_data()
-        current_figure = user_session.get('current_figure')
         
         def generate():
             try:
                 if external_config:
-                    # Use external API with user-provided config, fall back to server config
                     api_key = external_config.get('api_key', '').strip()
                     if not api_key and LLM_API_KEY:
                         api_key = LLM_API_KEY.strip()
                     
                     base_url = external_config.get('base_url', LLM_API_URL)
+                    model_to_use = external_config.get('model') or DEFAULT_EXTERNAL_MODEL
                     
                     provider = LLMProvider(
                         base_url=base_url,
                         api_key=api_key,
-                        model=external_config.get('model', DEFAULT_MODEL)
+                        model=model_to_use
                     )
-                    model_to_use = external_config.get('model', DEFAULT_MODEL)
                 else:
-                    # No external_config means using local model (e.g., Ollama)
+                    model_to_use = model or DEFAULT_LOCAL_MODEL
                     provider = LLMProvider(
                         base_url=LOCAL_API_URL,
-                        api_key=None,  # Local APIs typically don't need auth
-                        model=model
+                        api_key=None,
+                        model=model_to_use
                     )
-                    model_to_use = model
                 
                 stream = provider.chat_stream(messages, model_to_use, temperature)
                 
-                # Send augmented query if available
                 if augmented_query and augmented_query != message:
                     yield f"data: {json.dumps({'augmented_query': augmented_query})}\n\n"
                 
                 if use_rag and search_results:
-                    sources_data = []
-                    for result in search_results:
-                        if current_figure:
-                            doc_id = result.get('document_id', 'UNKNOWN')
-                            sources_data.append({
-                                'document_id': doc_id,
-                                'filename': result['metadata']['filename'],
-                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
-                                'full_text': result['text'],
-                                'similarity': result.get('similarity', 0),
-                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
-                                'bm25_score': result.get('bm25_score', 0),
-                                'rrf_score': result.get('rrf_score', 0),
-                                'top_matching_words': result.get('top_matching_words', []),
-                                'chunk_index': result['metadata'].get('chunk_index', 0),
-                                'figure_id': current_figure
-                            })
-                        else:
-                            doc_id = result.get('chunk_id', 'UNKNOWN')
-                            sources_data.append({
-                                'chunk_id': doc_id,
-                                'doc_id': f"DOC{doc_id}",
-                                'filename': result['metadata']['filename'],
-                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
-                                'full_text': result['text'],
-                                'similarity': result.get('similarity', 0),
-                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
-                                'bm25_score': result.get('bm25_score', 0),
-                                'rrf_score': result.get('rrf_score', 0),
-                                'top_matching_words': result.get('top_matching_words', []),
-                                'chunk_index': result['metadata'].get('chunk_index', 0)
-                            })
+                    sources_data = [format_search_result_for_response(r, current_figure) for r in search_results]
                     yield f"data: {json.dumps({'sources': sources_data})}\n\n"
                 
                 full_response = ""
@@ -473,39 +388,9 @@ def chat():
                                 assistant_msg = {"role": "assistant", "content": cleaned_content}
                                 
                                 if use_rag and search_results:
-                                    retrieved_docs = []
-                                    for result in search_results:
-                                        if current_figure:
-                                            doc_id = result.get('document_id', 'UNKNOWN')
-                                            retrieved_docs.append({
-                                                'document_id': doc_id,
-                                                'filename': result['metadata']['filename'],
-                                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
-                                                'full_text': result['text'],
-                                                'similarity': result.get('similarity', 0),
-                                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
-                                                'bm25_score': result.get('bm25_score', 0),
-                                                'rrf_score': result.get('rrf_score', 0),
-                                                'top_matching_words': result.get('top_matching_words', []),
-                                                'chunk_index': result['metadata'].get('chunk_index', 0),
-                                                'figure_id': current_figure
-                                            })
-                                        else:
-                                            doc_id = result.get('chunk_id', 'UNKNOWN')
-                                            retrieved_docs.append({
-                                                'chunk_id': doc_id,
-                                                'doc_id': f"DOC{doc_id}",
-                                                'filename': result['metadata']['filename'],
-                                                'text': result['text'][:200] + '...' if len(result['text']) > 200 else result['text'],
-                                                'full_text': result['text'],
-                                                'similarity': result.get('similarity', 0),
-                                                'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
-                                                'bm25_score': result.get('bm25_score', 0),
-                                                'rrf_score': result.get('rrf_score', 0),
-                                                'top_matching_words': result.get('top_matching_words', []),
-                                                'chunk_index': result['metadata'].get('chunk_index', 0)
-                                            })
-                                    assistant_msg["retrieved_documents"] = retrieved_docs
+                                    assistant_msg["retrieved_documents"] = [
+                                        format_search_result_for_response(r, current_figure) for r in search_results
+                                    ]
                                 
                                 conversation_history.append(assistant_msg)
                                 
@@ -527,15 +412,14 @@ def chat():
         logging.error(f"Error in chat endpoint: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @chat_bp.route('/api/health')
 def health_check():
     """Check if both local and external model providers are accessible"""
     try:
-        # Check external API
         external_provider = LLMProvider(base_url=LLM_API_URL, api_key=LLM_API_KEY)
         external_models = external_provider.get_available_models()
         
-        # Check local API
         local_provider = LLMProvider(base_url=LOCAL_API_URL, api_key=None)
         local_models = local_provider.get_available_models()
         
@@ -556,6 +440,7 @@ def health_check():
             'error': str(e)
         }), 503
 
+
 @chat_bp.route('/api/rag/stats')
 def rag_stats():
     """Get RAG database statistics"""
@@ -571,6 +456,7 @@ def rag_stats():
     except Exception as e:
         logging.error(f"Error getting RAG stats: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @chat_bp.route('/api/debug/rag')
 def debug_rag():
@@ -602,6 +488,7 @@ def debug_rag():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
 @chat_bp.route('/api/figures')
 def get_figures():
     """Get list of available historical figures"""
@@ -612,6 +499,7 @@ def get_figures():
     except Exception as e:
         logging.error(f"Error getting figures: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @chat_bp.route('/api/figure/<figure_id>')
 def get_figure_details(figure_id):
@@ -627,6 +515,7 @@ def get_figure_details(figure_id):
     except Exception as e:
         logging.error(f"Error getting figure details: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @chat_bp.route('/api/figure/select', methods=['POST'])
 def select_figure():
@@ -663,6 +552,7 @@ def select_figure():
         logging.error(f"Error selecting figure: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @chat_bp.route('/api/figure/current')
 def get_current_figure():
     """Get currently selected figure for current session"""
@@ -679,6 +569,7 @@ def get_current_figure():
     except Exception as e:
         logging.error(f"Error getting current figure: {e}")
         return jsonify({'error': str(e)}), 500
+
 
 @chat_bp.route('/api/markdown', methods=['POST'])
 def convert_markdown():
@@ -700,6 +591,7 @@ def convert_markdown():
         logging.error(f"Error converting markdown: {e}")
         return jsonify({'error': str(e)}), 500
 
+
 @chat_bp.route('/figure_images/<filename>')
 def serve_figure_image(filename):
     """Serve figure images."""
@@ -712,268 +604,20 @@ def serve_figure_image(filename):
         logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
         return jsonify({'error': 'Image not found'}), 404
 
+
 @chat_bp.route('/api/export/pdf', methods=['POST'])
 def export_conversation_pdf():
     """Export conversation as PDF"""
     try:
         data = request.json
-        title = data.get('title', 'Chat Conversation')
-        date = data.get('date', '')
-        messages = data.get('messages', [])
-        figure = data.get('figure', 'General Chat')
-        figure_name = data.get('figure_name', figure)
-        figure_data = data.get('figure_data', None)
-        document_count = data.get('document_count', '0')
-        model = data.get('model', 'Unknown')
-        temperature = data.get('temperature', '1.0')
-        thinking_enabled = data.get('thinking_enabled', False)
-        rag_enabled = data.get('rag_enabled', True)
-        retrieved_documents = data.get('retrieved_documents', [])
+        pdf_bytes = generate_conversation_pdf(data)
         
-        unicode_font = register_unicode_fonts()
-        
-        buffer = BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=letter,
-                              rightMargin=72, leftMargin=72,
-                              topMargin=72, bottomMargin=18)
-        
-        story = []
-        styles = getSampleStyleSheet()
-        
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Title'],
-            fontSize=18,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceAfter=20,
-            alignment=TA_CENTER
-        )
-        
-        settings_style = ParagraphStyle(
-            'Settings',
-            parent=styles['Normal'],
-            fontSize=10,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#7f8c8d'),
-            spaceAfter=20,
-            alignment=TA_LEFT
-        )
-        
-        message_style = ParagraphStyle(
-            'Message',
-            parent=styles['Normal'],
-            fontSize=11,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceAfter=12,
-            spaceBefore=6,
-            leftIndent=0,
-            rightIndent=0,
-            alignment=TA_LEFT,
-            leading=14
-        )
-        
-        story.append(Paragraph(title, title_style))
-        
-        if figure_data and figure != 'General Chat':
-            figure_desc_style = ParagraphStyle(
-                'FigureDescription',
-                parent=styles['Normal'],
-                fontSize=11,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=20,
-                spaceBefore=10,
-                alignment=TA_LEFT,
-                leading=14,
-                leftIndent=20,
-                rightIndent=20
-            )
-            
-            figure_header_style = ParagraphStyle(
-                'FigureHeader',
-                parent=styles['Heading2'],
-                fontSize=14,
-                fontName=unicode_font,
-                textColor=colors.HexColor('#2c3e50'),
-                spaceAfter=10,
-                spaceBefore=5,
-                alignment=TA_CENTER
-            )
-            
-            figure_text = ""
-            if figure_data.get('name'):
-                figure_text += f"<b>{figure_data['name']}</b>"
-                
-                birth_year = figure_data.get('birth_year')
-                death_year = figure_data.get('death_year')
-                if birth_year or death_year:
-                    birth_display = birth_year if birth_year else '?'
-                    death_display = death_year if death_year else '?'
-                    figure_text += f" ({birth_display} - {death_display})"
-                
-                figure_text += "<br/><br/>"
-            
-            if figure_data.get('description'):
-                description = figure_data['description'].replace('&', '&amp;')
-                description = description.replace('<', '&lt;')
-                description = description.replace('>', '&gt;')
-                description = description.replace('\n', '<br/>')
-                figure_text += f"<b>Description:</b><br/>{description}<br/><br/>"
-            
-            if figure_data.get('personality_prompt'):
-                personality = figure_data['personality_prompt'].replace('&', '&amp;')
-                personality = personality.replace('<', '&lt;')
-                personality = personality.replace('>', '&gt;')
-                personality = personality.replace('\n', '<br/>')
-                figure_text += f"<b>Personality:</b><br/>{personality}"
-            
-            if figure_text.strip():
-                story.append(Paragraph("Historical Figure Information", figure_header_style))
-                story.append(Paragraph(figure_text, figure_desc_style))
-                story.append(Spacer(1, 0.3*inch))
-        
-        settings_text = f"<b>Chat Settings:</b><br/>"
-        settings_text += f"Date: {date}<br/>"
-        settings_text += f"Figure: {figure_name}<br/>"
-        settings_text += f"Documents: {document_count}<br/>"
-        settings_text += f"Model: {model}<br/>"
-        settings_text += f"Temperature: {temperature}<br/>"
-        settings_text += f"Thinking Mode: {'Enabled' if thinking_enabled else 'Disabled'}<br/>"
-        settings_text += f"RAG Mode: {'Enabled' if rag_enabled else 'Disabled'}"
-        story.append(Paragraph(settings_text, settings_style))
-        story.append(Spacer(1, 0.3*inch))
-        
-        story.append(Paragraph("<b>Conversation:</b>", message_style))
-        story.append(Spacer(1, 0.1*inch))
-        
-        doc_header_style = ParagraphStyle(
-            'DocHeader',
-            parent=styles['Normal'],
-            fontSize=11,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceAfter=5,
-            spaceBefore=8
-        )
-        
-        doc_content_style = ParagraphStyle(
-            'DocContent',
-            parent=styles['Normal'],
-            fontSize=9,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#34495e'),
-            spaceAfter=8,
-            leftIndent=12,
-            rightIndent=12,
-            leading=11
-        )
-        
-        doc_meta_style = ParagraphStyle(
-            'DocMeta',
-            parent=styles['Normal'],
-            fontSize=8,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#7f8c8d'),
-            spaceAfter=10,
-            leftIndent=12
-        )
-        
-        doc_section_header_style = ParagraphStyle(
-            'DocSectionHeader',
-            parent=styles['Normal'],
-            fontSize=10,
-            fontName=unicode_font,
-            textColor=colors.HexColor('#2c3e50'),
-            spaceAfter=5,
-            spaceBefore=5
-        )
-        
-        for msg in messages:
-            role = msg.get('role', 'unknown')
-            content = msg.get('content', '')
-            msg_retrieved_documents = msg.get('retrieved_documents', [])
-            
-            content = content.replace('&', '&amp;')
-            content = content.replace('<', '&lt;')
-            content = content.replace('>', '&gt;')
-            content = content.replace('\n', '<br/>')
-            
-            if role == 'user':
-                story.append(Paragraph(f"<b>User:</b> {content}", message_style))
-            else:
-                display_name = figure_name.split(' (')[0] if ' (' in figure_name else figure_name
-                story.append(Paragraph(f"<b>{display_name}:</b> {content}", message_style))
-                
-                if msg_retrieved_documents and len(msg_retrieved_documents) > 0:
-                    story.append(Spacer(1, 0.05*inch))
-                    
-                    story.append(Paragraph(f"<b>Retrieved Documents ({len(msg_retrieved_documents)}):</b>", doc_section_header_style))
-                    story.append(Spacer(1, 0.05*inch))
-                    
-                    sorted_docs = sorted(msg_retrieved_documents, key=lambda d: (
-                        d.get('filename', ''),
-                        d.get('chunk_id') or d.get('document_id') or d.get('doc_id', '')
-                    ))
-                    
-                    for idx, doc_data in enumerate(sorted_docs, 1):
-                        filename = doc_data.get('filename', 'Unknown')
-                        chunk_id = doc_data.get('chunk_id') or doc_data.get('document_id') or doc_data.get('doc_id', 'unknown')
-                        text = doc_data.get('full_text') or doc_data.get('text', '')
-                        similarity = doc_data.get('similarity', 0)
-                        cosine_similarity = doc_data.get('cosine_similarity', similarity)
-                        bm25_score = doc_data.get('bm25_score', 0)
-                        rrf_score = doc_data.get('rrf_score', 0)
-                        top_matching_words = doc_data.get('top_matching_words', [])
-                        
-                        header_text = f"Document {idx}: {filename} (Chunk {chunk_id})"
-                        story.append(Paragraph(header_text, doc_header_style))
-                        
-                        meta_parts = []
-                        if cosine_similarity > 0:
-                            meta_parts.append(f"Cosine Similarity: {cosine_similarity:.2%}")
-                        if bm25_score > 0:
-                            meta_parts.append(f"BM25 Score: {bm25_score:.2f}")
-                        if rrf_score > 0:
-                            meta_parts.append(f"RRF Score: {rrf_score:.4f}")
-                        if top_matching_words:
-                            keywords_str = ', '.join(top_matching_words[:5])
-                            meta_parts.append(f"Keywords: {keywords_str}")
-                        
-                        meta_text = ' | '.join(meta_parts) if meta_parts else f"Relevance Score: {similarity:.2%}"
-                        if doc_data.get('timestamp'):
-                            meta_text += f" | Retrieved: {doc_data['timestamp']}"
-                        story.append(Paragraph(meta_text, doc_meta_style))
-                        
-                        doc_content = text.replace('&', '&amp;')
-                        doc_content = doc_content.replace('<', '&lt;')
-                        doc_content = doc_content.replace('>', '&gt;')
-                        doc_content = doc_content.replace('\n', '<br/>')
-                        
-                        story.append(Paragraph(doc_content, doc_content_style))
-                        
-                        if idx < len(sorted_docs):
-                            story.append(Spacer(1, 0.05*inch))
-                            from reportlab.platypus import HRFlowable
-                            story.append(HRFlowable(width="80%", thickness=0.5, 
-                                                   color=colors.HexColor('#e0e0e0'),
-                                                   spaceAfter=3, spaceBefore=3))
-            
-            story.append(Spacer(1, 0.1*inch))
-        
-        doc.build(story)
-        
-        pdf = buffer.getvalue()
-        buffer.close()
-        
-        response = make_response(pdf)
+        response = make_response(pdf_bytes)
         response.headers['Content-Type'] = 'application/pdf'
-        response.headers['Content-Disposition'] = f'attachment; filename=chat_conversation.pdf'
+        response.headers['Content-Disposition'] = 'attachment; filename=chat_conversation.pdf'
         
         return response
         
     except Exception as e:
         logging.error(f"Error generating PDF: {e}")
         return jsonify({'error': str(e)}), 500
-

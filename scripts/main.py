@@ -21,6 +21,7 @@ from datetime import datetime
 from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
 from chat_routes import chat_bp
 from admin_routes import admin_bp
+from figure_manager import get_figure_manager
 
 # Create logs directory
 LOGS_DIR = Path(__file__).parent.parent / "logs"
@@ -107,6 +108,11 @@ if __name__ == '__main__':
     # Set up signal handlers
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
+    
+    # Preload FigureManager (loads embedding model) so first request is fast
+    logging.info("Preloading FigureManager and embedding model...")
+    get_figure_manager()
+    logging.info("FigureManager ready")
     
     try:
         logging.info(f"Starting Historical Figures Chat System on port {APP_PORT}")

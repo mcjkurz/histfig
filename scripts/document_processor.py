@@ -135,26 +135,6 @@ class DocumentProcessor:
             logging.error(f"Error extracting text from DOCX: {e}")
             raise Exception(f"Failed to extract text from DOCX: {str(e)}")
     
-    
-    def clean_text(self, text: str) -> str:
-        """
-        Clean and normalize text by keeping only alphabetic characters, spaces, and punctuation.
-        
-        Args:
-            text: Raw text
-            
-        Returns:
-            Cleaned text with only alphabet, spaces, and punctuation
-        """
-        # Remove all newlines and normalize whitespace
-        text = text.replace('\n', ' ').replace('\r', ' ')
-        text = re.sub(r'\s+', ' ', text)
-        
-        # Keep only alphabetic characters, numbers, spaces, and punctuation
-        text = re.sub(r'[^\w\s\.,;:!?\'"()\-–—\[\]{}]', '', text, flags=re.UNICODE)
-        
-        return text.strip()
-    
     def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """
         Split text into chunks with intelligent boundary detection.
@@ -317,6 +297,3 @@ class DocumentProcessor:
         except Exception as e:
             logging.error(f"Error processing file {filename}: {e}")
             raise Exception(f"Failed to process {filename}: {str(e)}")
-
-# Global instance
-document_processor = DocumentProcessor()

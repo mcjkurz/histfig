@@ -41,26 +41,38 @@ echo "📝 Log file: $LOG_FILE"
     python scripts/main.py
 ) >> "$LOG_FILE" 2>&1 &
 
-# Wait for startup
-sleep 5
+# Wait for server to be ready (poll health endpoint)
+MAX_WAIT=120  # Maximum seconds to wait
+POLL_INTERVAL=2  # Seconds between checks
+ELAPSED=0
 
-# Check if started successfully
-STARTED_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
-if [ ! -z "$STARTED_PIDS" ]; then
-    echo "✅ Server started successfully!"
-    echo ""
-    echo "🌐 Access URLs:"
-    echo "   Chat Interface: http://localhost:$APP_PORT/"
-    echo "   Admin Interface: http://localhost:$APP_PORT/admin/"
-    echo ""
-    echo "💡 Commands:"
-    echo "   Check status: ./utils/check_status.sh"
-    echo "   Stop server:  ./utils/kill_ports.sh"
-    echo "   View logs:    tail -f $LOG_FILE"
-else
-    echo "❌ Failed to start. Check logs:"
-    tail -20 "$LOG_FILE" 2>/dev/null
-    exit 1
-fi
+echo "⏳ Waiting for server to start..."
 
-echo "================================================"
+while [ $ELAPSED -lt $MAX_WAIT ]; do
+    # Check if process is listening on port and health endpoint responds
+    if lsof -t -i :$APP_PORT >/dev/null 2>&1; then
+        if curl -s --max-time 5 "http://localhost:$APP_PORT/api/health" >/dev/null 2>&1; then
+            echo "✅ Server started successfully!"
+            echo ""
+            echo "🌐 Access URLs:"
+            echo "   Chat Interface: http://localhost:$APP_PORT/"
+            echo "   Admin Interface: http://localhost:$APP_PORT/admin/"
+            echo ""
+            echo "💡 Commands:"
+            echo "   Check status: ./utils/check_status.sh"
+            echo "   Stop server:  ./utils/kill_ports.sh"
+            echo "   View logs:    tail -f $LOG_FILE"
+            echo "================================================"
+            exit 0
+        fi
+    fi
+    
+    sleep $POLL_INTERVAL
+    ELAPSED=$((ELAPSED + POLL_INTERVAL))
+done
+
+# Timeout reached
+echo ""
+echo "❌ Server failed to start within ${MAX_WAIT}s. Check logs:"
+tail -20 "$LOG_FILE" 2>/dev/null
+exit 1
