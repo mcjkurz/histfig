@@ -45,7 +45,7 @@ FIGURE_IMAGES_DIR = "./static/figure_images"
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
 
 # Document chunking
-CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "250"))
+CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "250"))
 MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))
 OVERLAP_PERCENT = int(os.environ.get("OVERLAP_PERCENT", "20"))
 

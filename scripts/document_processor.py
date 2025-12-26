@@ -12,7 +12,7 @@ from io import BytesIO
 import nltk
 import jieba
 from docx import Document
-from config import CHUNK_SIZE, MAX_CHUNK_CHARS, OVERLAP_PERCENT
+from config import CHUNK_SIZE_WORDS, MAX_CHUNK_CHARS, OVERLAP_PERCENT
 
 class DocumentProcessor:
     def __init__(self, chunk_size: int = None, max_chunk_chars: int = None,
@@ -26,7 +26,7 @@ class DocumentProcessor:
             overlap_percent: Overlap percentage 0-50% (defaults to config OVERLAP_PERCENT)
         """
         # Use config defaults if not provided
-        self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE
+        self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE_WORDS
         self.max_chunk_chars = max_chunk_chars if max_chunk_chars is not None else MAX_CHUNK_CHARS
         self.overlap_percent = max(0, min(50, overlap_percent if overlap_percent is not None else OVERLAP_PERCENT))
         
