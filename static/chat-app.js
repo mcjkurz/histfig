@@ -850,13 +850,15 @@ class ChatApp {
         // Clear existing options
         this.docsCountSelect.innerHTML = '';
         
+        // Default to 5, or first option if 5 not available
+        const defaultValue = this.docsToRetrieveOptions.includes(5) ? 5 : this.docsToRetrieveOptions[0];
+        
         // Populate with options from config
-        this.docsToRetrieveOptions.forEach((num, index) => {
+        this.docsToRetrieveOptions.forEach((num) => {
             const option = document.createElement('option');
             option.value = num.toString();
             option.textContent = num.toString();
-            // Select first option by default, or middle option if available
-            if (index === Math.floor(this.docsToRetrieveOptions.length / 2)) {
+            if (num === defaultValue) {
                 option.selected = true;
             }
             this.docsCountSelect.appendChild(option);
