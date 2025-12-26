@@ -122,9 +122,3 @@ class LLMProvider:
             logging.error(f"Error fetching models: {e}")
         
         return [self.default_model] if self.default_model else []
-
-
-def get_model_provider() -> LLMProvider:
-    """Factory function to get the LLM provider"""
-    logging.debug(f"Creating LLM provider for {EXTERNAL_API_URL}")
-    return LLMProvider()

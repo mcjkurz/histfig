@@ -9,8 +9,6 @@ from typing import List, Dict, Any
 import PyPDF2
 import logging
 from io import BytesIO
-import nltk
-import jieba
 from docx import Document
 from config import CHUNK_SIZE_WORDS, MAX_CHUNK_CHARS, OVERLAP_PERCENT
 
@@ -33,15 +31,6 @@ class DocumentProcessor:
         # Calculate overlaps from percentage
         self.chunk_overlap = int(self.chunk_size * self.overlap_percent / 100)
         self.char_overlap = int(self.max_chunk_chars * self.overlap_percent / 100)
-        
-        # Download NLTK data for sentence tokenization
-        try:
-            nltk.data.find('tokenizers/punkt')
-        except LookupError:
-            try:
-                nltk.download('punkt', quiet=True)
-            except Exception as e:
-                logging.warning(f"Failed to download NLTK punkt data: {e}")
     
     def extract_text_from_pdf(self, file_content: bytes) -> str:
         """

@@ -592,16 +592,10 @@ def convert_markdown():
 
 
 @chat_bp.route('/figure_images/<filename>')
-def serve_figure_image(filename):
+def figure_image(filename):
     """Serve figure images."""
-    try:
-        figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
-        logging.info(f"Serving figure image {filename} from {figure_images_path}")
-        return send_from_directory(figure_images_path, filename)
-    except Exception as e:
-        logging.error(f"Error serving figure image {filename}: {str(e)}")
-        logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
-        return jsonify({'error': 'Image not found'}), 404
+    from image_utils import serve_figure_image
+    return serve_figure_image(filename)
 
 
 @chat_bp.route('/api/export/pdf', methods=['POST'])

@@ -292,11 +292,11 @@ def upload_documents(figure_id):
     try:
         figure_manager = get_figure_manager()
         
-        logging.info(f"Upload request received for figure {figure_id}")
-        logging.info(f"Request method: {request.method}")
-        logging.info(f"Content-Type: {request.content_type}")
-        logging.info(f"Files in request: {list(request.files.keys())}")
-        logging.info(f"Form data: {list(request.form.keys())}")
+        logging.debug(f"Upload request received for figure {figure_id}")
+        logging.debug(f"Request method: {request.method}")
+        logging.debug(f"Content-Type: {request.content_type}")
+        logging.debug(f"Files in request: {list(request.files.keys())}")
+        logging.debug(f"Form data: {list(request.form.keys())}")
         
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         
@@ -660,19 +660,10 @@ def api_figure_stats(figure_id):
         return jsonify({'error': str(e)}), 500
 
 @admin_bp.route('/figure_images/<filename>')
-def serve_figure_image(filename):
+def figure_image(filename):
     """Serve figure images."""
-    try:
-        # Use absolute path to ensure correct resolution
-        figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
-        full_path = os.path.join(figure_images_path, filename)
-        logging.info(f"Serving figure image {filename} from {figure_images_path}")
-        logging.info(f"Full path: {full_path}, exists: {os.path.exists(full_path)}")
-        return send_from_directory(figure_images_path, filename)
-    except Exception as e:
-        logging.error(f"Error serving figure image {filename}: {str(e)}")
-        logging.error(f"Attempted path: {os.path.abspath(FIGURE_IMAGES_DIR)}")
-        return jsonify({'error': 'Image not found'}), 404
+    from image_utils import serve_figure_image
+    return serve_figure_image(filename)
 
 
 # ============== LOGS MANAGEMENT ==============
