@@ -1369,7 +1369,7 @@ class ChatApp {
                             if (data.content) {
                                 fullContent += data.content;
                                 // Hide loading indicator after receiving enough content
-                                if (this.loadingIndicator && fullContent.length >= 20) {
+                                if (this.loadingIndicator && fullContent.length >= 10) {
                                     this.hideLoadingIndicator();
                                 }
                                 this.processStreamingContent(data.content);
