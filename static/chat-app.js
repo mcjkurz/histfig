@@ -1315,9 +1315,6 @@ class ChatApp {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
             
-            // Remove loading indicator now that response is starting
-            this.hideLoadingIndicator();
-            
             // Reset streaming state
             this.currentResponseElement = null;
             this.currentResponseContent = '';
@@ -1371,11 +1368,17 @@ class ChatApp {
                             
                             if (data.content) {
                                 fullContent += data.content;
+                                // Hide loading indicator after receiving enough content
+                                if (this.loadingIndicator && fullContent.length >= 20) {
+                                    this.hideLoadingIndicator();
+                                }
                                 this.processStreamingContent(data.content);
                                 this.scrollToBottom();
                             }
                             
                             if (data.done) {
+                                // Hide loading indicator if still showing (short responses)
+                                this.hideLoadingIndicator();
                                 await this.processFinalContent();
                                 break;
                             }
