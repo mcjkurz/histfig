@@ -94,6 +94,7 @@ class ChatApp {
         // Feature flags from server config (defaults, will be updated from server)
         this.configRagEnabled = true;
         this.configQueryAugmentationEnabled = true;
+        this.docsToRetrieveOptions = [3, 5, 10, 15, 20];  // Default, will be updated from server
         
         this.init();
     }
@@ -817,6 +818,12 @@ class ChatApp {
             this.configQueryAugmentationEnabled = data.query_augmentation_enabled;
             this.queryAugmentationModel = data.query_augmentation_model || '';
             
+            // Update docs to retrieve options from server config
+            if (data.docs_to_retrieve && Array.isArray(data.docs_to_retrieve) && data.docs_to_retrieve.length > 0) {
+                this.docsToRetrieveOptions = data.docs_to_retrieve;
+            }
+            this.populateDocsCountSelect();
+            
             // If RAG is disabled in config, force user state to false
             if (!this.configRagEnabled) {
                 this.ragEnabled = false;
@@ -832,7 +839,28 @@ class ChatApp {
             
         } catch (error) {
             console.error('Failed to load feature flags:', error);
+            // Still populate with defaults on error
+            this.populateDocsCountSelect();
         }
+    }
+    
+    populateDocsCountSelect() {
+        if (!this.docsCountSelect) return;
+        
+        // Clear existing options
+        this.docsCountSelect.innerHTML = '';
+        
+        // Populate with options from config
+        this.docsToRetrieveOptions.forEach((num, index) => {
+            const option = document.createElement('option');
+            option.value = num.toString();
+            option.textContent = num.toString();
+            // Select first option by default, or middle option if available
+            if (index === Math.floor(this.docsToRetrieveOptions.length / 2)) {
+                option.selected = true;
+            }
+            this.docsCountSelect.appendChild(option);
+        });
     }
 
     updateFeatureToggleStates() {

@@ -13,7 +13,7 @@ import uuid
 import datetime
 from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 from figure_manager import get_figure_manager
-from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS
+from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS, DOCS_TO_RETRIEVE
 from search_utils import format_search_result_for_response
 from model_provider import LLMProvider
 from query_augmentation import augment_query
@@ -218,7 +218,8 @@ def get_feature_flags():
     return jsonify({
         'rag_enabled': RAG_ENABLED,
         'query_augmentation_enabled': QUERY_AUGMENTATION_ENABLED,
-        'query_augmentation_model': QUERY_AUGMENTATION_MODEL
+        'query_augmentation_model': QUERY_AUGMENTATION_MODEL,
+        'docs_to_retrieve': DOCS_TO_RETRIEVE
     })
 
 

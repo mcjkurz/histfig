@@ -56,6 +56,10 @@ ALLOWED_IMAGE_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp'}
 # RAG
 RAG_ENABLED = os.environ.get("RAG_ENABLED", "true").lower() == "true"
 
+# Document retrieval options for UI (comma-separated list of numbers, e.g., "3,5,10,15")
+_docs_to_retrieve_env = os.environ.get("DOCS_TO_RETRIEVE", "2,3,5,10,15,20")
+DOCS_TO_RETRIEVE = [int(n.strip()) for n in _docs_to_retrieve_env.split(",") if n.strip().isdigit()]
+
 # Query augmentation (optional but enabled by default, uses separate API for enriching search queries)
 QUERY_AUGMENTATION_ENABLED = os.environ.get("QUERY_AUGMENTATION_ENABLED", "true").lower() == "true"
 QUERY_AUGMENTATION_MODEL = os.environ.get("QUERY_AUGMENTATION_MODEL", "GPT-5-nano")
