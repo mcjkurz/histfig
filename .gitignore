@@ -55,8 +55,6 @@ conversations/
 
 # Environment variables
 .env
-.env.local
-restart.sh
 
 # Distribution / packaging
 .Python

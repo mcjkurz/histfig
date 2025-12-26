@@ -3,6 +3,9 @@
 # Historical Figures Chat System - Background Mode
 # Runs the server in background with timestamped log files
 
+# Load environment variables
+[ -f .env ] && export $(grep -v '^#' .env | xargs)
+
 echo "🚀 Starting Historical Figures Chat System..."
 echo "================================================"
 
@@ -18,12 +21,14 @@ fi
 # Get port configuration
 APP_PORT=$(python3 scripts/get_ports.py app 2>/dev/null || echo "5001")
 
-# Check if already running
+# Check if already running and kill if needed
+echo "🔍 Checking if app is already running..."
 RUNNING_PIDS=$(lsof -t -i :$APP_PORT 2>/dev/null)
 if [ ! -z "$RUNNING_PIDS" ]; then
-    echo "⚠️  Server already running on port $APP_PORT"
-    echo "💡 Run ./utils/kill_ports.sh first to stop existing server"
-    exit 1
+    echo "⚠️  Found existing process on port $APP_PORT, stopping it..."
+    kill -9 $RUNNING_PIDS 2>/dev/null
+    sleep 1
+    echo "✓  Stopped"
 fi
 
 # Create logs directory if needed
