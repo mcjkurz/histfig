@@ -13,14 +13,13 @@ import logging
 from pathlib import Path
 import chromadb
 from chromadb.config import Settings
-from sentence_transformers import SentenceTransformer
-import torch
 import re
 import numpy as np
 from rank_bm25 import BM25Okapi
-from config import EMBEDDING_MODEL, MIN_COSINE_SIMILARITY, SEARCH_MULTIPLIER, MAX_SEARCH_RESULTS, RRF_K
+from config import MIN_COSINE_SIMILARITY, SEARCH_MULTIPLIER, MAX_SEARCH_RESULTS, RRF_K
 from text_processor import text_processor
 from search_utils import reciprocal_rank_fusion
+from embedding_provider import get_embedding_provider
 
 class FigureManager:
     def __init__(self, figures_dir: str = "./figures", db_path: str = "./chroma_db"):
@@ -44,15 +43,8 @@ class FigureManager:
             )
         )
         
-        # Initialize sentence transformer for embeddings
-        if torch.backends.mps.is_available():
-            self.device = "mps"
-        elif torch.cuda.is_available():
-            self.device = "cuda"
-        else:
-            self.device = "cpu"
-        
-        self.encoder = SentenceTransformer(EMBEDDING_MODEL, device=self.device)
+        # Initialize embedding provider
+        self.embedding_provider = get_embedding_provider()
         
         # BM25 memory cache for fast searches
         self.bm25_cache = {}  # figure_id -> BM25Okapi object
@@ -63,7 +55,7 @@ class FigureManager:
         self.bm25_dir = Path(db_path) / "bm25_indexes"
         self.bm25_dir.mkdir(exist_ok=True)
         
-        logging.info(f"Figure manager initialized with device: {self.device}")
+        logging.info("Figure manager initialized")
     
     def _get_bm25_paths(self, figure_id: str) -> tuple:
         """Get BM25 file paths for a figure."""
@@ -412,7 +404,7 @@ class FigureManager:
                 return None
             
             # Generate embedding for vector search
-            embedding = self.encoder.encode(text).tolist()
+            embedding = self.embedding_provider.encode_document(text)
             
             # Generate unique document ID
             doc_id = f"{figure_id}_{collection.count()}"
@@ -564,7 +556,7 @@ class FigureManager:
                 return []
             
             # Generate query embedding
-            query_embedding = self.encoder.encode(query).tolist()
+            query_embedding = self.embedding_provider.encode_query(query)
             
             # Search in collection
             results = collection.query(

@@ -42,7 +42,11 @@ TEMP_UPLOAD_DIR = "./temp_uploads"
 FIGURE_IMAGES_DIR = "./static/figure_images"
 
 # Embeddings
-EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+EMBEDDING_SOURCE = os.environ.get("EMBEDDING_SOURCE", "local")  # "local" or "external"
+LOCAL_EMBEDDING_MODEL = os.environ.get("LOCAL_EMBEDDING_MODEL", "Qwen/Qwen3-Embedding-0.6B")
+EXTERNAL_EMBEDDING_MODEL = os.environ.get("EXTERNAL_EMBEDDING_MODEL", "text-embedding-3-small")
+EMBEDDING_API_URL = os.environ.get("EMBEDDING_API_URL", "https://api.openai.com/v1")
+EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", "")
 
 # Document chunking
 CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "250"))
