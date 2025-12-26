@@ -64,6 +64,6 @@ QUERY_AUGMENTATION_API_KEY = os.environ.get("QUERY_AUGMENTATION_API_KEY", EXTERN
 
 # Search tuning parameters
 MIN_COSINE_SIMILARITY = float(os.environ.get("MIN_COSINE_SIMILARITY", "0.05"))
-SEARCH_MULTIPLIER = int(os.environ.get("SEARCH_MULTIPLIER", "3"))  # Fetch N times more results for fusion
-RRF_K = int(os.environ.get("RRF_K", "60"))  # Reciprocal Rank Fusion constant
+SEARCH_MULTIPLIER = int(os.environ.get("SEARCH_MULTIPLIER", "3"))
+RRF_K = int(os.environ.get("RRF_K", "60"))
 MAX_SEARCH_RESULTS = int(os.environ.get("MAX_SEARCH_RESULTS", "30"))

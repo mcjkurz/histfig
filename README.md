@@ -18,8 +18,9 @@ pip install -r requirements.txt
 ### Configuration
 
 ```bash
+# First copy the example settings into a new .env file
 cp .env.example .env
-# Edit .env with your API keys and settings
+# Then edit .env with your API keys and settings
 ```
 
 You can use external API, local models, or both. Leave fields empty if not needed.
