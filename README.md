@@ -12,6 +12,7 @@ cd histfig
 
 python3 -m venv venv
 source venv/bin/activate
+pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
@@ -41,7 +42,7 @@ Access at:
 |--------|---------|
 | `./start.sh` | Start server in background |
 | `./utils/check_status.sh` | Check server status |
-| `./utils/kill_ports.sh` | Stop server |
+| `./utils/stop.sh` | Stop server |
 | `./utils/clean_logs.sh` | Remove log files |
 | `./utils/rebuild_bm25.sh` | Rebuild search indexes |
 
