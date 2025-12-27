@@ -2,6 +2,8 @@
 
 Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style.
 
+Read a related blog post on the *Digital Orientalist*: https://digitalorientalist.com/2025/12/26/voices-from-the-past-retrieval-augmented-dialogues-with-chinese-historical-figures/
+
 ![Screenshot](img/screenshot_1.png)
 
 ## Quick Start
