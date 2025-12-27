@@ -8,6 +8,8 @@ Read a related blog post on the *Digital Orientalist*: https://digitalorientalis
 
 ## Quick Start
 
+Open the terminal and clone this repository, then install required dependencies.
+
 ```bash
 git clone https://github.com/mcjkurz/histfig.git
 cd histfig
