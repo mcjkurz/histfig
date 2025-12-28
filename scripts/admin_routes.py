@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, request, jsonify, redirect, url_fo
 import os
 import json
 import logging
+import secrets
 from werkzeug.utils import secure_filename
 from pathlib import Path
 import time
@@ -27,6 +28,29 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='..
 # Ensure directories exist
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 os.makedirs(FIGURE_IMAGES_DIR, exist_ok=True)
+
+def generate_csrf_token():
+    """Generate a CSRF token and store it in session."""
+    if 'csrf_token' not in session:
+        session['csrf_token'] = secrets.token_hex(32)
+    return session['csrf_token']
+
+def validate_csrf_token():
+    """Validate CSRF token from request header or form data."""
+    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
+    if not token or token != session.get('csrf_token'):
+        return False
+    return True
+
+def csrf_protected(f):
+    """Decorator to require valid CSRF token for POST/PUT/DELETE requests."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.method in ['POST', 'PUT', 'DELETE']:
+            if not validate_csrf_token():
+                return jsonify({'error': 'Invalid or missing CSRF token'}), 403
+        return f(*args, **kwargs)
+    return decorated_function
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
@@ -659,13 +683,6 @@ def api_figure_stats(figure_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@admin_bp.route('/figure_images/<filename>')
-def figure_image(filename):
-    """Serve figure images."""
-    from image_utils import serve_figure_image
-    return serve_figure_image(filename)
-
-
 # ============== LOGS MANAGEMENT ==============
 
 def get_logs_dir():
@@ -818,5 +835,98 @@ def delete_log(filename):
         return jsonify({'success': True, 'message': f'Deleted {safe_filename}'})
     except Exception as e:
         logging.error(f"Error deleting log file {filename}: {str(e)}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============== SYSTEM PAGE ==============
+
+@admin_bp.route('/system')
+@login_required
+def system():
+    """Display system status and debug tools."""
+    return render_template('admin/system.html', csrf_token=generate_csrf_token())
+
+
+# ============== DEBUG ENDPOINTS ==============
+
+# Import session data from chat_routes for debug endpoints
+from chat_routes import session_data, session_lock, cleanup_expired_sessions, SESSION_TIMEOUT_SECONDS
+
+@admin_bp.route('/api/debug/sessions')
+@login_required
+def debug_sessions():
+    """Debug endpoint to check active sessions count."""
+    try:
+        now = datetime.now()
+        with session_lock:
+            active_count = len(session_data)
+            sessions_info = []
+            for sid, data in session_data.items():
+                last_activity = data.get('last_activity')
+                inactive_secs = (now - last_activity).total_seconds() if last_activity else 0
+                sessions_info.append({
+                    'session_id': sid[:8] + '...',
+                    'figure': data.get('current_figure'),
+                    'messages': len(data.get('conversation_history', [])),
+                    'inactive_minutes': round(inactive_secs / 60, 1)
+                })
+        
+        return jsonify({
+            'active_sessions': active_count,
+            'timeout_hours': SESSION_TIMEOUT_SECONDS / 3600,
+            'sessions': sessions_info
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/debug/sessions/cleanup', methods=['POST'])
+@login_required
+@csrf_protected
+def cleanup_sessions_endpoint():
+    """Manually trigger session cleanup."""
+    try:
+        cleaned = cleanup_expired_sessions()
+        with session_lock:
+            remaining = len(session_data)
+        return jsonify({
+            'cleaned': cleaned,
+            'remaining': remaining
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@admin_bp.route('/api/debug/rag')
+@login_required
+def debug_rag():
+    """Debug endpoint for figure-specific RAG system status."""
+    try:
+        debug_info = {
+            'figure_manager_initialized': False,
+            'errors': []
+        }
+        
+        try:
+            figure_manager = get_figure_manager()
+            debug_info['figure_manager_initialized'] = True
+            
+            # Get all figures and their stats
+            figures = figure_manager.get_figure_list()
+            debug_info['figures'] = []
+            for fig in figures:
+                fig_id = fig.get('figure_id')
+                stats = figure_manager.get_figure_stats(fig_id)
+                debug_info['figures'].append({
+                    'figure_id': fig_id,
+                    'name': fig.get('name'),
+                    'document_count': stats.get('document_count', 0)
+                })
+                
+        except Exception as e:
+            debug_info['errors'].append(f"Figure manager error: {str(e)}")
+        
+        return jsonify(debug_info)
+    except Exception as e:
         return jsonify({'error': str(e)}), 500
 

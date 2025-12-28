@@ -3,6 +3,14 @@
  * Handles all backend interactions: health checks, models, figures, chat, exports
  */
 
+// Helper to get headers with session ID
+ChatApp.prototype.getSessionHeaders = function() {
+    return {
+        'Content-Type': 'application/json',
+        'X-Session-ID': this.sessionId
+    };
+};
+
 ChatApp.prototype.checkHealth = async function() {
     try {
         const response = await fetch('/api/health');
@@ -224,10 +232,10 @@ ChatApp.prototype.loadFigures = async function() {
 
 ChatApp.prototype.loadCurrentFigure = async function() {
     try {
-        // Reset to General Chat on page load
+        // Reset to General Chat on page load (new session)
         const resetResponse = await fetch('/api/figure/select', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getSessionHeaders(),
             body: JSON.stringify({ figure_id: null })
         });
         
@@ -246,7 +254,7 @@ ChatApp.prototype.handleFigureChange = async function(e) {
     try {
         const response = await fetch('/api/figure/select', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getSessionHeaders(),
             body: JSON.stringify({ figure_id: figureId || null })
         });
         
@@ -291,7 +299,7 @@ ChatApp.prototype.sendMessage = async function(message) {
     try {
         const response = await fetch('/api/chat', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: this.getSessionHeaders(),
             body: JSON.stringify({
                 message: message,
                 model: this.getSelectedModelName(),

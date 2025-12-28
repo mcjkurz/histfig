@@ -46,10 +46,10 @@ The server uses Gunicorn with threaded workers (default: 20 threads) to handle m
 | Script | Purpose |
 |--------|---------|
 | `./start.sh` | Start server in background |
-| `./utils/check_status.sh` | Check server status |
 | `./utils/stop.sh` | Stop server |
-| `./utils/clean_logs.sh` | Remove log files |
-| `./utils/rebuild_bm25.sh` | Rebuild search indexes |
+| `./utils/check_status.sh` | Check server status |
+| `./utils/clean_logs.sh` | Remove old log files |
+| `./utils/rebuild_bm25.sh` | Rebuild BM25 search indexes |
 
 ## Hardware Acceleration
 

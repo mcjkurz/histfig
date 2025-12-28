@@ -9,6 +9,9 @@
 
 class ChatApp {
     constructor() {
+        // Generate unique session ID for this page load
+        this.sessionId = crypto.randomUUID();
+        
         // DOM Elements - Chat
         this.chatMessages = document.getElementById('chat-messages');
         this.messageInput = document.getElementById('message-input');

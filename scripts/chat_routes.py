@@ -32,6 +32,11 @@ chat_bp = Blueprint('chat', __name__, template_folder='../templates', static_fol
 session_data = {}
 session_lock = threading.Lock()
 
+# Session cleanup configuration
+SESSION_TIMEOUT_SECONDS = 24 * 60 * 60  # 24 hours
+CLEANUP_INTERVAL_SECONDS = 60 * 60  # Run cleanup every hour
+_cleanup_thread = None
+
 
 def clean_thinking_content(text):
     """Remove thinking tags and content from text"""
@@ -40,33 +45,85 @@ def clean_thinking_content(text):
 
 
 def get_session_id():
-    """Get or create a session ID for the current user"""
-    if 'session_id' not in session:
-        session['session_id'] = secrets.token_hex(16)
-        session.permanent = True
-    return session['session_id']
+    """Get session ID from request header (each page load gets unique ID)"""
+    session_id = request.headers.get('X-Session-ID')
+    if not session_id:
+        # Fallback for requests without header (e.g., direct browser access)
+        if 'session_id' not in session:
+            session['session_id'] = secrets.token_hex(16)
+            session.permanent = True
+        return session['session_id']
+    return session_id
+
+
+def _get_or_create_session(session_id):
+    """Get or create session data. Caller must hold session_lock."""
+    now = datetime.datetime.now()
+    if session_id not in session_data:
+        session_data[session_id] = {
+            'conversation_history': [],
+            'current_figure': None,
+            'conversation_id': str(uuid.uuid4()),
+            'conversation_start_time': now.isoformat(),
+            'last_activity': now
+        }
+    else:
+        # Update last activity time
+        session_data[session_id]['last_activity'] = now
+    return session_data[session_id]
 
 
 def get_session_data():
-    """Get session data for the current user (thread-safe)"""
+    """Get session data for current user. Updates last activity time."""
     session_id = get_session_id()
-    
-    # Fast path: session exists, no lock needed
-    if session_id in session_data:
-        return session_data[session_id]
-    
-    # Slow path: create new session with lock
     with session_lock:
-        # Double-check after acquiring lock (another thread may have created it)
-        if session_id not in session_data:
-            conversation_id = str(uuid.uuid4())
-            session_data[session_id] = {
-                'conversation_history': [],
-                'current_figure': None,
-                'conversation_id': conversation_id,
-                'conversation_start_time': datetime.datetime.now().isoformat()
-            }
-        return session_data[session_id]
+        return _get_or_create_session(session_id)
+
+
+def cleanup_expired_sessions():
+    """Remove sessions that have been inactive for more than 24 hours"""
+    now = datetime.datetime.now()
+    expired_sessions = []
+    
+    with session_lock:
+        for sid, data in session_data.items():
+            last_activity = data.get('last_activity')
+            if last_activity:
+                inactive_seconds = (now - last_activity).total_seconds()
+                if inactive_seconds > SESSION_TIMEOUT_SECONDS:
+                    expired_sessions.append(sid)
+        
+        for sid in expired_sessions:
+            del session_data[sid]
+    
+    if expired_sessions:
+        logging.info(f"Cleaned up {len(expired_sessions)} expired session(s)")
+    
+    return len(expired_sessions)
+
+
+def _session_cleanup_loop():
+    """Background thread that periodically cleans up expired sessions"""
+    import time
+    while True:
+        time.sleep(CLEANUP_INTERVAL_SECONDS)
+        try:
+            cleanup_expired_sessions()
+        except Exception as e:
+            logging.error(f"Error in session cleanup: {e}")
+
+
+def start_session_cleanup_thread():
+    """Start the background session cleanup thread (if not already running)"""
+    global _cleanup_thread
+    if _cleanup_thread is None or not _cleanup_thread.is_alive():
+        _cleanup_thread = threading.Thread(target=_session_cleanup_loop, daemon=True)
+        _cleanup_thread.start()
+        logging.info("Session cleanup thread started (24h timeout, hourly cleanup)")
+
+
+# Start cleanup thread when module loads
+start_session_cleanup_thread()
 
 
 def save_conversation_to_json(user_session, session_id):
@@ -109,8 +166,9 @@ def add_to_conversation_history(role, content, retrieved_documents=None):
     if not content.strip():
         return
     
+    session_id = get_session_id()
     with session_lock:
-        user_session = get_session_data()
+        user_session = _get_or_create_session(session_id)
         conversation_history = user_session['conversation_history']
         
         message = {"role": role, "content": content}
@@ -472,37 +530,6 @@ def rag_stats():
         return jsonify({'error': str(e)}), 500
 
 
-@chat_bp.route('/api/debug/rag')
-def debug_rag():
-    """Debug endpoint for figure-specific RAG system status"""
-    try:
-        user_session = get_session_data()
-        current_figure = user_session['current_figure']
-        debug_info = {
-            'session_id': get_session_id(),
-            'current_figure': current_figure,
-            'figure_manager_initialized': False,
-            'errors': []
-        }
-        
-        try:
-            figure_manager = get_figure_manager()
-            debug_info['figure_manager_initialized'] = True
-            
-            if current_figure:
-                figure_stats = figure_manager.get_figure_stats(current_figure)
-                debug_info['figure_stats'] = figure_stats
-            else:
-                debug_info['message'] = 'No figure selected - RAG not available'
-                
-        except Exception as e:
-            debug_info['errors'].append(f"Figure manager error: {str(e)}")
-        
-        return jsonify(debug_info)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
 @chat_bp.route('/api/figures')
 def get_figures():
     """Get list of available historical figures"""
@@ -537,6 +564,7 @@ def select_figure():
     try:
         data = request.json
         figure_id = data.get('figure_id')
+        session_id = get_session_id()
         
         if figure_id:
             # Validate figure exists (outside lock - read-only)
@@ -547,7 +575,7 @@ def select_figure():
             
             # Update session (inside lock)
             with session_lock:
-                user_session = get_session_data()
+                user_session = _get_or_create_session(session_id)
                 user_session['current_figure'] = figure_id
                 user_session['conversation_history'] = []
             
@@ -558,7 +586,7 @@ def select_figure():
             })
         else:
             with session_lock:
-                user_session = get_session_data()
+                user_session = _get_or_create_session(session_id)
                 user_session['current_figure'] = None
                 user_session['conversation_history'] = []
             
