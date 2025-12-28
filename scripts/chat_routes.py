@@ -11,6 +11,7 @@ import markdown
 import secrets
 import uuid
 import datetime
+import threading
 from flask import Blueprint, render_template, request, jsonify, Response, make_response, send_from_directory, session, current_app
 from figure_manager import get_figure_manager
 from config import DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES, FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS, DOCS_TO_RETRIEVE
@@ -27,8 +28,9 @@ from prompts import (
 # Create blueprint
 chat_bp = Blueprint('chat', __name__, template_folder='../templates', static_folder='../static')
 
-# Store conversation history per session
+# Store conversation history per session (thread-safe with lock)
 session_data = {}
+session_lock = threading.Lock()
 
 
 def clean_thinking_content(text):
@@ -46,17 +48,25 @@ def get_session_id():
 
 
 def get_session_data():
-    """Get session data for the current user"""
+    """Get session data for the current user (thread-safe)"""
     session_id = get_session_id()
-    if session_id not in session_data:
-        conversation_id = str(uuid.uuid4())
-        session_data[session_id] = {
-            'conversation_history': [],
-            'current_figure': None,
-            'conversation_id': conversation_id,
-            'conversation_start_time': datetime.datetime.now().isoformat()
-        }
-    return session_data[session_id]
+    
+    # Fast path: session exists, no lock needed
+    if session_id in session_data:
+        return session_data[session_id]
+    
+    # Slow path: create new session with lock
+    with session_lock:
+        # Double-check after acquiring lock (another thread may have created it)
+        if session_id not in session_data:
+            conversation_id = str(uuid.uuid4())
+            session_data[session_id] = {
+                'conversation_history': [],
+                'current_figure': None,
+                'conversation_id': conversation_id,
+                'conversation_start_time': datetime.datetime.now().isoformat()
+            }
+        return session_data[session_id]
 
 
 def save_conversation_to_json(user_session, session_id):
@@ -92,14 +102,17 @@ def save_conversation_to_json(user_session, session_id):
 
 
 def add_to_conversation_history(role, content, retrieved_documents=None):
-    """Add a message to conversation history for current session"""
-    user_session = get_session_data()
-    conversation_history = user_session['conversation_history']
-    
+    """Add a message to conversation history for current session (thread-safe)"""
     if role == "assistant":
         content = clean_thinking_content(content)
     
-    if content.strip():
+    if not content.strip():
+        return
+    
+    with session_lock:
+        user_session = get_session_data()
+        conversation_history = user_session['conversation_history']
+        
         message = {"role": role, "content": content}
         
         if role == "assistant" and retrieved_documents:
@@ -377,26 +390,28 @@ def chat():
                         yield f"data: {json.dumps({'content': content})}\n\n"
                     
                     if chunk.get('done', False):
-                        if session_id in session_data:
-                            user_session = session_data[session_id]
-                            conversation_history = user_session['conversation_history']
-                            
-                            cleaned_content = clean_thinking_content(full_response)
-                            
-                            if cleaned_content.strip():
-                                assistant_msg = {"role": "assistant", "content": cleaned_content}
+                        # Save assistant response to conversation history (thread-safe)
+                        with session_lock:
+                            if session_id in session_data:
+                                user_session = session_data[session_id]
+                                conversation_history = user_session['conversation_history']
                                 
-                                if use_rag and search_results:
-                                    assistant_msg["retrieved_documents"] = [
-                                        format_search_result_for_response(r, current_figure) for r in search_results
-                                    ]
+                                cleaned_content = clean_thinking_content(full_response)
                                 
-                                conversation_history.append(assistant_msg)
-                                
-                                if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
-                                    user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
-                                
-                                save_conversation_to_json(user_session, session_id)
+                                if cleaned_content.strip():
+                                    assistant_msg = {"role": "assistant", "content": cleaned_content}
+                                    
+                                    if use_rag and search_results:
+                                        assistant_msg["retrieved_documents"] = [
+                                            format_search_result_for_response(r, current_figure) for r in search_results
+                                        ]
+                                    
+                                    conversation_history.append(assistant_msg)
+                                    
+                                    if len(conversation_history) > MAX_CONTEXT_MESSAGES * 2:
+                                        user_session['conversation_history'] = conversation_history[-MAX_CONTEXT_MESSAGES * 2:]
+                                    
+                                    save_conversation_to_json(user_session, session_id)
                         
                         yield f"data: {json.dumps({'done': True})}\n\n"
                         break
@@ -518,21 +533,23 @@ def get_figure_details(figure_id):
 
 @chat_bp.route('/api/figure/select', methods=['POST'])
 def select_figure():
-    """Select a figure for the current chat session"""
+    """Select a figure for the current chat session (thread-safe)"""
     try:
-        user_session = get_session_data()
-        
         data = request.json
         figure_id = data.get('figure_id')
         
         if figure_id:
+            # Validate figure exists (outside lock - read-only)
             figure_manager = get_figure_manager()
             metadata = figure_manager.get_figure_metadata(figure_id)
             if not metadata:
                 return jsonify({'error': 'Figure not found'}), 404
             
-            user_session['current_figure'] = figure_id
-            user_session['conversation_history'] = []
+            # Update session (inside lock)
+            with session_lock:
+                user_session = get_session_data()
+                user_session['current_figure'] = figure_id
+                user_session['conversation_history'] = []
             
             return jsonify({
                 'success': True,
@@ -540,8 +557,11 @@ def select_figure():
                 'figure_name': metadata.get('name', figure_id)
             })
         else:
-            user_session['current_figure'] = None
-            user_session['conversation_history'] = []
+            with session_lock:
+                user_session = get_session_data()
+                user_session['current_figure'] = None
+                user_session['conversation_history'] = []
+            
             return jsonify({
                 'success': True,
                 'current_figure': None,
