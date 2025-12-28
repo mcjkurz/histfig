@@ -74,7 +74,7 @@
                         <label for="image">Figure Image</label>
                         {% if figure.metadata and figure.metadata.image %}
                         <div style="margin-bottom: 0.5rem;">
-                            <img src="{{ url_for('admin.serve_figure_image', filename=figure.metadata.image) }}" 
+                            <img src="{{ url_for('chat.figure_image', filename=figure.metadata.image) }}" 
                                  alt="{{ figure.name }}" 
                                  style="width: 60px; height: 60px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd;">
                             <small style="color: #666; margin-left: 0.5rem;">Current image</small>
