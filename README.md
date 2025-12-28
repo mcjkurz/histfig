@@ -39,6 +39,8 @@ Access at:
 - Chat: `http://localhost:5001/`
 - Admin: `http://localhost:5001/admin/`
 
+The server uses Gunicorn with threaded workers (default: 20 threads) to handle multiple concurrent users, each with isolated sessions; adjust `GUNICORN_THREADS` in `.env` if needed.
+
 ## Scripts
 
 | Script | Purpose |
@@ -48,10 +50,6 @@ Access at:
 | `./utils/stop.sh` | Stop server |
 | `./utils/clean_logs.sh` | Remove log files |
 | `./utils/rebuild_bm25.sh` | Rebuild search indexes |
-
-## Configuration
-
-All settings in `config.py`: port, models, upload limits, chunking, etc.
 
 ## Hardware Acceleration
 

@@ -12,3 +12,4 @@ jieba
 nltk
 numpy
 rank_bm25
+gunicorn

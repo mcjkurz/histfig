@@ -39,10 +39,21 @@ LOG_FILE="logs/server_$(date +%Y-%m-%d_%H-%M-%S).log"
 
 echo "📝 Log file: $LOG_FILE"
 
-# Start server in background
+# Get thread count from environment (default: 20 for ~15-20 concurrent users)
+GUNICORN_THREADS=${GUNICORN_THREADS:-20}
+
+# Start server in background with gunicorn + threads for concurrent users
+# -k gthread: use threaded workers (compatible with PyTorch, unlike gevent)
+# -w 1: single worker (threads share memory, so sessions work)
+# --threads: configurable via GUNICORN_THREADS env var
+# --timeout 120: allow long LLM streaming responses
 (
     source venv/bin/activate
-    python scripts/main.py
+    cd "$(dirname "$0")"
+    gunicorn -k gthread -w 1 --threads $GUNICORN_THREADS --timeout 120 \
+        -b 0.0.0.0:$APP_PORT \
+        --access-logfile - --error-logfile - \
+        scripts.main:app
 ) >> "$LOG_FILE" 2>&1 &
 
 # Wait for server to be ready (poll health endpoint)

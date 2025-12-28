@@ -7,16 +7,16 @@ Single Flask application that handles all functionality on one port.
 import sys
 from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add directories to path for imports
+# Parent directory for config.py, scripts directory for other modules
+sys.path.insert(0, str(Path(__file__).parent.parent))  # project root (for config)
+sys.path.insert(0, str(Path(__file__).parent))  # scripts dir (for chat_routes, etc.)
 
 from flask import Flask, jsonify, request
 import logging
-from logging.handlers import RotatingFileHandler
 import signal
 import os
 import secrets
-from datetime import datetime
 
 from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
 from chat_routes import chat_bp
@@ -28,56 +28,40 @@ LOGS_DIR = Path(__file__).parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 def setup_logging():
-    """Setup logging with dated log files."""
-    # Create log filename with timestamp
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    log_filename = LOGS_DIR / f"server_{timestamp}.log"
+    """Setup logging to console. File output is handled by shell script redirection."""
+    # Use app-specific logger instead of root to avoid conflicts with gunicorn
+    app_logger = logging.getLogger('histfig')
     
-    # Create formatters
-    file_formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(name)s | %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
+    # Skip if already configured
+    if app_logger.handlers:
+        return
+    
+    # Console formatter
     console_formatter = logging.Formatter(
         '%(asctime)s | %(levelname)-8s | %(message)s',
         datefmt='%H:%M:%S'
     )
     
-    # Setup root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    # Setup app logger
+    app_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+    app_logger.propagate = False  # Don't duplicate to root logger
     
-    # Clear existing handlers
-    root_logger.handlers.clear()
-    
-    # File handler (rotates at 10MB, keeps 5 backups)
-    file_handler = RotatingFileHandler(
-        log_filename,
-        maxBytes=10*1024*1024,
-        backupCount=5,
-        encoding='utf-8'
-    )
-    file_handler.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-    file_handler.setFormatter(file_formatter)
-    root_logger.addHandler(file_handler)
-    
-    # Console handler
+    # Console handler (gunicorn/shell script redirects this to log file)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(console_formatter)
-    root_logger.addHandler(console_handler)
-    
-    logging.info(f"Logging initialized. Log file: {log_filename}")
-    return str(log_filename)
+    app_logger.addHandler(console_handler)
 
 # Setup logging
-current_log_file = setup_logging()
+setup_logging()
+
+# Create a logger for this module
+logger = logging.getLogger('histfig')
 
 # Create main Flask application
 app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
-# Store current log file path in app config for access from routes
-app.config['CURRENT_LOG_FILE'] = current_log_file
+# Store logs directory in app config for access from routes
 app.config['LOGS_DIR'] = str(LOGS_DIR)
 
 # Configuration
@@ -91,6 +75,11 @@ app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 app.register_blueprint(chat_bp)  # Chat routes at root (/)
 app.register_blueprint(admin_bp)  # Admin routes at /admin
 
+# Preload FigureManager (loads embedding model) so first request is fast
+logger.info("Preloading FigureManager and embedding model...")
+get_figure_manager()
+logger.info("FigureManager ready")
+
 @app.errorhandler(413)
 def request_entity_too_large(error):
     """Handle file upload too large errors."""
@@ -101,28 +90,24 @@ def request_entity_too_large(error):
 
 def signal_handler(sig, frame):
     """Handle shutdown signals gracefully."""
-    logging.info("Shutting down Historical Figures Chat System...")
+    logger.info("Shutting down Historical Figures Chat System...")
     sys.exit(0)
 
 if __name__ == '__main__':
-    # Set up signal handlers
+    # Direct execution (development mode) - use Flask's built-in server
+    # For production, use: gunicorn -k gevent -w 1 scripts.main:app
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
     
-    # Preload FigureManager (loads embedding model) so first request is fast
-    logging.info("Preloading FigureManager and embedding model...")
-    get_figure_manager()
-    logging.info("FigureManager ready")
-    
     try:
-        logging.info(f"Starting Historical Figures Chat System on port {APP_PORT}")
-        logging.info(f"Chat Interface: http://localhost:{APP_PORT}/")
-        logging.info(f"Admin Interface: http://localhost:{APP_PORT}/admin/")
+        logger.info(f"Starting Historical Figures Chat System on port {APP_PORT}")
+        logger.info(f"Chat Interface: http://localhost:{APP_PORT}/")
+        logger.info(f"Admin Interface: http://localhost:{APP_PORT}/admin/")
         app.run(debug=DEBUG_MODE, host='0.0.0.0', port=APP_PORT)
     except KeyboardInterrupt:
-        logging.info("Application stopped by user")
+        logger.info("Application stopped by user")
     except Exception as e:
-        logging.error(f"Application error: {e}")
+        logger.error(f"Application error: {e}")
     finally:
-        logging.info("Application shutdown complete")
+        logger.info("Application shutdown complete")
 
