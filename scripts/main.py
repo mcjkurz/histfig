@@ -110,12 +110,6 @@ app.state.templates = templates
 @app.exception_handler(413)
 async def request_entity_too_large(request: Request, exc):
     """Handle file upload too large errors."""
-    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
-    if is_ajax:
-        return JSONResponse(
-            status_code=413,
-            content={'error': 'Total upload size too large. Please upload fewer files at once.'}
-        )
     return JSONResponse(
         status_code=413,
         content={'error': 'Total upload size too large. Please upload fewer files at once.'}

@@ -6,9 +6,6 @@ Provides validation functions for figure creation and editing.
 import re
 from typing import Dict, Any, Tuple, Optional
 
-class ValidationError(Exception):
-    """Custom exception for validation errors."""
-    pass
 
 def validate_figure_id(figure_id: str) -> Tuple[bool, Optional[str]]:
     """

@@ -89,6 +89,30 @@ def validate_csrf_token(request: Request, token: str) -> bool:
     return token and token == session.get('csrf_token')
 
 
+async def get_csrf_token_from_request(request: Request) -> str:
+    """Extract CSRF token from form data or headers."""
+    # Try to get from headers first (for AJAX requests)
+    token = request.headers.get('X-CSRF-Token')
+    if token:
+        return token
+    
+    # Try to get from form data
+    try:
+        form_data = await request.form()
+        token = form_data.get('csrf_token', '')
+    except Exception:
+        token = ''
+    
+    return token
+
+
+async def require_csrf(request: Request):
+    """Validate CSRF token for the request. Raises HTTPException if invalid."""
+    token = await get_csrf_token_from_request(request)
+    if not validate_csrf_token(request, token):
+        raise HTTPException(status_code=403, detail="Invalid or missing CSRF token")
+
+
 async def check_login(request: Request) -> bool:
     """Check if user is logged in."""
     return request.session.get('admin_logged_in', False)
@@ -270,10 +294,11 @@ async def figure_detail(request: Request, figure_id: str):
             return RedirectResponse(url="/admin/", status_code=303)
         
         stats = await figure_manager.get_figure_stats_async(figure_id)
+        csrf_token = generate_csrf_token(request)
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "admin/figure_detail.html",
-            {"request": request, "figure": metadata, "stats": stats}
+            {"request": request, "figure": metadata, "stats": stats, "csrf_token": csrf_token}
         )
     except Exception as e:
         return RedirectResponse(url="/admin/", status_code=303)
@@ -292,10 +317,11 @@ async def edit_figure(request: Request, figure_id: str):
             return RedirectResponse(url="/admin/", status_code=303)
         
         stats = await figure_manager.get_figure_stats_async(figure_id)
+        csrf_token = generate_csrf_token(request)
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "admin/edit_figure.html",
-            {"request": request, "figure": metadata, "stats": stats}
+            {"request": request, "figure": metadata, "stats": stats, "csrf_token": csrf_token}
         )
     except Exception as e:
         return RedirectResponse(url="/admin/", status_code=303)
@@ -658,6 +684,9 @@ async def clean_figure_documents(request: Request, figure_id: str):
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     
+    # Validate CSRF token
+    await require_csrf(request)
+    
     try:
         figure_manager = get_figure_manager()
         metadata = await figure_manager.get_figure_metadata_async(figure_id)
@@ -669,6 +698,8 @@ async def clean_figure_documents(request: Request, figure_id: str):
         
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
+    except HTTPException:
+        raise
     except Exception as e:
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
 
@@ -678,6 +709,9 @@ async def delete_figure(request: Request, figure_id: str):
     """Delete a figure and all its data."""
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    
+    # Validate CSRF token
+    await require_csrf(request)
     
     try:
         figure_manager = get_figure_manager()
@@ -690,6 +724,8 @@ async def delete_figure(request: Request, figure_id: str):
         
         return RedirectResponse(url="/admin/", status_code=303)
     
+    except HTTPException:
+        raise
     except Exception as e:
         return RedirectResponse(url="/admin/", status_code=303)
 
@@ -765,8 +801,9 @@ async def logs(request: Request):
         return RedirectResponse(url="/admin/login", status_code=303)
     
     log_files = get_log_files(request)
+    csrf_token = generate_csrf_token(request)
     templates = request.app.state.templates
-    return templates.TemplateResponse("admin/logs.html", {"request": request, "log_files": log_files})
+    return templates.TemplateResponse("admin/logs.html", {"request": request, "log_files": log_files, "csrf_token": csrf_token})
 
 
 @admin_router.get("/api/logs")
@@ -850,6 +887,9 @@ async def delete_log(request: Request, filename: str):
     if not await check_login(request):
         raise HTTPException(status_code=401, detail="Login required")
     
+    # Validate CSRF token
+    await require_csrf(request)
+    
     safe_filename = os.path.basename(filename)
     if not safe_filename.startswith('server_') or '.log' not in safe_filename:
         raise HTTPException(status_code=400, detail="Invalid log file name")
@@ -924,16 +964,15 @@ async def cleanup_sessions_endpoint(request: Request):
         raise HTTPException(status_code=401, detail="Login required")
     
     # Validate CSRF token
-    form_data = await request.form()
-    csrf_token = form_data.get('csrf_token') or request.headers.get('X-CSRF-Token')
-    if not validate_csrf_token(request, csrf_token):
-        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    await require_csrf(request)
     
     try:
         cleaned = await cleanup_expired_sessions()
         async with chat_session_lock:
             remaining = len(chat_session_data)
         return {'cleaned': cleaned, 'remaining': remaining}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

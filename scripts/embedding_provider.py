@@ -88,14 +88,48 @@ class EmbeddingProvider:
         """Synchronous encode document text for storage/indexing."""
         if self.source == "local":
             return self._encode_local_sync(text, is_query=False)
-        # For external, we need to run async in sync context
-        return asyncio.get_event_loop().run_until_complete(self._encode_external(text))
+        return self._encode_external_sync(text)
 
     def encode_query_sync(self, text: str) -> List[float]:
         """Synchronous encode query text for search."""
         if self.source == "local":
             return self._encode_local_sync(text, is_query=True)
-        return asyncio.get_event_loop().run_until_complete(self._encode_external(text))
+        return self._encode_external_sync(text)
+
+    def _encode_external_sync(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """Synchronous encode using external OpenAI-compatible API."""
+        if isinstance(text, str):
+            input_data = [text]
+            single_input = True
+        else:
+            input_data = text
+            single_input = False
+
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    f"{self.api_url}/embeddings",
+                    headers=headers,
+                    json={"model": self.external_model, "input": input_data},
+                )
+
+                if response.status_code != 200:
+                    error_msg = self._parse_error(response)
+                    logging.error(f"Embedding API error: {error_msg}")
+                    raise RuntimeError(f"Embedding API error: {error_msg}")
+
+                data = response.json()
+                embeddings = [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+
+                return embeddings[0] if single_input else embeddings
+
+        except httpx.RequestError as e:
+            logging.error(f"Embedding API request failed: {e}")
+            raise RuntimeError(f"Embedding API request failed: {e}")
 
     async def _encode_external(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         """Encode using external OpenAI-compatible API."""

@@ -45,6 +45,57 @@ SESSION_TIMEOUT_SECONDS = 24 * 60 * 60  # 24 hours
 CLEANUP_INTERVAL_SECONDS = 60 * 60  # Run cleanup every hour
 _cleanup_task: Optional[asyncio.Task] = None
 
+# Rate limiting configuration
+RATE_LIMIT_MAX_REQUESTS = 3  # Maximum requests allowed
+RATE_LIMIT_WINDOW_SECONDS = 20  # Time window in seconds
+rate_limit_data: Dict[str, List[float]] = {}  # session_id -> list of timestamps
+rate_limit_lock = asyncio.Lock()
+
+
+async def check_rate_limit(session_id: str) -> tuple[bool, str]:
+    """
+    Check if the session has exceeded rate limit.
+    Returns (is_allowed, message) tuple.
+    """
+    now = datetime.datetime.now().timestamp()
+    
+    async with rate_limit_lock:
+        if session_id not in rate_limit_data:
+            rate_limit_data[session_id] = []
+        
+        # Remove timestamps outside the window
+        timestamps = rate_limit_data[session_id]
+        cutoff = now - RATE_LIMIT_WINDOW_SECONDS
+        rate_limit_data[session_id] = [ts for ts in timestamps if ts > cutoff]
+        
+        # Check if limit exceeded
+        if len(rate_limit_data[session_id]) >= RATE_LIMIT_MAX_REQUESTS:
+            oldest = min(rate_limit_data[session_id])
+            wait_time = int(oldest + RATE_LIMIT_WINDOW_SECONDS - now) + 1
+            return False, f"Rate limit exceeded. Please wait {wait_time} seconds before sending another message."
+        
+        # Record this request
+        rate_limit_data[session_id].append(now)
+        return True, ""
+
+
+async def cleanup_rate_limit_data():
+    """Clean up old rate limit data for inactive sessions."""
+    now = datetime.datetime.now().timestamp()
+    cutoff = now - RATE_LIMIT_WINDOW_SECONDS * 10  # Keep data for 10x the window
+    
+    async with rate_limit_lock:
+        sessions_to_remove = []
+        for session_id, timestamps in rate_limit_data.items():
+            if not timestamps or max(timestamps) < cutoff:
+                sessions_to_remove.append(session_id)
+        
+        for session_id in sessions_to_remove:
+            del rate_limit_data[session_id]
+        
+        if sessions_to_remove:
+            logging.debug(f"Cleaned up rate limit data for {len(sessions_to_remove)} sessions")
+
 
 # Pydantic models for request validation
 class ChatRequest(BaseModel):
@@ -143,11 +194,12 @@ async def cleanup_expired_sessions():
 
 
 async def _session_cleanup_loop():
-    """Background task that periodically cleans up expired sessions"""
+    """Background task that periodically cleans up expired sessions and rate limit data"""
     while True:
         await asyncio.sleep(CLEANUP_INTERVAL_SECONDS)
         try:
             await cleanup_expired_sessions()
+            await cleanup_rate_limit_data()
         except Exception as e:
             logging.error(f"Error in session cleanup: {e}")
 
@@ -328,6 +380,12 @@ async def get_feature_flags():
 @chat_router.post("/api/chat")
 async def chat(request: Request, chat_request: ChatRequest):
     """Handle chat requests and stream responses using messages format"""
+    # Check rate limit first
+    session_id = get_session_id(request)
+    is_allowed, rate_limit_msg = await check_rate_limit(session_id)
+    if not is_allowed:
+        raise HTTPException(status_code=429, detail=rate_limit_msg)
+    
     try:
         message = chat_request.message
         model = chat_request.model
