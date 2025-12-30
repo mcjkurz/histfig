@@ -21,7 +21,10 @@ import logging
 import os
 import secrets
 
-from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
+from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH, require_valid_config
+
+# Validate configuration before starting
+require_valid_config()
 
 # Create logs directory
 LOGS_DIR = Path(__file__).parent.parent / "logs"
