@@ -9,6 +9,8 @@ from typing import List, Dict, Any
 import PyPDF2
 import logging
 from io import BytesIO
+
+logger = logging.getLogger('histfig')
 from docx import Document
 from config import CHUNK_SIZE_WORDS, MAX_CHUNK_CHARS, OVERLAP_PERCENT
 
@@ -53,12 +55,12 @@ class DocumentProcessor:
                     if page_text.strip():
                         text += page_text
                 except Exception as e:
-                    logging.warning(f"Error extracting text from page: {e}")
+                    logger.warning(f"Error extracting text from page: {e}")
                     continue
             
             return text
         except Exception as e:
-            logging.error(f"Error extracting text from PDF: {e}")
+            logger.error(f"Error extracting text from PDF: {e}")
             raise Exception(f"Failed to extract text from PDF: {str(e)}")
     
     def extract_text_from_txt(self, file_content: bytes) -> str:
@@ -87,7 +89,7 @@ class DocumentProcessor:
             return text
             
         except Exception as e:
-            logging.error(f"Error extracting text from text file: {e}")
+            logger.error(f"Error extracting text from text file: {e}")
             raise Exception(f"Failed to extract text from text file: {str(e)}")
     
     def extract_text_from_docx(self, file_content: bytes) -> str:
@@ -121,7 +123,7 @@ class DocumentProcessor:
             
             return text
         except Exception as e:
-            logging.error(f"Error extracting text from DOCX: {e}")
+            logger.error(f"Error extracting text from DOCX: {e}")
             raise Exception(f"Failed to extract text from DOCX: {str(e)}")
     
     def chunk_text(self, text: str, metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
@@ -280,9 +282,9 @@ class DocumentProcessor:
             # Chunk the text
             chunks = self.chunk_text(text, base_metadata)
             
-            logging.info(f"Processed {filename}: {len(chunks)} chunks created")
+            logger.info(f"Processed {filename}: {len(chunks)} chunks created")
             return chunks
             
         except Exception as e:
-            logging.error(f"Error processing file {filename}: {e}")
+            logger.error(f"Error processing file {filename}: {e}")
             raise Exception(f"Failed to process {filename}: {str(e)}")

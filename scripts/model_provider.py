@@ -8,6 +8,8 @@ import httpx
 import json
 import logging
 from typing import List, Dict, AsyncGenerator
+
+logger = logging.getLogger('histfig')
 from config import EXTERNAL_API_URL, EXTERNAL_API_KEY
 
 
@@ -66,16 +68,16 @@ class LLMProvider:
                                     continue
                             
         except httpx.ConnectError as e:
-            logging.error(f"Connection error: {e}")
+            logger.error(f"Connection error: {e}")
             yield {"error": f"Cannot connect to LLM API at {self.base_url}. Check the URL and your connection."}
         except httpx.TimeoutException as e:
-            logging.error(f"Timeout error: {e}")
+            logger.error(f"Timeout error: {e}")
             yield {"error": "LLM API request timed out. Please try again."}
         except httpx.RequestError as e:
-            logging.error(f"Request error: {e}")
+            logger.error(f"Request error: {e}")
             yield {"error": f"LLM API request failed: {str(e)}"}
         except Exception as e:
-            logging.error(f"Unexpected error in LLM stream: {e}")
+            logger.error(f"Unexpected error in LLM stream: {e}")
             yield {"error": f"Unexpected error: {str(e)}"}
     
     async def _parse_error_async(self, response: httpx.Response) -> str:
@@ -118,6 +120,6 @@ class LLMProvider:
                     models = data.get('data', [])
                     return [m.get('id', m.get('name', '')) for m in models if m]
         except Exception as e:
-            logging.error(f"Error fetching models: {e}")
+            logger.error(f"Error fetching models: {e}")
         
         return [self.default_model] if self.default_model else []

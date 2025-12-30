@@ -6,6 +6,8 @@ Handles Chinese segmentation with jieba and English lemmatization with NLTK.
 import re
 import logging
 from typing import List, Set, Tuple
+
+logger = logging.getLogger('histfig')
 import jieba
 import nltk
 from nltk.stem import WordNetLemmatizer
@@ -25,7 +27,7 @@ class TextProcessor:
         # Load stopwords from files (used for filtering n-grams at indexing time)
         self.stopwords = self._load_stopwords(stopwords_dir)
         
-        logging.info(f"Text processor initialized with {len(self.stopwords)} stopwords")
+        logger.info(f"Text processor initialized with {len(self.stopwords)} stopwords")
     
     def _download_nltk_data(self):
         """Download required NLTK data if not present."""
@@ -36,10 +38,10 @@ class TextProcessor:
                 nltk.data.find(f'tokenizers/{data_name}')
             except LookupError:
                 try:
-                    logging.info(f"Downloading NLTK data: {data_name}")
+                    logger.info(f"Downloading NLTK data: {data_name}")
                     nltk.download(data_name, quiet=True)
                 except Exception as e:
-                    logging.warning(f"Failed to download NLTK data {data_name}: {e}")
+                    logger.warning(f"Failed to download NLTK data {data_name}: {e}")
     
     def _load_stopwords(self, stopwords_dir: str) -> Set[str]:
         """
@@ -55,7 +57,7 @@ class TextProcessor:
         stopwords = set()
         
         if not os.path.exists(stopwords_dir):
-            logging.warning(f"Stopwords directory not found: {stopwords_dir}")
+            logger.warning(f"Stopwords directory not found: {stopwords_dir}")
             return stopwords
         
         # Load all .txt files in the stopwords directory
@@ -68,9 +70,9 @@ class TextProcessor:
                             word = line.strip()
                             if word:  # Skip empty lines
                                 stopwords.add(word.lower())
-                    logging.debug(f"Loaded stopwords from {filename}")
+                    logger.debug(f"Loaded stopwords from {filename}")
                 except Exception as e:
-                    logging.warning(f"Error loading stopwords from {filename}: {e}")
+                    logger.warning(f"Error loading stopwords from {filename}: {e}")
         
         return stopwords
     
@@ -143,7 +145,7 @@ class TextProcessor:
                     lemmatized = self.lemmatizer.lemmatize(token)
                     processed_tokens.append(lemmatized)
                 except Exception as e:
-                    logging.warning(f"Error lemmatizing token '{token}': {e}")
+                    logger.warning(f"Error lemmatizing token '{token}': {e}")
                     processed_tokens.append(token)
             else:
                 # Keep alphanumeric tokens (like "covid-19", "3d", etc.) and Chinese tokens

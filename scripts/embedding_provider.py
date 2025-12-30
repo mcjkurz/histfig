@@ -7,6 +7,8 @@ Uses async httpx for external API calls.
 import httpx
 import logging
 import asyncio
+
+logger = logging.getLogger('histfig')
 from typing import List, Union
 import torch
 from sentence_transformers import SentenceTransformer
@@ -53,7 +55,7 @@ class EmbeddingProvider:
             self.device = "cpu"
 
         self.encoder = SentenceTransformer(self.local_model_name, device=self.device)
-        logging.info(f"Loaded local embedding model: {self.local_model_name} on {self.device}")
+        logger.info(f"Loaded local embedding model: {self.local_model_name} on {self.device}")
 
     def _encode_local_sync(self, text: Union[str, List[str]], is_query: bool = False) -> Union[List[float], List[List[float]]]:
         """Synchronous local encoding - called via asyncio.to_thread."""
@@ -119,7 +121,7 @@ class EmbeddingProvider:
 
                 if response.status_code != 200:
                     error_msg = self._parse_error(response)
-                    logging.error(f"Embedding API error: {error_msg}")
+                    logger.error(f"Embedding API error: {error_msg}")
                     raise RuntimeError(f"Embedding API error: {error_msg}")
 
                 data = response.json()
@@ -128,7 +130,7 @@ class EmbeddingProvider:
                 return embeddings[0] if single_input else embeddings
 
         except httpx.RequestError as e:
-            logging.error(f"Embedding API request failed: {e}")
+            logger.error(f"Embedding API request failed: {e}")
             raise RuntimeError(f"Embedding API request failed: {e}")
 
     async def _encode_external(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
@@ -154,7 +156,7 @@ class EmbeddingProvider:
 
                 if response.status_code != 200:
                     error_msg = self._parse_error(response)
-                    logging.error(f"Embedding API error: {error_msg}")
+                    logger.error(f"Embedding API error: {error_msg}")
                     raise RuntimeError(f"Embedding API error: {error_msg}")
 
                 data = response.json()
@@ -163,7 +165,7 @@ class EmbeddingProvider:
                 return embeddings[0] if single_input else embeddings
 
         except httpx.RequestError as e:
-            logging.error(f"Embedding API request failed: {e}")
+            logger.error(f"Embedding API request failed: {e}")
             raise RuntimeError(f"Embedding API request failed: {e}")
 
     def _parse_error(self, response: httpx.Response) -> str:

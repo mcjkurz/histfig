@@ -6,6 +6,8 @@ Handles PDF generation for conversation exports.
 import os
 import logging
 import platform
+
+logger = logging.getLogger('histfig')
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -53,7 +55,7 @@ def register_unicode_fonts():
         return 'Helvetica'
         
     except Exception as e:
-        logging.warning(f"Could not register Unicode fonts: {e}")
+        logger.warning(f"Could not register Unicode fonts: {e}")
         return 'Helvetica'
 
 

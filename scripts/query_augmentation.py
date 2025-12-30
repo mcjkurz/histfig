@@ -7,6 +7,8 @@ Uses async httpx for non-blocking HTTP requests.
 import logging
 import httpx
 from typing import Optional
+
+logger = logging.getLogger('histfig')
 from config import (
     QUERY_AUGMENTATION_ENABLED,
     QUERY_AUGMENTATION_MODEL,
@@ -28,12 +30,12 @@ async def augment_query(query: str, figure_name: str = "a historical figure", ap
         Augmented query or original query if augmentation is disabled/fails
     """
     if not QUERY_AUGMENTATION_ENABLED:
-        logging.debug("Query augmentation is disabled in config")
+        logger.debug("Query augmentation is disabled in config")
         return query
     
     key = api_key or QUERY_AUGMENTATION_API_KEY
     if not key or not key.strip():
-        logging.warning("No API key available for query augmentation, using original query")
+        logger.warning("No API key available for query augmentation, using original query")
         return query
     
     try:
@@ -65,7 +67,7 @@ Augmented query:"""
             )
         
         if response.status_code != 200:
-            logging.warning(f"Query augmentation API error: {response.status_code}")
+            logger.warning(f"Query augmentation API error: {response.status_code}")
             return query
         
         result = response.json()
@@ -73,24 +75,24 @@ Augmented query:"""
             augmented = result['choices'][0]['message']['content'].strip()
             
             if augmented and len(augmented) >= len(query) and len(augmented) < 2000:
-                logging.info(f"Query augmented: '{query}' -> '{augmented}'")
+                logger.info(f"Query augmented: '{query}' -> '{augmented}'")
                 return augmented
             elif augmented and len(augmented) < len(query):
-                logging.warning(f"Augmented query is shorter than original ({len(augmented)} < {len(query)}), using original")
+                logger.warning(f"Augmented query is shorter than original ({len(augmented)} < {len(query)}), using original")
                 return query
             else:
-                logging.warning("Augmented query validation failed, using original")
+                logger.warning("Augmented query validation failed, using original")
                 return query
         else:
-            logging.warning("No valid response from augmentation API")
+            logger.warning("No valid response from augmentation API")
             return query
             
     except httpx.TimeoutException:
-        logging.warning("Query augmentation request timed out, using original query")
+        logger.warning("Query augmentation request timed out, using original query")
         return query
     except httpx.RequestError as e:
-        logging.warning(f"Query augmentation request failed: {e}, using original query")
+        logger.warning(f"Query augmentation request failed: {e}, using original query")
         return query
     except Exception as e:
-        logging.error(f"Unexpected error during query augmentation: {e}")
+        logger.error(f"Unexpected error during query augmentation: {e}")
         return query

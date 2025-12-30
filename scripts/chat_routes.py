@@ -7,6 +7,8 @@ import re
 import json
 import logging
 import os
+
+logger = logging.getLogger('histfig')
 import markdown
 import secrets
 import uuid
@@ -94,7 +96,7 @@ async def cleanup_rate_limit_data():
             del rate_limit_data[session_id]
         
         if sessions_to_remove:
-            logging.debug(f"Cleaned up rate limit data for {len(sessions_to_remove)} sessions")
+            logger.debug(f"Cleaned up rate limit data for {len(sessions_to_remove)} sessions")
 
 
 # Pydantic models for request validation
@@ -188,7 +190,7 @@ async def cleanup_expired_sessions():
             del session_data[sid]
     
     if expired_sessions:
-        logging.info(f"Cleaned up {len(expired_sessions)} expired session(s)")
+        logger.info(f"Cleaned up {len(expired_sessions)} expired session(s)")
     
     return len(expired_sessions)
 
@@ -201,7 +203,7 @@ async def _session_cleanup_loop():
             await cleanup_expired_sessions()
             await cleanup_rate_limit_data()
         except Exception as e:
-            logging.error(f"Error in session cleanup: {e}")
+            logger.error(f"Error in session cleanup: {e}")
 
 
 async def start_session_cleanup_task():
@@ -209,7 +211,7 @@ async def start_session_cleanup_task():
     global _cleanup_task
     if _cleanup_task is None or _cleanup_task.done():
         _cleanup_task = asyncio.create_task(_session_cleanup_loop())
-        logging.info("Session cleanup task started (24h timeout, hourly cleanup)")
+        logger.info("Session cleanup task started (24h timeout, hourly cleanup)")
 
 
 def save_conversation_to_json(user_session: Dict, session_id: str):
@@ -241,7 +243,7 @@ def save_conversation_to_json(user_session: Dict, session_id: str):
             json.dump(conversation_data, f, indent=2, ensure_ascii=False)
             
     except Exception as e:
-        logging.error(f"Error auto-saving conversation: {e}")
+        logger.error(f"Error auto-saving conversation: {e}")
 
 
 async def add_to_conversation_history(request: Request, role: str, content: str, retrieved_documents=None):
@@ -336,14 +338,14 @@ async def get_models_by_source():
                 models = await provider.get_available_models()
                 local_models = models if models else []
             except Exception as e:
-                logging.warning(f"Could not fetch local models: {e}")
+                logger.warning(f"Could not fetch local models: {e}")
                 local_models = [DEFAULT_LOCAL_MODEL] if DEFAULT_LOCAL_MODEL else []
         
         external_models = EXTERNAL_MODELS if EXTERNAL_MODELS else None
         
         return {"local": local_models, "external": external_models}
     except Exception as e:
-        logging.error(f"Error fetching models by source: {e}")
+        logger.error(f"Error fetching models by source: {e}")
         return {"local": [], "external": None}
 
 
@@ -362,7 +364,7 @@ async def get_external_api_key_status():
         
         return {"has_key": has_key, "masked_key": masked_key}
     except Exception as e:
-        logging.error(f"Error checking LLM API key status: {e}")
+        logger.error(f"Error checking LLM API key status: {e}")
         return {"has_key": False, "masked_key": ""}
 
 
@@ -417,7 +419,7 @@ async def chat(request: Request, chat_request: ChatRequest):
             try:
                 augmented_query = await augment_query(message, figure_name=figure_name or "a historical figure")
             except Exception as e:
-                logging.warning(f"Query augmentation failed: {e}")
+                logger.warning(f"Query augmentation failed: {e}")
                 augmented_query = None
         
         thinking_instruction, response_start = get_thinking_instructions(thinking_intensity)
@@ -466,7 +468,7 @@ async def chat(request: Request, chat_request: ChatRequest):
                     )
                     
             except Exception as e:
-                logging.error(f"Error in RAG enhancement: {e}")
+                logger.error(f"Error in RAG enhancement: {e}")
                 system_content = GENERIC_ASSISTANT_PROMPT
                 user_content = USER_MESSAGE_NO_RAG.format(
                     message=message,
@@ -556,13 +558,13 @@ async def chat(request: Request, chat_request: ChatRequest):
                         break
                         
             except Exception as e:
-                logging.error(f"Error in chat stream: {e}")
+                logger.error(f"Error in chat stream: {e}")
                 yield f"data: {json.dumps({'error': str(e)})}\n\n"
         
         return StreamingResponse(generate(), media_type='text/event-stream')
         
     except Exception as e:
-        logging.error(f"Error in chat endpoint: {e}")
+        logger.error(f"Error in chat endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -612,7 +614,7 @@ async def rag_stats(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting RAG stats: {e}")
+        logger.error(f"Error getting RAG stats: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -624,7 +626,7 @@ async def get_figures():
         figures = await figure_manager.get_figure_list_async()
         return figures
     except Exception as e:
-        logging.error(f"Error getting figures: {e}")
+        logger.error(f"Error getting figures: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -642,7 +644,7 @@ async def get_figure_details(figure_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error getting figure details: {e}")
+        logger.error(f"Error getting figure details: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -683,7 +685,7 @@ async def select_figure(request: Request, data: SelectFigureRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logging.error(f"Error selecting figure: {e}")
+        logger.error(f"Error selecting figure: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -701,7 +703,7 @@ async def get_current_figure(request: Request):
         
         return {'figure_id': None, 'figure_name': None}
     except Exception as e:
-        logging.error(f"Error getting current figure: {e}")
+        logger.error(f"Error getting current figure: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -721,7 +723,7 @@ async def convert_markdown(data: MarkdownRequest):
         
         return {'html': html_content}
     except Exception as e:
-        logging.error(f"Error converting markdown: {e}")
+        logger.error(f"Error converting markdown: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -745,5 +747,5 @@ async def export_conversation_pdf(data: PDFExportRequest):
         )
         
     except Exception as e:
-        logging.error(f"Error generating PDF: {e}")
+        logger.error(f"Error generating PDF: {e}")
         raise HTTPException(status_code=500, detail=str(e))

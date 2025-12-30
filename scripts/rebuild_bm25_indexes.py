@@ -10,6 +10,8 @@ import os
 import logging
 from pathlib import Path
 
+logger = logging.getLogger('histfig')
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -91,7 +93,7 @@ def rebuild_all_bm25_indexes():
                 
             except Exception as e:
                 print(f"  ✗ Error: {str(e)}")
-                logging.error(f"Error processing figure {figure_id}: {e}", exc_info=True)
+                logger.error(f"Error processing figure {figure_id}: {e}", exc_info=True)
                 fail_count += 1
             
             print()
@@ -116,7 +118,7 @@ def rebuild_all_bm25_indexes():
         
     except Exception as e:
         print(f"✗ Fatal error: {str(e)}")
-        logging.error(f"Fatal error in rebuild script: {e}", exc_info=True)
+        logger.error(f"Fatal error in rebuild script: {e}", exc_info=True)
         sys.exit(1)
 
 def main():

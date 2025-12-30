@@ -7,6 +7,8 @@ import os
 import json
 import logging
 import secrets
+
+logger = logging.getLogger('histfig')
 import asyncio
 import unicodedata
 from typing import Optional, List
@@ -248,9 +250,9 @@ async def create_figure(
                 content = await image.read()
                 with open(image_path, 'wb') as f:
                     f.write(content)
-                logging.info(f"Saved image for figure {figure_id_clean}: {image_path}")
+                logger.info(f"Saved image for figure {figure_id_clean}: {image_path}")
             except Exception as e:
-                logging.error(f"Error saving image: {str(e)}")
+                logger.error(f"Error saving image: {str(e)}")
         
         if image_filename:
             metadata['image'] = image_filename
@@ -403,7 +405,7 @@ async def update_figure(
                 
                 metadata['image'] = image_filename
             except Exception as e:
-                logging.error(f"Error updating image: {str(e)}")
+                logger.error(f"Error updating image: {str(e)}")
         
         updates['metadata'] = metadata
         
@@ -550,7 +552,7 @@ async def upload_documents(
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
     except Exception as e:
-        logging.error(f"Upload error: {str(e)}")
+        logger.error(f"Upload error: {str(e)}")
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
             return JSONResponse(status_code=500, content={'error': str(e)})
         return RedirectResponse(url=f"/admin/figure/{figure_id}/edit", status_code=303)
@@ -730,17 +732,6 @@ async def delete_figure(request: Request, figure_id: str):
         return RedirectResponse(url="/admin/", status_code=303)
 
 
-@admin_router.get("/api/figures")
-async def api_figures():
-    """API endpoint to get all figures."""
-    try:
-        figure_manager = get_figure_manager()
-        figures = await figure_manager.get_figure_list_async()
-        return figures
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @admin_router.get("/api/figure/{figure_id}/stats")
 async def api_figure_stats(figure_id: str):
     """API endpoint to get figure statistics."""
@@ -858,7 +849,7 @@ async def api_log_content(request: Request, filename: str, lines: Optional[int] 
             'is_current': False
         }
     except Exception as e:
-        logging.error(f"Error reading log file {filename}: {str(e)}")
+        logger.error(f"Error reading log file {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -902,10 +893,10 @@ async def delete_log(request: Request, filename: str):
     
     try:
         os.remove(filepath)
-        logging.info(f"Deleted log file: {safe_filename}")
+        logger.info(f"Deleted log file: {safe_filename}")
         return {'success': True, 'message': f'Deleted {safe_filename}'}
     except Exception as e:
-        logging.error(f"Error deleting log file {filename}: {str(e)}")
+        logger.error(f"Error deleting log file {filename}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 

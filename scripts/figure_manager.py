@@ -13,6 +13,8 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 import logging
 from pathlib import Path
+
+logger = logging.getLogger('histfig')
 import chromadb
 from chromadb.config import Settings
 import re
@@ -48,7 +50,7 @@ class FigureManager:
         self.bm25_dir = Path(db_path) / "bm25_indexes"
         self.bm25_dir.mkdir(exist_ok=True)
         
-        logging.info("Figure manager initialized")
+        logger.info("Figure manager initialized")
     
     def _get_bm25_paths(self, figure_id: str) -> tuple:
         """Get BM25 file paths for a figure."""
@@ -76,9 +78,9 @@ class FigureManager:
             with open(meta_path, 'wb') as f:
                 pickle.dump(self.bm25_metadata_cache.get(figure_id, []), f)
                 
-            logging.debug(f"Saved BM25 data to disk for figure {figure_id}")
+            logger.debug(f"Saved BM25 data to disk for figure {figure_id}")
         except Exception as e:
-            logging.error(f"Error saving BM25 data for figure {figure_id}: {e}")
+            logger.error(f"Error saving BM25 data for figure {figure_id}: {e}")
     
     def _load_bm25_from_disk(self, figure_id: str) -> bool:
         """Load BM25 data from disk if available."""
@@ -97,10 +99,10 @@ class FigureManager:
             with open(meta_path, 'rb') as f:
                 self.bm25_metadata_cache[figure_id] = pickle.load(f)
                 
-            logging.info(f"Loaded BM25 data from disk for figure {figure_id}")
+            logger.info(f"Loaded BM25 data from disk for figure {figure_id}")
             return True
         except Exception as e:
-            logging.error(f"Error loading BM25 data for figure {figure_id}: {e}")
+            logger.error(f"Error loading BM25 data for figure {figure_id}: {e}")
             return False
     
     def _invalidate_bm25_cache(self, figure_id: str):
@@ -118,9 +120,9 @@ class FigureManager:
                 if path.exists():
                     path.unlink()
         except Exception as e:
-            logging.warning(f"Error removing BM25 files for figure {figure_id}: {e}")
+            logger.warning(f"Error removing BM25 files for figure {figure_id}: {e}")
             
-        logging.debug(f"Invalidated BM25 cache for figure {figure_id}")
+        logger.debug(f"Invalidated BM25 cache for figure {figure_id}")
     
     def preload_bm25_index(self, figure_id: str) -> bool:
         """Preload BM25 index for a figure from disk or build from ChromaDB."""
@@ -134,7 +136,7 @@ class FigureManager:
             return self._build_bm25_from_chromadb(figure_id)
             
         except Exception as e:
-            logging.error(f"Error preloading BM25 index for figure {figure_id}: {e}")
+            logger.error(f"Error preloading BM25 index for figure {figure_id}: {e}")
             return False
     
     def _build_bm25_from_chromadb(self, figure_id: str) -> bool:
@@ -146,7 +148,7 @@ class FigureManager:
             
             all_docs = collection.get(include=["metadatas"])
             if not all_docs["metadatas"]:
-                logging.info(f"No documents found for figure {figure_id}")
+                logger.info(f"No documents found for figure {figure_id}")
                 return False
             
             token_lists = []
@@ -161,11 +163,11 @@ class FigureManager:
                             token_lists.append(tokens)
                             metadata_list.append(metadata)
                     except (json.JSONDecodeError, TypeError) as e:
-                        logging.warning(f"Could not parse processed tokens: {e}")
+                        logger.warning(f"Could not parse processed tokens: {e}")
                         continue
             
             if not token_lists:
-                logging.info(f"No processed tokens found for figure {figure_id}")
+                logger.info(f"No processed tokens found for figure {figure_id}")
                 return False
             
             bm25_index = BM25Okapi(token_lists)
@@ -176,11 +178,11 @@ class FigureManager:
             
             self._save_bm25_to_disk(figure_id)
             
-            logging.info(f"Built and cached BM25 index for figure {figure_id}: {len(token_lists)} documents")
+            logger.info(f"Built and cached BM25 index for figure {figure_id}: {len(token_lists)} documents")
             return True
             
         except Exception as e:
-            logging.error(f"Error building BM25 index for figure {figure_id}: {e}")
+            logger.error(f"Error building BM25 index for figure {figure_id}: {e}")
             return False
     
     def _get_bm25_index(self, figure_id: str) -> Optional[BM25Okapi]:
@@ -195,11 +197,11 @@ class FigureManager:
         """Create a new historical figure with validation."""
         try:
             if not re.match(r'^[a-zA-Z]+$', figure_id):
-                logging.error(f"Invalid figure_id format: {figure_id}")
+                logger.error(f"Invalid figure_id format: {figure_id}")
                 return False
             
             if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', name):
-                logging.error(f"Invalid name format: {name}")
+                logger.error(f"Invalid name format: {name}")
                 return False
             
             description = description[:400] if description else ""
@@ -208,7 +210,7 @@ class FigureManager:
             figure_path = self.figures_dir / figure_id
             
             if figure_path.exists():
-                logging.error(f"Figure {figure_id} already exists")
+                logger.error(f"Figure {figure_id} already exists")
                 return False
             
             figure_path.mkdir(exist_ok=True)
@@ -233,11 +235,11 @@ class FigureManager:
                 metadata={"hnsw:space": "cosine", "figure_id": figure_id}
             )
             
-            logging.info(f"Created figure: {name} ({figure_id})")
+            logger.info(f"Created figure: {name} ({figure_id})")
             return True
             
         except Exception as e:
-            logging.error(f"Error creating figure {figure_id}: {e}")
+            logger.error(f"Error creating figure {figure_id}: {e}")
             return False
 
     # Async wrapper
@@ -262,13 +264,13 @@ class FigureManager:
                                 metadata = json.load(f)
                                 figures.append(metadata)
                         except (json.JSONDecodeError, FileNotFoundError):
-                            logging.warning(f"Invalid metadata file for figure: {figure_dir.name}")
+                            logger.warning(f"Invalid metadata file for figure: {figure_dir.name}")
                             continue
             
             return sorted(figures, key=lambda x: x.get('name', ''))
         
         except Exception as e:
-            logging.error(f"Error getting figure list: {e}")
+            logger.error(f"Error getting figure list: {e}")
             return []
 
     # Async wrapper
@@ -287,7 +289,7 @@ class FigureManager:
                 return json.load(f)
         
         except Exception as e:
-            logging.error(f"Error getting metadata for figure {figure_id}: {e}")
+            logger.error(f"Error getting metadata for figure {figure_id}: {e}")
             return None
 
     # Async wrapper
@@ -300,12 +302,12 @@ class FigureManager:
         try:
             metadata = self.get_figure_metadata(figure_id)
             if not metadata:
-                logging.error(f"Figure {figure_id} not found")
+                logger.error(f"Figure {figure_id} not found")
                 return False
             
             if 'name' in updates and updates['name']:
                 if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', updates['name']):
-                    logging.error(f"Invalid name format: {updates['name']}")
+                    logger.error(f"Invalid name format: {updates['name']}")
                     return False
             
             if 'description' in updates:
@@ -319,11 +321,11 @@ class FigureManager:
             with open(metadata_file, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2, ensure_ascii=False)
             
-            logging.info(f"Updated metadata for figure: {figure_id}")
+            logger.info(f"Updated metadata for figure: {figure_id}")
             return True
         
         except Exception as e:
-            logging.error(f"Error updating metadata for figure {figure_id}: {e}")
+            logger.error(f"Error updating metadata for figure {figure_id}: {e}")
             return False
 
     # Async wrapper
@@ -336,22 +338,22 @@ class FigureManager:
         try:
             figure_path = self.figures_dir / figure_id
             if not figure_path.exists():
-                logging.error(f"Figure {figure_id} not found")
+                logger.error(f"Figure {figure_id} not found")
                 return False
             
             collection_name = f"figure_{figure_id}"
             try:
                 self.client.delete_collection(collection_name)
             except Exception as e:
-                logging.warning(f"Error deleting collection {collection_name}: {e}")
+                logger.warning(f"Error deleting collection {collection_name}: {e}")
             
             shutil.rmtree(figure_path)
             
-            logging.info(f"Deleted figure: {figure_id}")
+            logger.info(f"Deleted figure: {figure_id}")
             return True
         
         except Exception as e:
-            logging.error(f"Error deleting figure {figure_id}: {e}")
+            logger.error(f"Error deleting figure {figure_id}: {e}")
             return False
 
     # Async wrapper
@@ -365,7 +367,7 @@ class FigureManager:
             collection_name = f"figure_{figure_id}"
             return self.client.get_collection(collection_name)
         except Exception as e:
-            logging.error(f"Error getting collection for figure {figure_id}: {e}")
+            logger.error(f"Error getting collection for figure {figure_id}: {e}")
             return None
     
     def add_document_to_figure(self, figure_id: str, text: str, metadata: Dict[str, Any]) -> Optional[str]:
@@ -373,7 +375,7 @@ class FigureManager:
         try:
             collection = self.get_figure_collection(figure_id)
             if not collection:
-                logging.error(f"Collection not found for figure: {figure_id}")
+                logger.error(f"Collection not found for figure: {figure_id}")
                 return None
             
             embedding = self.embedding_provider.encode_document_sync(text)
@@ -385,9 +387,9 @@ class FigureManager:
             metadata_with_id = {**metadata, "doc_id": doc_id}
             if processed_tokens:
                 metadata_with_id["processed_tokens"] = json.dumps(processed_tokens)
-                logging.debug(f"Added {len(processed_tokens)} processed tokens to metadata for {doc_id}")
+                logger.debug(f"Added {len(processed_tokens)} processed tokens to metadata for {doc_id}")
             else:
-                logging.warning(f"No tokens extracted for {doc_id}, BM25 search may be limited")
+                logger.warning(f"No tokens extracted for {doc_id}, BM25 search may be limited")
             
             collection.add(
                 documents=[text],
@@ -405,19 +407,19 @@ class FigureManager:
                     
                     self._save_bm25_to_disk(figure_id)
                     
-                    logging.debug(f"Updated BM25 index for figure {figure_id} with new document")
+                    logger.debug(f"Updated BM25 index for figure {figure_id} with new document")
                 except Exception as e:
-                    logging.warning(f"Error updating BM25 cache, invalidating: {e}")
+                    logger.warning(f"Error updating BM25 cache, invalidating: {e}")
                     self._invalidate_bm25_cache(figure_id)
             else:
                 if figure_id in self.bm25_cache:
                     self._invalidate_bm25_cache(figure_id)
             
-            logging.debug(f"Added document to figure {figure_id}: {doc_id}")
+            logger.debug(f"Added document to figure {figure_id}: {doc_id}")
             return doc_id
         
         except Exception as e:
-            logging.error(f"Error adding document to figure {figure_id}: {e}")
+            logger.error(f"Error adding document to figure {figure_id}: {e}")
             return None
 
     # Async wrapper
@@ -436,11 +438,11 @@ class FigureManager:
             if figure_metadata:
                 figure_metadata["document_count"] = collection.count()
                 self.update_figure_metadata(figure_id, figure_metadata)
-                logging.info(f"Synced document count for {figure_id}: {collection.count()}")
+                logger.info(f"Synced document count for {figure_id}: {collection.count()}")
                 return True
             return False
         except Exception as e:
-            logging.error(f"Error syncing document count for {figure_id}: {e}")
+            logger.error(f"Error syncing document count for {figure_id}: {e}")
             return False
 
     # Async wrapper
@@ -465,16 +467,16 @@ class FigureManager:
                 if r.get("similarity", 0) >= min_cosine_similarity
             ]
             
-            logging.info(f"Figure {figure_id} vector search: {len(vector_results)} results, "
+            logger.info(f"Figure {figure_id} vector search: {len(vector_results)} results, "
                         f"{len(filtered_vector_results)} after filtering (min similarity: {min_cosine_similarity})")
             
             if not filtered_vector_results:
-                logging.warning(f"No results with sufficient cosine similarity found for figure {figure_id}")
+                logger.warning(f"No results with sufficient cosine similarity found for figure {figure_id}")
                 return []
             
             bm25_results = self._search_figure_bm25(figure_id, search_query, extended_n_results)
             
-            logging.info(f"Figure {figure_id} hybrid search: vector={len(filtered_vector_results)}, bm25={len(bm25_results)} results")
+            logger.info(f"Figure {figure_id} hybrid search: vector={len(filtered_vector_results)}, bm25={len(bm25_results)} results")
             
             fused_results = reciprocal_rank_fusion(filtered_vector_results, bm25_results, k=RRF_K)
             
@@ -486,7 +488,7 @@ class FigureManager:
             return final_results[:n_results]
         
         except Exception as e:
-            logging.error(f"Error in hybrid search for figure {figure_id}: {e}")
+            logger.error(f"Error in hybrid search for figure {figure_id}: {e}")
             return []
 
     # Async wrapper
@@ -530,7 +532,7 @@ class FigureManager:
             return formatted_results
         
         except Exception as e:
-            logging.error(f"Error in vector search for figure {figure_id}: {e}")
+            logger.error(f"Error in vector search for figure {figure_id}: {e}")
             return []
     
     def _calculate_term_scores(self, bm25_index, query_tokens: List[str], doc_tokens: List[str], doc_idx: int) -> Dict[str, float]:
@@ -569,13 +571,13 @@ class FigureManager:
             bm25_index = self._get_bm25_index(figure_id)
             
             if not bm25_index:
-                logging.warning(f"No BM25 index available for figure {figure_id}")
+                logger.warning(f"No BM25 index available for figure {figure_id}")
                 return []
             
             query_tokens = text_processor.process_query(query)
             
             if not query_tokens:
-                logging.warning("No tokens extracted from query")
+                logger.warning("No tokens extracted from query")
                 return []
             
             scores = bm25_index.get_scores(query_tokens)
@@ -584,7 +586,7 @@ class FigureManager:
             
             cached_metadata = self.bm25_metadata_cache.get(figure_id, [])
             if not cached_metadata:
-                logging.warning(f"No cached metadata for figure {figure_id}")
+                logger.warning(f"No cached metadata for figure {figure_id}")
                 return []
             
             bm25_documents = self.bm25_documents_cache.get(figure_id, [])
@@ -608,7 +610,7 @@ class FigureManager:
                         if chroma_results["documents"]:
                             text = chroma_results["documents"][0]
                     except Exception as e:
-                        logging.warning(f"Could not retrieve text for doc_id {doc_id}: {e}")
+                        logger.warning(f"Could not retrieve text for doc_id {doc_id}: {e}")
                         text = ""
                     
                     top_matching_words = []
@@ -644,7 +646,7 @@ class FigureManager:
             return results
         
         except Exception as e:
-            logging.error(f"Error in BM25 search for figure {figure_id}: {e}")
+            logger.error(f"Error in BM25 search for figure {figure_id}: {e}")
             return []
     
     def clear_figure_documents(self, figure_id: str) -> bool:
@@ -653,13 +655,13 @@ class FigureManager:
             collection_name = f"figure_{figure_id}"
             
             if not self.get_figure_metadata(figure_id):
-                logging.error(f"Figure {figure_id} not found")
+                logger.error(f"Figure {figure_id} not found")
                 return False
             
             try:
                 self.client.delete_collection(collection_name)
             except Exception as e:
-                logging.warning(f"Collection {collection_name} may not exist: {e}")
+                logger.warning(f"Collection {collection_name} may not exist: {e}")
             
             self.client.create_collection(
                 name=collection_name,
@@ -673,11 +675,11 @@ class FigureManager:
                 figure_metadata["document_count"] = 0
                 self.update_figure_metadata(figure_id, figure_metadata)
             
-            logging.info(f"Cleared all documents from figure: {figure_id}")
+            logger.info(f"Cleared all documents from figure: {figure_id}")
             return True
         
         except Exception as e:
-            logging.error(f"Error clearing documents for figure {figure_id}: {e}")
+            logger.error(f"Error clearing documents for figure {figure_id}: {e}")
             return False
 
     # Async wrapper
@@ -701,7 +703,7 @@ class FigureManager:
             }
         
         except Exception as e:
-            logging.error(f"Error getting stats for figure {figure_id}: {e}")
+            logger.error(f"Error getting stats for figure {figure_id}: {e}")
             return {"error": str(e)}
 
     # Async wrapper

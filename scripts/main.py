@@ -28,25 +28,37 @@ LOGS_DIR = Path(__file__).parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
 
+LOG_FORMATTER = logging.Formatter(
+    '%(asctime)s | %(levelname)-8s | %(message)s',
+    datefmt='%H:%M:%S'
+)
+
+
 def setup_logging():
     """Setup logging to console. File output is handled by shell script redirection."""
+    # Configure app logger
     app_logger = logging.getLogger('histfig')
-    
-    if app_logger.handlers:
-        return
-    
-    console_formatter = logging.Formatter(
-        '%(asctime)s | %(levelname)-8s | %(message)s',
-        datefmt='%H:%M:%S'
-    )
-    
-    app_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-    app_logger.propagate = False
-    
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(console_formatter)
-    app_logger.addHandler(console_handler)
+    if not app_logger.handlers:
+        app_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
+        app_logger.propagate = False
+        
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(LOG_FORMATTER)
+        app_logger.addHandler(console_handler)
+
+
+def configure_uvicorn_logging():
+    """Configure uvicorn loggers to use our format. Called after uvicorn has initialized."""
+    for uvicorn_logger_name in ['uvicorn', 'uvicorn.access', 'uvicorn.error']:
+        uvicorn_logger = logging.getLogger(uvicorn_logger_name)
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = False
+        
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.INFO)
+        handler.setFormatter(LOG_FORMATTER)
+        uvicorn_logger.addHandler(handler)
 
 
 setup_logging()
@@ -56,6 +68,9 @@ logger = logging.getLogger('histfig')
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Handle startup and shutdown events."""
+    # Configure uvicorn loggers now that uvicorn has fully initialized
+    configure_uvicorn_logging()
+    
     # Startup
     logger.info("Starting Historical Figures Chat System...")
     
@@ -136,5 +151,6 @@ if __name__ == '__main__':
         host="0.0.0.0",
         port=APP_PORT,
         reload=DEBUG_MODE,
-        log_level="debug" if DEBUG_MODE else "info"
+        log_level="debug" if DEBUG_MODE else "info",
+        log_config=None  # Use our custom logging config
     )

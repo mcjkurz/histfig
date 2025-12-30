@@ -6,6 +6,8 @@ Updated for FastAPI.
 import os
 import logging
 from fastapi.responses import FileResponse, JSONResponse
+
+logger = logging.getLogger('histfig')
 from config import FIGURE_IMAGES_DIR
 
 
@@ -28,5 +30,5 @@ async def serve_figure_image(filename: str):
         
         return FileResponse(file_path)
     except Exception as e:
-        logging.error(f"Error serving figure image {filename}: {str(e)}")
+        logger.error(f"Error serving figure image {filename}: {str(e)}")
         return JSONResponse(status_code=404, content={'error': 'Image not found'})
