@@ -1,10 +1,12 @@
 """
 Embedding Provider - Unified interface for local and external embeddings.
 Supports SentenceTransformer (local) and OpenAI-compatible APIs (external).
+Uses async httpx for external API calls.
 """
 
-import requests
+import httpx
 import logging
+import asyncio
 from typing import List, Union
 import torch
 from sentence_transformers import SentenceTransformer
@@ -53,28 +55,14 @@ class EmbeddingProvider:
         self.encoder = SentenceTransformer(self.local_model_name, device=self.device)
         logging.info(f"Loaded local embedding model: {self.local_model_name} on {self.device}")
 
-    def encode_document(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
-        """Encode document text for storage/indexing."""
-        if self.source == "local":
-            return self._encode_local(text, is_query=False)
-        return self._encode_external(text)
-
-    def encode_query(self, text: str) -> List[float]:
-        """Encode query text for search."""
-        if self.source == "local":
-            return self._encode_local(text, is_query=True)
-        return self._encode_external(text)
-
-    def _encode_local(self, text: Union[str, List[str]], is_query: bool = False) -> Union[List[float], List[List[float]]]:
-        """Encode using local SentenceTransformer with Qwen-style prompts."""
+    def _encode_local_sync(self, text: Union[str, List[str]], is_query: bool = False) -> Union[List[float], List[List[float]]]:
+        """Synchronous local encoding - called via asyncio.to_thread."""
         if self.encoder is None:
             self._init_local()
 
-        # Qwen embedding models use instruction prefixes for better performance
         is_qwen = "qwen" in self.local_model_name.lower()
 
         if is_qwen and is_query:
-            # Add query instruction for Qwen models
             if isinstance(text, str):
                 text = f"query: {text}"
             else:
@@ -83,7 +71,33 @@ class EmbeddingProvider:
         result = self.encoder.encode(text)
         return result.tolist()
 
-    def _encode_external(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+    async def encode_document(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """Encode document text for storage/indexing."""
+        if self.source == "local":
+            return await asyncio.to_thread(self._encode_local_sync, text, False)
+        return await self._encode_external(text)
+
+    async def encode_query(self, text: str) -> List[float]:
+        """Encode query text for search."""
+        if self.source == "local":
+            return await asyncio.to_thread(self._encode_local_sync, text, True)
+        return await self._encode_external(text)
+
+    # Synchronous versions for backward compatibility (used by figure_manager)
+    def encode_document_sync(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
+        """Synchronous encode document text for storage/indexing."""
+        if self.source == "local":
+            return self._encode_local_sync(text, is_query=False)
+        # For external, we need to run async in sync context
+        return asyncio.get_event_loop().run_until_complete(self._encode_external(text))
+
+    def encode_query_sync(self, text: str) -> List[float]:
+        """Synchronous encode query text for search."""
+        if self.source == "local":
+            return self._encode_local_sync(text, is_query=True)
+        return asyncio.get_event_loop().run_until_complete(self._encode_external(text))
+
+    async def _encode_external(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         """Encode using external OpenAI-compatible API."""
         if isinstance(text, str):
             input_data = [text]
@@ -97,28 +111,28 @@ class EmbeddingProvider:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         try:
-            response = requests.post(
-                f"{self.api_url}/embeddings",
-                headers=headers,
-                json={"model": self.external_model, "input": input_data},
-                timeout=30,
-            )
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(
+                    f"{self.api_url}/embeddings",
+                    headers=headers,
+                    json={"model": self.external_model, "input": input_data},
+                )
 
-            if response.status_code != 200:
-                error_msg = self._parse_error(response)
-                logging.error(f"Embedding API error: {error_msg}")
-                raise RuntimeError(f"Embedding API error: {error_msg}")
+                if response.status_code != 200:
+                    error_msg = self._parse_error(response)
+                    logging.error(f"Embedding API error: {error_msg}")
+                    raise RuntimeError(f"Embedding API error: {error_msg}")
 
-            data = response.json()
-            embeddings = [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
+                data = response.json()
+                embeddings = [item["embedding"] for item in sorted(data["data"], key=lambda x: x["index"])]
 
-            return embeddings[0] if single_input else embeddings
+                return embeddings[0] if single_input else embeddings
 
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logging.error(f"Embedding API request failed: {e}")
             raise RuntimeError(f"Embedding API request failed: {e}")
 
-    def _parse_error(self, response) -> str:
+    def _parse_error(self, response: httpx.Response) -> str:
         """Parse error response."""
         try:
             error_data = response.json()
@@ -140,4 +154,3 @@ def get_embedding_provider() -> EmbeddingProvider:
     if _embedding_provider is None:
         _embedding_provider = EmbeddingProvider()
     return _embedding_provider
-

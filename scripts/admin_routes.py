@@ -1,140 +1,213 @@
 """
-Admin Routes Blueprint
+Admin Routes - FastAPI Router
 Handles admin interface for managing historical figures and their documents.
 """
 
-from flask import Blueprint, render_template, request, jsonify, redirect, url_for, flash, Response, send_from_directory, session
 import os
 import json
 import logging
 import secrets
-from werkzeug.utils import secure_filename
+import asyncio
+import unicodedata
+from typing import Optional, List
 from pathlib import Path
 import time
-from functools import wraps
+import re
+import glob
+from datetime import datetime
+
+from fastapi import APIRouter, Request, HTTPException, UploadFile, File, Form, Depends
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse, FileResponse
+from pydantic import BaseModel, Field
 
 from figure_manager import get_figure_manager
 from document_processor import DocumentProcessor
 from validators import validate_figure_data, sanitize_figure_id, sanitize_figure_name
 from config import ALLOWED_EXTENSIONS, ALLOWED_IMAGE_EXTENSIONS, FIGURE_IMAGES_DIR, ADMIN_PASSWORD, TEMP_UPLOAD_DIR, OVERLAP_PERCENT
-from flask import current_app
-from datetime import datetime
-import glob
-import re
 
-# Create blueprint with /admin prefix
-admin_bp = Blueprint('admin', __name__, url_prefix='/admin', template_folder='../templates', static_folder='../static')
+
+def secure_filename(filename: str) -> str:
+    """
+    Sanitize a filename to be safe for filesystem use.
+    Replaces werkzeug.utils.secure_filename for FastAPI compatibility.
+    """
+    # Normalize unicode characters
+    filename = unicodedata.normalize('NFKD', filename)
+    
+    # Replace path separators with underscores
+    for sep in (os.sep, os.altsep):
+        if sep:
+            filename = filename.replace(sep, '_')
+    
+    # Keep only safe characters: alphanumeric, dash, underscore, dot, and CJK characters
+    # This regex keeps ASCII alphanumeric, common CJK ranges, and safe punctuation
+    filename = re.sub(r'[^\w\u4e00-\u9fff\u3040-\u309f\u30a0-\u30ff.\-]', '_', filename, flags=re.UNICODE)
+    
+    # Remove leading/trailing dots and spaces
+    filename = filename.strip('. ')
+    
+    # Collapse multiple underscores
+    filename = re.sub(r'_+', '_', filename)
+    
+    # Ensure filename is not empty
+    if not filename:
+        filename = 'unnamed'
+    
+    return filename
+
+
+# Create router with /admin prefix (added in main.py)
+admin_router = APIRouter(tags=["admin"])
 
 # Ensure directories exist
 os.makedirs(TEMP_UPLOAD_DIR, exist_ok=True)
 os.makedirs(FIGURE_IMAGES_DIR, exist_ok=True)
 
-def generate_csrf_token():
+
+# Helper functions
+def allowed_file(filename: str) -> bool:
+    """Check if file extension is allowed."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def allowed_image_file(filename: str) -> bool:
+    """Check if image file extension is allowed."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+
+
+def generate_csrf_token(request: Request) -> str:
     """Generate a CSRF token and store it in session."""
+    session = request.session
     if 'csrf_token' not in session:
         session['csrf_token'] = secrets.token_hex(32)
     return session['csrf_token']
 
-def validate_csrf_token():
-    """Validate CSRF token from request header or form data."""
-    token = request.headers.get('X-CSRF-Token') or request.form.get('csrf_token')
-    if not token or token != session.get('csrf_token'):
-        return False
-    return True
 
-def csrf_protected(f):
-    """Decorator to require valid CSRF token for POST/PUT/DELETE requests."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if request.method in ['POST', 'PUT', 'DELETE']:
-            if not validate_csrf_token():
-                return jsonify({'error': 'Invalid or missing CSRF token'}), 403
-        return f(*args, **kwargs)
-    return decorated_function
+def validate_csrf_token(request: Request, token: str) -> bool:
+    """Validate CSRF token from request."""
+    session = request.session
+    return token and token == session.get('csrf_token')
 
-def allowed_file(filename):
-    """Check if file extension is allowed."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def allowed_image_file(filename):
-    """Check if image file extension is allowed."""
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_IMAGE_EXTENSIONS
+async def check_login(request: Request) -> bool:
+    """Check if user is logged in."""
+    return request.session.get('admin_logged_in', False)
 
-def login_required(f):
-    """Decorator to require login for admin routes."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        if not session.get('admin_logged_in'):
-            flash('Please log in to access the admin panel.', 'error')
-            return redirect(url_for('admin.login'))
-        return f(*args, **kwargs)
-    return decorated_function
 
-@admin_bp.route('/login', methods=['GET', 'POST'])
-def login():
+async def require_login(request: Request):
+    """Dependency that requires login for admin routes."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+
+
+def format_file_size(size_bytes: int) -> str:
+    """Format file size in human readable format."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size_bytes < 1024:
+            return f"{size_bytes:.1f} {unit}"
+        size_bytes /= 1024
+    return f"{size_bytes:.1f} TB"
+
+
+# Routes
+
+@admin_router.get("/login", response_class=HTMLResponse, name="admin.login")
+async def login_page(request: Request):
     """Login page for admin panel."""
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        if password == ADMIN_PASSWORD:
-            session['admin_logged_in'] = True
-            session.permanent = True
-            flash('Successfully logged in!', 'success')
-            return redirect(url_for('admin.index'))
-        else:
-            flash('Invalid password. Please try again.', 'error')
-    return render_template('admin/login.html')
+    templates = request.app.state.templates
+    return templates.TemplateResponse("admin/login.html", {"request": request})
 
-@admin_bp.route('/logout')
-def logout():
+
+@admin_router.post("/login", name="admin.login_post")
+async def login(request: Request):
+    """Handle login form submission."""
+    form_data = await request.form()
+    password = form_data.get('password', '')
+    
+    if password == ADMIN_PASSWORD:
+        request.session['admin_logged_in'] = True
+        return RedirectResponse(url="/admin/", status_code=303)
+    else:
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            "admin/login.html", 
+            {"request": request, "error": "Invalid password. Please try again."}
+        )
+
+
+@admin_router.get("/logout", name="admin.logout")
+async def logout(request: Request):
     """Logout from admin panel."""
-    session.pop('admin_logged_in', None)
-    flash('Successfully logged out.', 'success')
-    return redirect(url_for('admin.login'))
+    request.session.pop('admin_logged_in', None)
+    return RedirectResponse(url="/admin/login", status_code=303)
 
-@admin_bp.route('/')
-@login_required
-def index():
+
+@admin_router.get("/", response_class=HTMLResponse, name="admin.index")
+async def index(request: Request):
     """Main dashboard showing all figures."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
-        figures = figure_manager.get_figure_list()
-        return render_template('admin/dashboard.html', figures=figures)
+        figures = await figure_manager.get_figure_list_async()
+        templates = request.app.state.templates
+        return templates.TemplateResponse("admin/dashboard.html", {"request": request, "figures": figures})
     except Exception as e:
-        flash(f'Error loading figures: {str(e)}', 'error')
-        return render_template('admin/dashboard.html', figures=[])
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            "admin/dashboard.html", 
+            {"request": request, "figures": [], "error": f"Error loading figures: {str(e)}"}
+        )
 
-@admin_bp.route('/figure/new')
-@login_required
-def new_figure():
+
+@admin_router.get("/figure/new", response_class=HTMLResponse, name="admin.new_figure")
+async def new_figure(request: Request):
     """Form to create a new figure."""
-    return render_template('admin/new_figure.html')
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
+    templates = request.app.state.templates
+    return templates.TemplateResponse("admin/new_figure.html", {"request": request})
 
-@admin_bp.route('/figure/create', methods=['POST'])
-@login_required
-def create_figure():
+
+@admin_router.post("/figure/create", name="admin.create_figure")
+async def create_figure(
+    request: Request,
+    figure_id: str = Form(...),
+    name: str = Form(...),
+    description: str = Form(""),
+    personality_prompt: str = Form(""),
+    birth_year: str = Form(""),
+    death_year: str = Form(""),
+    image: Optional[UploadFile] = File(None)
+):
     """Create a new historical figure."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         form_data = {
-            'figure_id': request.form.get('figure_id', '').strip(),
-            'name': request.form.get('name', '').strip(),
-            'description': request.form.get('description', '').strip(),
-            'personality_prompt': request.form.get('personality_prompt', '').strip(),
-            'birth_year': request.form.get('birth_year', '').strip(),
-            'death_year': request.form.get('death_year', '').strip()
+            'figure_id': figure_id.strip(),
+            'name': name.strip(),
+            'description': description.strip(),
+            'personality_prompt': personality_prompt.strip(),
+            'birth_year': birth_year.strip(),
+            'death_year': death_year.strip()
         }
         
         validation_errors = validate_figure_data(form_data, is_update=False)
         if validation_errors:
-            for field, error in validation_errors.items():
-                flash(f'{field.replace("_", " ").title()}: {error}', 'error')
-            return redirect(url_for('admin.new_figure'))
+            templates = request.app.state.templates
+            return templates.TemplateResponse(
+                "admin/new_figure.html",
+                {"request": request, "error": "; ".join(validation_errors.values())}
+            )
         
-        figure_id = sanitize_figure_id(form_data['figure_id'])
-        name = sanitize_figure_name(form_data['name'])
-        description = form_data['description'][:400]
-        personality_prompt = form_data['personality_prompt'][:400]
+        figure_id_clean = sanitize_figure_id(form_data['figure_id'])
+        name_clean = sanitize_figure_name(form_data['name'])
+        description_clean = form_data['description'][:400]
+        personality_clean = form_data['personality_prompt'][:400]
         
         metadata = {}
         if form_data['birth_year']:
@@ -143,116 +216,137 @@ def create_figure():
             metadata['death_year'] = int(form_data['death_year'])
         
         image_filename = None
-        if 'image' in request.files:
-            image_file = request.files['image']
-            if image_file and image_file.filename != '' and allowed_image_file(image_file.filename):
-                try:
-                    file_extension = Path(image_file.filename).suffix.lower()
-                    image_filename = f"{figure_id}{file_extension}"
-                    image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
-                    image_file.save(image_path)
-                    logging.info(f"Saved image for figure {figure_id}: {image_path}")
-                except Exception as e:
-                    logging.error(f"Error saving image for figure {figure_id}: {str(e)}")
-                    flash(f'Warning: Image could not be saved: {str(e)}', 'warning')
+        if image and image.filename and allowed_image_file(image.filename):
+            try:
+                file_extension = Path(image.filename).suffix.lower()
+                image_filename = f"{figure_id_clean}{file_extension}"
+                image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
+                content = await image.read()
+                with open(image_path, 'wb') as f:
+                    f.write(content)
+                logging.info(f"Saved image for figure {figure_id_clean}: {image_path}")
+            except Exception as e:
+                logging.error(f"Error saving image: {str(e)}")
         
         if image_filename:
             metadata['image'] = image_filename
         
         figure_manager = get_figure_manager()
-        success = figure_manager.create_figure(
-            figure_id=figure_id,
-            name=name,
-            description=description,
-            personality_prompt=personality_prompt,
+        success = await figure_manager.create_figure_async(
+            figure_id=figure_id_clean,
+            name=name_clean,
+            description=description_clean,
+            personality_prompt=personality_clean,
             metadata=metadata
         )
         
         if success:
-            flash(f'Successfully created figure: {name}', 'success')
-            return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+            return RedirectResponse(url=f"/admin/figure/{figure_id_clean}", status_code=303)
         else:
-            flash(f'Failed to create figure: {figure_id}', 'error')
-            return redirect(url_for('admin.new_figure'))
+            templates = request.app.state.templates
+            return templates.TemplateResponse(
+                "admin/new_figure.html",
+                {"request": request, "error": f"Failed to create figure: {figure_id_clean}"}
+            )
     
     except Exception as e:
-        flash(f'Error creating figure: {str(e)}', 'error')
-        return redirect(url_for('admin.new_figure'))
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            "admin/new_figure.html",
+            {"request": request, "error": f"Error creating figure: {str(e)}"}
+        )
 
-@admin_bp.route('/figure/<figure_id>')
-@login_required
-def figure_detail(figure_id):
+
+@admin_router.get("/figure/{figure_id}", response_class=HTMLResponse, name="admin.figure_detail")
+async def figure_detail(request: Request, figure_id: str):
     """Show detailed information about a figure."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
-        metadata = figure_manager.get_figure_metadata(figure_id)
+        metadata = await figure_manager.get_figure_metadata_async(figure_id)
         if not metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+            return RedirectResponse(url="/admin/", status_code=303)
         
-        stats = figure_manager.get_figure_stats(figure_id)
-        return render_template('admin/figure_detail.html', 
-                             figure=metadata, 
-                             stats=stats)
+        stats = await figure_manager.get_figure_stats_async(figure_id)
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            "admin/figure_detail.html",
+            {"request": request, "figure": metadata, "stats": stats}
+        )
     except Exception as e:
-        flash(f'Error loading figure: {str(e)}', 'error')
-        return redirect(url_for('admin.index'))
+        return RedirectResponse(url="/admin/", status_code=303)
 
-@admin_bp.route('/figure/<figure_id>/edit')
-@login_required
-def edit_figure(figure_id):
-    """Form to edit a figure (includes upload and clean documents)."""
+
+@admin_router.get("/figure/{figure_id}/edit", response_class=HTMLResponse, name="admin.edit_figure")
+async def edit_figure(request: Request, figure_id: str):
+    """Form to edit a figure."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
-        metadata = figure_manager.get_figure_metadata(figure_id)
+        metadata = await figure_manager.get_figure_metadata_async(figure_id)
         if not metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+            return RedirectResponse(url="/admin/", status_code=303)
         
-        stats = figure_manager.get_figure_stats(figure_id)
-        return render_template('admin/edit_figure.html', figure=metadata, stats=stats)
+        stats = await figure_manager.get_figure_stats_async(figure_id)
+        templates = request.app.state.templates
+        return templates.TemplateResponse(
+            "admin/edit_figure.html",
+            {"request": request, "figure": metadata, "stats": stats}
+        )
     except Exception as e:
-        flash(f'Error loading figure: {str(e)}', 'error')
-        return redirect(url_for('admin.index'))
+        return RedirectResponse(url="/admin/", status_code=303)
 
-@admin_bp.route('/figure/<figure_id>/update', methods=['POST'])
-@login_required
-def update_figure(figure_id):
+
+@admin_router.post("/figure/{figure_id}/update", name="admin.update_figure")
+async def update_figure(
+    request: Request,
+    figure_id: str,
+    name: str = Form(""),
+    description: str = Form(""),
+    personality_prompt: str = Form(""),
+    birth_year: str = Form(""),
+    death_year: str = Form(""),
+    image: Optional[UploadFile] = File(None)
+):
     """Update a figure's metadata."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
         
-        current_metadata = figure_manager.get_figure_metadata(figure_id)
+        current_metadata = await figure_manager.get_figure_metadata_async(figure_id)
         if not current_metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+            return RedirectResponse(url="/admin/", status_code=303)
         
         form_data = {
-            'name': request.form.get('name', '').strip(),
-            'description': request.form.get('description', '').strip(),
-            'personality_prompt': request.form.get('personality_prompt', '').strip(),
-            'birth_year': request.form.get('birth_year', '').strip(),
-            'death_year': request.form.get('death_year', '').strip()
+            'name': name.strip(),
+            'description': description.strip(),
+            'personality_prompt': personality_prompt.strip(),
+            'birth_year': birth_year.strip(),
+            'death_year': death_year.strip()
         }
         
         validation_errors = validate_figure_data(form_data, is_update=True)
         if validation_errors:
-            for field, error in validation_errors.items():
-                flash(f'{field.replace("_", " ").title()}: {error}', 'error')
-            return redirect(url_for('admin.edit_figure', figure_id=figure_id))
+            return RedirectResponse(url=f"/admin/figure/{figure_id}/edit", status_code=303)
         
         updates = {}
         
-        name = sanitize_figure_name(form_data['name']) if form_data['name'] else current_metadata.get('name')
-        description = form_data['description'][:400]
-        personality_prompt = form_data['personality_prompt'][:400]
+        name_clean = sanitize_figure_name(form_data['name']) if form_data['name'] else current_metadata.get('name')
+        description_clean = form_data['description'][:400]
+        personality_clean = form_data['personality_prompt'][:400]
         
-        if name and name != current_metadata.get('name'):
-            updates['name'] = name
-        if description != current_metadata.get('description', ''):
-            updates['description'] = description
-        if personality_prompt != current_metadata.get('personality_prompt', ''):
-            updates['personality_prompt'] = personality_prompt
+        if name_clean and name_clean != current_metadata.get('name'):
+            updates['name'] = name_clean
+        if description_clean != current_metadata.get('description', ''):
+            updates['description'] = description_clean
+        if personality_clean != current_metadata.get('personality_prompt', ''):
+            updates['personality_prompt'] = personality_clean
         
         metadata = current_metadata.get('metadata', {})
         
@@ -266,89 +360,68 @@ def update_figure(figure_id):
         elif 'death_year' in metadata:
             del metadata['death_year']
         
-        if 'image' in request.files:
-            image_file = request.files['image']
-            if image_file and image_file.filename != '' and allowed_image_file(image_file.filename):
-                try:
-                    old_image = metadata.get('image')
-                    if old_image:
-                        old_image_path = os.path.join(FIGURE_IMAGES_DIR, old_image)
-                        if os.path.exists(old_image_path):
-                            os.remove(old_image_path)
-                            logging.info(f"Removed old image: {old_image_path}")
-                    
-                    file_extension = Path(image_file.filename).suffix.lower()
-                    image_filename = f"{figure_id}{file_extension}"
-                    image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
-                    image_file.save(image_path)
-                    
-                    metadata['image'] = image_filename
-                    logging.info(f"Updated image for figure {figure_id}: {image_path}")
-                except Exception as e:
-                    logging.error(f"Error updating image for figure {figure_id}: {str(e)}")
-                    flash(f'Warning: Image could not be updated: {str(e)}', 'warning')
+        if image and image.filename and allowed_image_file(image.filename):
+            try:
+                old_image = metadata.get('image')
+                if old_image:
+                    old_image_path = os.path.join(FIGURE_IMAGES_DIR, old_image)
+                    if os.path.exists(old_image_path):
+                        os.remove(old_image_path)
+                
+                file_extension = Path(image.filename).suffix.lower()
+                image_filename = f"{figure_id}{file_extension}"
+                image_path = os.path.join(FIGURE_IMAGES_DIR, image_filename)
+                content = await image.read()
+                with open(image_path, 'wb') as f:
+                    f.write(content)
+                
+                metadata['image'] = image_filename
+            except Exception as e:
+                logging.error(f"Error updating image: {str(e)}")
         
         updates['metadata'] = metadata
         
-        success = figure_manager.update_figure_metadata(figure_id, updates)
+        await figure_manager.update_figure_metadata_async(figure_id, updates)
         
-        if success:
-            flash(f'Successfully updated figure: {name or figure_id}', 'success')
-        else:
-            flash(f'Failed to update figure: {figure_id}', 'error')
-        
-        return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+        return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
     except Exception as e:
-        flash(f'Error updating figure: {str(e)}', 'error')
-        return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+        return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
 
-@admin_bp.route('/figure/<figure_id>/upload')
-@login_required
-def upload_documents_form(figure_id):
-    """Redirect to edit page which now includes upload functionality."""
-    return redirect(url_for('admin.edit_figure', figure_id=figure_id) + '#upload-section')
 
-@admin_bp.route('/figure/<figure_id>/upload', methods=['POST'])
-@login_required
-def upload_documents(figure_id):
-    """Upload documents to a figure - supports both AJAX and traditional form submission."""
+@admin_router.get("/figure/{figure_id}/upload", response_class=HTMLResponse, name="admin.upload_documents_form")
+async def upload_documents_form(request: Request, figure_id: str):
+    """Redirect to edit page which includes upload functionality."""
+    return RedirectResponse(url=f"/admin/figure/{figure_id}/edit#upload-section", status_code=303)
+
+
+@admin_router.post("/figure/{figure_id}/upload", name="admin.upload_documents")
+async def upload_documents(
+    request: Request,
+    figure_id: str,
+    files: List[UploadFile] = File(...),
+    max_length: int = Form(250),
+    max_chunk_chars: int = Form(1000),
+    overlap_percent: int = Form(OVERLAP_PERCENT)
+):
+    """Upload documents to a figure."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
     try:
         figure_manager = get_figure_manager()
-        
-        logging.debug(f"Upload request received for figure {figure_id}")
-        logging.debug(f"Request method: {request.method}")
-        logging.debug(f"Content-Type: {request.content_type}")
-        logging.debug(f"Files in request: {list(request.files.keys())}")
-        logging.debug(f"Form data: {list(request.form.keys())}")
-        
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         
-        figure_metadata = figure_manager.get_figure_metadata(figure_id)
+        figure_metadata = await figure_manager.get_figure_metadata_async(figure_id)
         if not figure_metadata:
             if is_ajax:
-                return jsonify({'error': f'Figure {figure_id} not found'}), 404
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+                return JSONResponse(status_code=404, content={'error': f'Figure {figure_id} not found'})
+            return RedirectResponse(url="/admin/", status_code=303)
         
-        # Get chunking settings from form (with defaults)
-        try:
-            max_length = int(request.form.get('max_length', '250'))
-            max_length = max(50, min(1000, max_length))
-        except (ValueError, TypeError):
-            max_length = 250
-        
-        try:
-            max_chunk_chars = int(request.form.get('max_chunk_chars', '1000'))
-            max_chunk_chars = max(500, min(3000, max_chunk_chars))
-        except (ValueError, TypeError):
-            max_chunk_chars = 1000
-        
-        try:
-            overlap_percent = int(request.form.get('overlap_percent', str(OVERLAP_PERCENT)))
-            overlap_percent = max(0, min(50, overlap_percent))
-        except (ValueError, TypeError):
-            overlap_percent = OVERLAP_PERCENT
+        # Validate chunking settings
+        max_length = max(50, min(1000, max_length))
+        max_chunk_chars = max(500, min(3000, max_chunk_chars))
+        overlap_percent = max(0, min(50, overlap_percent))
         
         document_processor = DocumentProcessor(
             chunk_size=max_length,
@@ -356,27 +429,17 @@ def upload_documents(figure_id):
             overlap_percent=overlap_percent
         )
         
-        if 'files' not in request.files:
+        valid_files = [f for f in files if f.filename]
+        if not valid_files:
             if is_ajax:
-                return jsonify({'error': 'No files selected'}), 400
-            flash('No files selected', 'error')
-            return redirect(url_for('admin.upload_documents_form', figure_id=figure_id))
-        
-        files = request.files.getlist('files')
-        if not files or all(f.filename == '' for f in files):
-            if is_ajax:
-                return jsonify({'error': 'No files selected'}), 400
-            flash('No files selected', 'error')
-            return redirect(url_for('admin.upload_documents_form', figure_id=figure_id))
+                return JSONResponse(status_code=400, content={'error': 'No files selected'})
+            return RedirectResponse(url=f"/admin/figure/{figure_id}/edit", status_code=303)
         
         successful_uploads = 0
-        total_files = len([f for f in files if f.filename != ''])
+        total_files = len(valid_files)
         all_results = []
         
-        for file_index, file in enumerate(files):
-            if file.filename == '':
-                continue
-            
+        for file in valid_files:
             file_result = {
                 'filename': file.filename,
                 'status': 'processing',
@@ -385,17 +448,15 @@ def upload_documents(figure_id):
                 'error': None
             }
             
-            if file and allowed_file(file.filename):
+            if allowed_file(file.filename):
                 try:
-                    file_content = file.read()
+                    file_content = await file.read()
                     original_filename = file.filename
                     
                     safe_filename = secure_filename(original_filename)
                     if not safe_filename or safe_filename.startswith('.'):
                         file_ext = Path(original_filename).suffix.lower()
                         safe_filename = f"upload_{int(time.time() * 1000)}{file_ext}"
-                    
-                    filename = safe_filename
                     
                     file_extension = Path(original_filename).suffix.lower()
                     if file_extension == '.pdf':
@@ -406,11 +467,13 @@ def upload_documents(figure_id):
                         file_type = 'docx'
                     else:
                         file_result['status'] = 'error'
-                        file_result['error'] = f'Unsupported file type'
+                        file_result['error'] = 'Unsupported file type'
                         all_results.append(file_result)
                         continue
                     
-                    chunks = document_processor.process_file(file_content, filename, file_type)
+                    chunks = await asyncio.to_thread(
+                        document_processor.process_file, file_content, safe_filename, file_type
+                    )
                     file_result['total_chunks'] = len(chunks)
                     
                     chunk_count = 0
@@ -418,7 +481,7 @@ def upload_documents(figure_id):
                         chunk_metadata = chunk['metadata'].copy()
                         chunk_metadata['original_filename'] = original_filename
                         
-                        doc_id = figure_manager.add_document_to_figure(
+                        doc_id = await figure_manager.add_document_to_figure_async(
                             figure_id=figure_id,
                             text=chunk['text'],
                             metadata=chunk_metadata
@@ -429,108 +492,82 @@ def upload_documents(figure_id):
                                 'index': chunk_index,
                                 'success': True
                             })
-                        if (chunk_index + 1) % 5 == 0 or chunk_index == len(chunks) - 1:
-                            logging.info(f"Processed {chunk_index + 1}/{len(chunks)} chunks for {filename}")
                     
                     if chunk_count > 0:
                         file_result['status'] = 'success'
                         file_result['message'] = f'{chunk_count} chunks added'
                         successful_uploads += 1
-                        if not is_ajax:
-                            flash(f'Successfully uploaded {filename}: {chunk_count} chunks added', 'success')
                     else:
                         file_result['status'] = 'error'
                         file_result['error'] = 'Failed to process file'
-                        if not is_ajax:
-                            flash(f'Failed to process {filename}', 'error')
                 
                 except Exception as e:
                     file_result['status'] = 'error'
                     file_result['error'] = str(e)
-                    if not is_ajax:
-                        flash(f'Error processing {file.filename}: {str(e)}', 'error')
             else:
                 file_result['status'] = 'error'
                 file_result['error'] = 'File type not allowed'
-                if not is_ajax:
-                    flash(f'File type not allowed: {file.filename}', 'error')
             
             all_results.append(file_result)
         
-        # Sync document count after bulk upload
         if successful_uploads > 0:
-            figure_manager.sync_document_count(figure_id)
+            await figure_manager.sync_document_count_async(figure_id)
         
         if is_ajax:
-            return jsonify({
+            return JSONResponse(content={
                 'success': successful_uploads > 0,
                 'successful_uploads': successful_uploads,
                 'total_files': total_files,
                 'results': all_results
             })
         
-        if successful_uploads > 0:
-            flash(f'Upload complete: {successful_uploads}/{total_files} files processed successfully', 'info')
-        
-        return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+        return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
     except Exception as e:
         logging.error(f"Upload error: {str(e)}")
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
-            return jsonify({'error': str(e)}), 500
-        flash(f'Error uploading documents: {str(e)}', 'error')
-        return redirect(url_for('admin.upload_documents_form', figure_id=figure_id))
+            return JSONResponse(status_code=500, content={'error': str(e)})
+        return RedirectResponse(url=f"/admin/figure/{figure_id}/edit", status_code=303)
 
-@admin_bp.route('/figure/<figure_id>/upload-stream', methods=['POST'])
-@login_required
-def upload_documents_stream(figure_id):
+
+@admin_router.post("/figure/{figure_id}/upload-stream")
+async def upload_documents_stream(
+    request: Request,
+    figure_id: str,
+    files: List[UploadFile] = File(...),
+    max_length: int = Form(250),
+    max_chunk_chars: int = Form(1000),
+    overlap_percent: int = Form(OVERLAP_PERCENT)
+):
     """Upload documents with streaming progress updates."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
     
+    # Read files before generator
     files_data = []
-    # Get chunking settings from form (with defaults) - must be read before generator
-    try:
-        max_length = int(request.form.get('max_length', '250'))
-        max_length = max(50, min(1000, max_length))
-    except (ValueError, TypeError):
-        max_length = 250
+    for file in files:
+        if file.filename:
+            safe_filename = secure_filename(file.filename)
+            if not safe_filename or safe_filename.startswith('.'):
+                file_ext = Path(file.filename).suffix.lower()
+                safe_filename = f"upload_{int(time.time() * 1000)}{file_ext}"
+            
+            files_data.append({
+                'filename': safe_filename,
+                'content': await file.read(),
+                'original_filename': file.filename
+            })
     
-    try:
-        max_chunk_chars = int(request.form.get('max_chunk_chars', '1000'))
-        max_chunk_chars = max(500, min(3000, max_chunk_chars))
-    except (ValueError, TypeError):
-        max_chunk_chars = 1000
+    # Validate chunking settings
+    max_length = max(50, min(1000, max_length))
+    max_chunk_chars = max(500, min(3000, max_chunk_chars))
+    overlap_percent = max(0, min(50, overlap_percent))
     
-    try:
-        overlap_percent = int(request.form.get('overlap_percent', str(OVERLAP_PERCENT)))
-        overlap_percent = max(0, min(50, overlap_percent))
-    except (ValueError, TypeError):
-        overlap_percent = OVERLAP_PERCENT
-    
-    try:
-        files = request.files.getlist('files')
-        for file in files:
-            if file.filename:
-                safe_filename = secure_filename(file.filename)
-                if not safe_filename or safe_filename.startswith('.'):
-                    file_ext = Path(file.filename).suffix.lower()
-                    safe_filename = f"upload_{int(time.time() * 1000)}{file_ext}"
-                
-                files_data.append({
-                    'filename': safe_filename,
-                    'content': file.read(),
-                    'original_filename': file.filename
-                })
-    except Exception as e:
-        return Response(
-            f"data: {json.dumps({'error': f'Failed to read files: {str(e)}'})}\n\n",
-            mimetype='text/event-stream'
-        )
-    
-    def generate():
+    async def generate():
         try:
             figure_manager = get_figure_manager()
             
-            figure_metadata = figure_manager.get_figure_metadata(figure_id)
+            figure_metadata = await figure_manager.get_figure_metadata_async(figure_id)
             if not figure_metadata:
                 yield f"data: {json.dumps({'error': 'Figure not found'})}\n\n"
                 return
@@ -571,7 +608,9 @@ def upload_documents_stream(figure_id):
                         yield f"data: {json.dumps({'event': 'file_error', 'file_index': file_index, 'error': 'Unsupported file type'})}\n\n"
                         continue
                     
-                    chunks = document_processor.process_file(file_content, filename, file_type)
+                    chunks = await asyncio.to_thread(
+                        document_processor.process_file, file_content, filename, file_type
+                    )
                     total_chunks = len(chunks)
                     
                     yield f"data: {json.dumps({'event': 'chunks_count', 'file_index': file_index, 'total_chunks': total_chunks})}\n\n"
@@ -581,7 +620,7 @@ def upload_documents_stream(figure_id):
                         chunk_metadata = chunk['metadata'].copy()
                         chunk_metadata['original_filename'] = original_filename
                         
-                        doc_id = figure_manager.add_document_to_figure(
+                        doc_id = await figure_manager.add_document_to_figure_async(
                             figure_id=figure_id,
                             text=chunk['text'],
                             metadata=chunk_metadata
@@ -602,96 +641,91 @@ def upload_documents_stream(figure_id):
                 except Exception as e:
                     yield f"data: {json.dumps({'event': 'file_error', 'file_index': file_index, 'error': str(e)})}\n\n"
             
-            # Sync document count after bulk upload
             if successful_uploads > 0:
-                figure_manager.sync_document_count(figure_id)
+                await figure_manager.sync_document_count_async(figure_id)
             
             yield f"data: {json.dumps({'event': 'upload_complete', 'successful_uploads': successful_uploads, 'total_files': total_files})}\n\n"
             
         except Exception as e:
             yield f"data: {json.dumps({'event': 'error', 'error': str(e)})}\n\n"
     
-    return Response(generate(), mimetype='text/event-stream')
+    return StreamingResponse(generate(), media_type='text/event-stream')
 
-@admin_bp.route('/figure/<figure_id>/clean', methods=['POST'])
-@login_required
-def clean_figure_documents(figure_id):
+
+@admin_router.post("/figure/{figure_id}/clean", name="admin.clean_figure_documents")
+async def clean_figure_documents(request: Request, figure_id: str):
     """Remove all documents from a figure without deleting the figure itself."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
-        metadata = figure_manager.get_figure_metadata(figure_id)
+        metadata = await figure_manager.get_figure_metadata_async(figure_id)
         
         if not metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+            return RedirectResponse(url="/admin/", status_code=303)
         
-        success = figure_manager.clear_figure_documents(figure_id)
+        await figure_manager.clear_figure_documents_async(figure_id)
         
-        if success:
-            flash(f'Successfully removed all documents from {metadata.get("name", figure_id)}', 'success')
-        else:
-            flash(f'Failed to clean documents for figure: {figure_id}', 'error')
-        
-        return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+        return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
     except Exception as e:
-        flash(f'Error cleaning documents: {str(e)}', 'error')
-        return redirect(url_for('admin.figure_detail', figure_id=figure_id))
+        return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
 
-@admin_bp.route('/figure/<figure_id>/delete', methods=['POST'])
-@login_required
-def delete_figure(figure_id):
+
+@admin_router.post("/figure/{figure_id}/delete", name="admin.delete_figure")
+async def delete_figure(request: Request, figure_id: str):
     """Delete a figure and all its data."""
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
     try:
         figure_manager = get_figure_manager()
-        metadata = figure_manager.get_figure_metadata(figure_id)
+        metadata = await figure_manager.get_figure_metadata_async(figure_id)
         
         if not metadata:
-            flash(f'Figure {figure_id} not found', 'error')
-            return redirect(url_for('admin.index'))
+            return RedirectResponse(url="/admin/", status_code=303)
         
-        success = figure_manager.delete_figure(figure_id)
+        await figure_manager.delete_figure_async(figure_id)
         
-        if success:
-            flash(f'Successfully deleted figure: {metadata.get("name", figure_id)}', 'success')
-        else:
-            flash(f'Failed to delete figure: {figure_id}', 'error')
-        
-        return redirect(url_for('admin.index'))
+        return RedirectResponse(url="/admin/", status_code=303)
     
     except Exception as e:
-        flash(f'Error deleting figure: {str(e)}', 'error')
-        return redirect(url_for('admin.index'))
+        return RedirectResponse(url="/admin/", status_code=303)
 
-@admin_bp.route('/api/figures')
-def api_figures():
+
+@admin_router.get("/api/figures")
+async def api_figures():
     """API endpoint to get all figures."""
     try:
         figure_manager = get_figure_manager()
-        figures = figure_manager.get_figure_list()
-        return jsonify(figures)
+        figures = await figure_manager.get_figure_list_async()
+        return figures
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@admin_bp.route('/api/figure/<figure_id>/stats')
-def api_figure_stats(figure_id):
+
+@admin_router.get("/api/figure/{figure_id}/stats")
+async def api_figure_stats(figure_id: str):
     """API endpoint to get figure statistics."""
     try:
         figure_manager = get_figure_manager()
-        stats = figure_manager.get_figure_stats(figure_id)
-        return jsonify(stats)
+        stats = await figure_manager.get_figure_stats_async(figure_id)
+        return stats
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 # ============== LOGS MANAGEMENT ==============
 
-def get_logs_dir():
+def get_logs_dir(request: Request) -> str:
     """Get the logs directory path."""
-    return current_app.config.get('LOGS_DIR', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs'))
+    return getattr(request.app.state, 'LOGS_DIR', os.path.join(os.path.dirname(os.path.dirname(__file__)), 'logs'))
 
-def get_log_files():
+
+def get_log_files(request: Request) -> List[dict]:
     """Get list of available log files sorted by modification time (newest first)."""
-    logs_dir = get_logs_dir()
+    logs_dir = get_logs_dir(request)
     if not os.path.exists(logs_dir):
         return []
     
@@ -700,7 +734,6 @@ def get_log_files():
         stat = os.stat(filepath)
         filename = os.path.basename(filepath)
         
-        # Parse date from filename (format: server_YYYY-MM-DD_HH-MM-SS.log)
         match = re.match(r'server_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2})\.log', filename)
         if match:
             date_str = match.group(1)
@@ -718,150 +751,154 @@ def get_log_files():
             'size_human': format_file_size(stat.st_size),
             'modified': datetime.fromtimestamp(stat.st_mtime),
             'created': created,
-            'is_current': filepath == current_app.config.get('CURRENT_LOG_FILE', '')
+            'is_current': False
         })
     
-    # Sort by creation date (newest first)
     log_files.sort(key=lambda x: x['created'], reverse=True)
     return log_files
 
-def format_file_size(size_bytes):
-    """Format file size in human readable format."""
-    for unit in ['B', 'KB', 'MB', 'GB']:
-        if size_bytes < 1024:
-            return f"{size_bytes:.1f} {unit}"
-        size_bytes /= 1024
-    return f"{size_bytes:.1f} TB"
 
-@admin_bp.route('/logs')
-@login_required
-def logs():
+@admin_router.get("/logs", response_class=HTMLResponse, name="admin.logs")
+async def logs(request: Request):
     """Display log files viewer."""
-    log_files = get_log_files()
-    return render_template('admin/logs.html', log_files=log_files)
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
+    log_files = get_log_files(request)
+    templates = request.app.state.templates
+    return templates.TemplateResponse("admin/logs.html", {"request": request, "log_files": log_files})
 
-@admin_bp.route('/api/logs')
-@login_required
-def api_logs_list():
+
+@admin_router.get("/api/logs")
+async def api_logs_list(request: Request):
     """API endpoint to get list of log files."""
-    log_files = get_log_files()
-    # Convert datetime objects to strings for JSON
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
+    log_files = get_log_files(request)
     for f in log_files:
         f['modified'] = f['modified'].isoformat()
         f['created'] = f['created'].isoformat()
-        del f['filepath']  # Don't expose full paths
-    return jsonify(log_files)
+        del f['filepath']
+    return log_files
 
-@admin_bp.route('/api/logs/<filename>')
-@login_required
-def api_log_content(filename):
+
+@admin_router.get("/api/logs/{filename}")
+async def api_log_content(request: Request, filename: str, lines: Optional[int] = None, search: str = "", level: str = ""):
     """API endpoint to get content of a specific log file."""
-    # Sanitize filename to prevent directory traversal
-    safe_filename = os.path.basename(filename)
-    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
-        return jsonify({'error': 'Invalid log file name'}), 400
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
     
-    logs_dir = get_logs_dir()
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.startswith('server_') or '.log' not in safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid log file name")
+    
+    logs_dir = get_logs_dir(request)
     filepath = os.path.join(logs_dir, safe_filename)
     
     if not os.path.exists(filepath):
-        return jsonify({'error': 'Log file not found'}), 404
+        raise HTTPException(status_code=404, detail="Log file not found")
     
     try:
-        # Get optional parameters
-        lines = request.args.get('lines', type=int)
-        search = request.args.get('search', '')
-        level = request.args.get('level', '')
-        
         with open(filepath, 'r', encoding='utf-8', errors='replace') as f:
             content = f.readlines()
         
-        # Filter by level if specified
         if level:
             level_upper = level.upper()
             content = [line for line in content if f'| {level_upper}' in line or level_upper in line[:50]]
         
-        # Filter by search term if specified
         if search:
             search_lower = search.lower()
             content = [line for line in content if search_lower in line.lower()]
         
-        # Limit to last N lines if specified
         if lines and lines > 0:
             content = content[-lines:]
         
-        return jsonify({
+        return {
             'filename': safe_filename,
             'content': ''.join(content),
             'total_lines': len(content),
-            'is_current': filepath == current_app.config.get('CURRENT_LOG_FILE', '')
-        })
+            'is_current': False
+        }
     except Exception as e:
         logging.error(f"Error reading log file {filename}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
-@admin_bp.route('/api/logs/<filename>/download')
-@login_required
-def download_log(filename):
+
+@admin_router.get("/api/logs/{filename}/download")
+async def download_log(request: Request, filename: str):
     """Download a log file."""
-    safe_filename = os.path.basename(filename)
-    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
-        return jsonify({'error': 'Invalid log file name'}), 400
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
     
-    logs_dir = get_logs_dir()
-    return send_from_directory(logs_dir, safe_filename, as_attachment=True)
-
-@admin_bp.route('/api/logs/<filename>/delete', methods=['POST'])
-@login_required
-def delete_log(filename):
-    """Delete a log file (cannot delete current log)."""
     safe_filename = os.path.basename(filename)
-    if not safe_filename.startswith('server_') or not '.log' in safe_filename:
-        return jsonify({'error': 'Invalid log file name'}), 400
+    if not safe_filename.startswith('server_') or '.log' not in safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid log file name")
     
-    logs_dir = get_logs_dir()
+    logs_dir = get_logs_dir(request)
     filepath = os.path.join(logs_dir, safe_filename)
     
-    # Prevent deleting current log file
-    if filepath == current_app.config.get('CURRENT_LOG_FILE', ''):
-        return jsonify({'error': 'Cannot delete the current active log file'}), 400
+    if not os.path.exists(filepath):
+        raise HTTPException(status_code=404, detail="Log file not found")
+    
+    return FileResponse(filepath, filename=safe_filename)
+
+
+@admin_router.post("/api/logs/{filename}/delete")
+async def delete_log(request: Request, filename: str):
+    """Delete a log file."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
+    safe_filename = os.path.basename(filename)
+    if not safe_filename.startswith('server_') or '.log' not in safe_filename:
+        raise HTTPException(status_code=400, detail="Invalid log file name")
+    
+    logs_dir = get_logs_dir(request)
+    filepath = os.path.join(logs_dir, safe_filename)
     
     if not os.path.exists(filepath):
-        return jsonify({'error': 'Log file not found'}), 404
+        raise HTTPException(status_code=404, detail="Log file not found")
     
     try:
         os.remove(filepath)
         logging.info(f"Deleted log file: {safe_filename}")
-        return jsonify({'success': True, 'message': f'Deleted {safe_filename}'})
+        return {'success': True, 'message': f'Deleted {safe_filename}'}
     except Exception as e:
         logging.error(f"Error deleting log file {filename}: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ============== SYSTEM PAGE ==============
 
-@admin_bp.route('/system')
-@login_required
-def system():
+@admin_router.get("/system", response_class=HTMLResponse, name="admin.system")
+async def system(request: Request):
     """Display system status and debug tools."""
-    return render_template('admin/system.html', csrf_token=generate_csrf_token())
+    if not await check_login(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    
+    csrf_token = generate_csrf_token(request)
+    templates = request.app.state.templates
+    return templates.TemplateResponse("admin/system.html", {"request": request, "csrf_token": csrf_token})
 
 
 # ============== DEBUG ENDPOINTS ==============
 
-# Import session data from chat_routes for debug endpoints
-from chat_routes import session_data, session_lock, cleanup_expired_sessions, SESSION_TIMEOUT_SECONDS
+from chat_routes import session_data as chat_session_data, session_lock as chat_session_lock, cleanup_expired_sessions, SESSION_TIMEOUT_SECONDS
 
-@admin_bp.route('/api/debug/sessions')
-@login_required
-def debug_sessions():
+
+@admin_router.get("/api/debug/sessions")
+async def debug_sessions(request: Request):
     """Debug endpoint to check active sessions count."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
     try:
         now = datetime.now()
-        with session_lock:
-            active_count = len(session_data)
+        async with chat_session_lock:
+            active_count = len(chat_session_data)
             sessions_info = []
-            for sid, data in session_data.items():
+            for sid, data in chat_session_data.items():
                 last_activity = data.get('last_activity')
                 inactive_secs = (now - last_activity).total_seconds() if last_activity else 0
                 sessions_info.append({
@@ -871,36 +908,42 @@ def debug_sessions():
                     'inactive_minutes': round(inactive_secs / 60, 1)
                 })
         
-        return jsonify({
+        return {
             'active_sessions': active_count,
             'timeout_hours': SESSION_TIMEOUT_SECONDS / 3600,
             'sessions': sessions_info
-        })
+        }
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@admin_bp.route('/api/debug/sessions/cleanup', methods=['POST'])
-@login_required
-@csrf_protected
-def cleanup_sessions_endpoint():
+@admin_router.post("/api/debug/sessions/cleanup")
+async def cleanup_sessions_endpoint(request: Request):
     """Manually trigger session cleanup."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
+    # Validate CSRF token
+    form_data = await request.form()
+    csrf_token = form_data.get('csrf_token') or request.headers.get('X-CSRF-Token')
+    if not validate_csrf_token(request, csrf_token):
+        raise HTTPException(status_code=403, detail="Invalid CSRF token")
+    
     try:
-        cleaned = cleanup_expired_sessions()
-        with session_lock:
-            remaining = len(session_data)
-        return jsonify({
-            'cleaned': cleaned,
-            'remaining': remaining
-        })
+        cleaned = await cleanup_expired_sessions()
+        async with chat_session_lock:
+            remaining = len(chat_session_data)
+        return {'cleaned': cleaned, 'remaining': remaining}
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
-@admin_bp.route('/api/debug/rag')
-@login_required
-def debug_rag():
+@admin_router.get("/api/debug/rag")
+async def debug_rag(request: Request):
     """Debug endpoint for figure-specific RAG system status."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
     try:
         debug_info = {
             'figure_manager_initialized': False,
@@ -911,12 +954,11 @@ def debug_rag():
             figure_manager = get_figure_manager()
             debug_info['figure_manager_initialized'] = True
             
-            # Get all figures and their stats
-            figures = figure_manager.get_figure_list()
+            figures = await figure_manager.get_figure_list_async()
             debug_info['figures'] = []
             for fig in figures:
                 fig_id = fig.get('figure_id')
-                stats = figure_manager.get_figure_stats(fig_id)
+                stats = await figure_manager.get_figure_stats_async(fig_id)
                 debug_info['figures'].append({
                     'figure_id': fig_id,
                     'name': fig.get('name'),
@@ -926,7 +968,6 @@ def debug_rag():
         except Exception as e:
             debug_info['errors'].append(f"Figure manager error: {str(e)}")
         
-        return jsonify(debug_info)
+        return debug_info
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
+        raise HTTPException(status_code=500, detail=str(e))

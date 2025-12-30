@@ -1,14 +1,15 @@
 """
 Shared utilities for serving figure images.
+Updated for FastAPI.
 """
 
 import os
 import logging
-from flask import send_from_directory, jsonify
+from fastapi.responses import FileResponse, JSONResponse
 from config import FIGURE_IMAGES_DIR
 
 
-def serve_figure_image(filename: str):
+async def serve_figure_image(filename: str):
     """
     Serve a figure image file.
     
@@ -16,12 +17,16 @@ def serve_figure_image(filename: str):
         filename: Name of the image file to serve
         
     Returns:
-        Flask response with image or 404 error
+        FastAPI FileResponse with image or 404 error
     """
     try:
         figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
-        return send_from_directory(figure_images_path, filename)
+        file_path = os.path.join(figure_images_path, filename)
+        
+        if not os.path.exists(file_path):
+            return JSONResponse(status_code=404, content={'error': 'Image not found'})
+        
+        return FileResponse(file_path)
     except Exception as e:
         logging.error(f"Error serving figure image {filename}: {str(e)}")
-        return jsonify({'error': 'Image not found'}), 404
-
+        return JSONResponse(status_code=404, content={'error': 'Image not found'})

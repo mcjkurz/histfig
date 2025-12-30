@@ -117,7 +117,3 @@ if __name__ == "__main__":
     query = sys.argv[1] if len(sys.argv) > 1 else "你去過東南亞、南亞、中東和東非，你覺得哪裡最有趣？"
     debug_search("zhenghe", query)
 
-
-
-
-

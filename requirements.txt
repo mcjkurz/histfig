@@ -1,10 +1,13 @@
-Flask
-requests
+fastapi
+uvicorn[standard]
+httpx
+itsdangerous
+python-multipart
+jinja2
 chromadb
 sentence-transformers
 PyPDF2
 python-docx
-python-multipart
 torch
 markdown
 reportlab
@@ -12,4 +15,4 @@ jieba
 nltk
 numpy
 rank_bm25
-gunicorn
+aiofiles

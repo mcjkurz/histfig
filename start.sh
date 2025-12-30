@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Historical Figures Chat System - Background Mode
-# Runs the server in background with timestamped log files
+# Runs the FastAPI server in background with timestamped log files
 
 # Load environment variables
 [ -f .env ] && export $(grep -v '^#' .env | xargs)
@@ -39,21 +39,18 @@ LOG_FILE="logs/server_$(date +%Y-%m-%d_%H-%M-%S).log"
 
 echo "📝 Log file: $LOG_FILE"
 
-# Get thread count from environment (default: 20 for ~15-20 concurrent users)
-GUNICORN_THREADS=${GUNICORN_THREADS:-20}
-
-# Start server in background with gunicorn + threads for concurrent users
-# -k gthread: use threaded workers (compatible with PyTorch, unlike gevent)
-# -w 1: single worker (threads share memory, so sessions work)
-# --threads: configurable via GUNICORN_THREADS env var
-# --timeout 120: allow long LLM streaming responses
+# Start server in background with uvicorn for async support
+# --workers 1: single worker (async handles concurrency via event loop)
+# --timeout-keep-alive 120: allow long LLM streaming responses
 (
     source venv/bin/activate
     cd "$(dirname "$0")"
-    gunicorn -k gthread -w 1 --threads $GUNICORN_THREADS --timeout 120 \
-        -b 0.0.0.0:$APP_PORT \
-        --access-logfile - --error-logfile - \
-        scripts.main:app
+    uvicorn scripts.main:app \
+        --host 0.0.0.0 \
+        --port $APP_PORT \
+        --workers 1 \
+        --timeout-keep-alive 120 \
+        --log-level info
 ) >> "$LOG_FILE" 2>&1 &
 
 # Wait for server to be ready (poll health endpoint)
@@ -75,7 +72,7 @@ while [ $ELAPSED -lt $MAX_WAIT ]; do
             echo ""
             echo "💡 Commands:"
             echo "   Check status: ./utils/check_status.sh"
-            echo "   Stop server:  ./utils/kill_ports.sh"
+            echo "   Stop server:  ./utils/stop.sh"
             echo "   View logs:    tail -f $LOG_FILE"
             echo "================================================"
             exit 0

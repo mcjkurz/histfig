@@ -1,91 +1,90 @@
 """
 Model Provider - Unified OpenAI-compatible API client
 Works with local Ollama (/v1 endpoint) or any OpenAI-compatible external API.
+Uses async httpx for non-blocking HTTP requests.
 """
 
-import requests
+import httpx
 import json
 import logging
-from typing import List, Dict, Generator
+from typing import List, Dict, AsyncGenerator
 from config import EXTERNAL_API_URL, EXTERNAL_API_KEY
 
 
 class LLMProvider:
-    """Unified OpenAI-compatible LLM provider"""
+    """Unified OpenAI-compatible LLM provider with async support"""
     
     def __init__(self, base_url: str = None, api_key: str = None, model: str = None):
         self.base_url = (base_url or EXTERNAL_API_URL).rstrip('/')
         self.api_key = api_key or EXTERNAL_API_KEY
         self.default_model = model
         
-    def chat_stream(self, messages: List[Dict], model: str, temperature: float) -> Generator:
+    async def chat_stream(self, messages: List[Dict], model: str, temperature: float) -> AsyncGenerator:
         """Stream chat responses using OpenAI-compatible API"""
         model_to_use = model or self.default_model
         if not model_to_use:
             yield {"error": "Model name not specified. Please provide a model name."}
             return
         
-        # Build headers
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
             
         try:
-            response = requests.post(
-                f"{self.base_url}/chat/completions",
-                headers=headers,
-                json={
-                    "model": model_to_use,
-                    "messages": messages,
-                    "stream": True,
-                    "temperature": temperature
-                },
-                stream=True
-            )
-            
-            if response.status_code != 200:
-                error_msg = self._parse_error(response)
-                yield {"error": error_msg}
-                return
-                
-            for line in response.iter_lines():
-                if line:
-                    line_str = line.decode('utf-8')
-                    if line_str.startswith('data: '):
-                        data_str = line_str[6:]
-                        if data_str == '[DONE]':
-                            yield {"done": True}
-                            break
-                        try:
-                            chunk_data = json.loads(data_str)
-                            if 'choices' in chunk_data:
-                                delta = chunk_data['choices'][0].get('delta', {})
-                                content = delta.get('content', '')
-                                if content:
-                                    yield {"content": content}
-                        except json.JSONDecodeError:
-                            continue
+            async with httpx.AsyncClient(timeout=httpx.Timeout(120.0, connect=10.0)) as client:
+                async with client.stream(
+                    "POST",
+                    f"{self.base_url}/chat/completions",
+                    headers=headers,
+                    json={
+                        "model": model_to_use,
+                        "messages": messages,
+                        "stream": True,
+                        "temperature": temperature
+                    }
+                ) as response:
+                    if response.status_code != 200:
+                        error_msg = await self._parse_error_async(response)
+                        yield {"error": error_msg}
+                        return
+                    
+                    async for line in response.aiter_lines():
+                        if line:
+                            if line.startswith('data: '):
+                                data_str = line[6:]
+                                if data_str == '[DONE]':
+                                    yield {"done": True}
+                                    break
+                                try:
+                                    chunk_data = json.loads(data_str)
+                                    if 'choices' in chunk_data:
+                                        delta = chunk_data['choices'][0].get('delta', {})
+                                        content = delta.get('content', '')
+                                        if content:
+                                            yield {"content": content}
+                                except json.JSONDecodeError:
+                                    continue
                             
-        except requests.exceptions.ConnectionError as e:
+        except httpx.ConnectError as e:
             logging.error(f"Connection error: {e}")
             yield {"error": f"Cannot connect to LLM API at {self.base_url}. Check the URL and your connection."}
-        except requests.exceptions.Timeout as e:
+        except httpx.TimeoutException as e:
             logging.error(f"Timeout error: {e}")
             yield {"error": "LLM API request timed out. Please try again."}
-        except requests.exceptions.RequestException as e:
+        except httpx.RequestError as e:
             logging.error(f"Request error: {e}")
             yield {"error": f"LLM API request failed: {str(e)}"}
         except Exception as e:
             logging.error(f"Unexpected error in LLM stream: {e}")
             yield {"error": f"Unexpected error: {str(e)}"}
     
-    def _parse_error(self, response) -> str:
+    async def _parse_error_async(self, response: httpx.Response) -> str:
         """Parse error response into user-friendly message"""
         status = response.status_code
         
-        # Try to get error details from JSON
         try:
-            error_data = response.json()
+            content = await response.aread()
+            error_data = json.loads(content)
             if 'error' in error_data:
                 error_detail = error_data['error']
                 if isinstance(error_detail, dict):
@@ -94,7 +93,6 @@ class LLMProvider:
         except Exception:
             pass
         
-        # Standard HTTP error messages
         if status == 401:
             return "Invalid API key. Please check your API key."
         elif status == 403:
@@ -106,18 +104,19 @@ class LLMProvider:
         else:
             return f"LLM API error: HTTP {status}"
     
-    def get_available_models(self) -> List[str]:
+    async def get_available_models(self) -> List[str]:
         """Fetch available models from the API"""
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
             
         try:
-            response = requests.get(f"{self.base_url}/models", headers=headers)
-            if response.status_code == 200:
-                data = response.json()
-                models = data.get('data', [])
-                return [m.get('id', m.get('name', '')) for m in models if m]
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                response = await client.get(f"{self.base_url}/models", headers=headers)
+                if response.status_code == 200:
+                    data = response.json()
+                    models = data.get('data', [])
+                    return [m.get('id', m.get('name', '')) for m in models if m]
         except Exception as e:
             logging.error(f"Error fetching models: {e}")
         

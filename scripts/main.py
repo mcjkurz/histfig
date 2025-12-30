@@ -1,113 +1,146 @@
 #!/usr/bin/env python3
 """
-Historical Figures Chat System - Unified Application
-Single Flask application that handles all functionality on one port.
+Historical Figures Chat System - FastAPI Application
+Async application that handles all functionality on one port.
 """
 
 import sys
 from pathlib import Path
 
 # Add directories to path for imports
-# Parent directory for config.py, scripts directory for other modules
 sys.path.insert(0, str(Path(__file__).parent.parent))  # project root (for config)
 sys.path.insert(0, str(Path(__file__).parent))  # scripts dir (for chat_routes, etc.)
 
-from flask import Flask, jsonify, request
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 import logging
-import signal
 import os
 import secrets
 
 from config import APP_PORT, DEBUG_MODE, MAX_CONTENT_LENGTH
-from chat_routes import chat_bp
-from admin_routes import admin_bp
-from figure_manager import get_figure_manager
 
 # Create logs directory
 LOGS_DIR = Path(__file__).parent.parent / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
 
+
 def setup_logging():
     """Setup logging to console. File output is handled by shell script redirection."""
-    # Use app-specific logger instead of root to avoid conflicts with gunicorn
     app_logger = logging.getLogger('histfig')
     
-    # Skip if already configured
     if app_logger.handlers:
         return
     
-    # Console formatter
     console_formatter = logging.Formatter(
         '%(asctime)s | %(levelname)-8s | %(message)s',
         datefmt='%H:%M:%S'
     )
     
-    # Setup app logger
     app_logger.setLevel(logging.DEBUG if DEBUG_MODE else logging.INFO)
-    app_logger.propagate = False  # Don't duplicate to root logger
+    app_logger.propagate = False
     
-    # Console handler (gunicorn/shell script redirects this to log file)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(console_formatter)
     app_logger.addHandler(console_handler)
 
-# Setup logging
-setup_logging()
 
-# Create a logger for this module
+setup_logging()
 logger = logging.getLogger('histfig')
 
-# Create main Flask application
-app = Flask(__name__, template_folder='../templates', static_folder='../static')
 
-# Store logs directory in app config for access from routes
-app.config['LOGS_DIR'] = str(LOGS_DIR)
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Handle startup and shutdown events."""
+    # Startup
+    logger.info("Starting Historical Figures Chat System...")
+    
+    # Preload FigureManager (loads embedding model) so first request is fast
+    from figure_manager import get_figure_manager
+    import asyncio
+    logger.info("Preloading FigureManager and embedding model...")
+    await asyncio.to_thread(get_figure_manager)
+    logger.info("FigureManager ready")
+    
+    # Start session cleanup task
+    from chat_routes import start_session_cleanup_task
+    await start_session_cleanup_task()
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Historical Figures Chat System...")
 
-# Configuration
-app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
-app.config['MAX_FORM_MEMORY_SIZE'] = None
-app.secret_key = os.environ.get('FLASK_SECRET_KEY', secrets.token_hex(32))
-app.config['SESSION_TYPE'] = 'filesystem'
-app.config['PERMANENT_SESSION_LIFETIME'] = 86400  # 24 hours
 
-# Register blueprints
-app.register_blueprint(chat_bp)  # Chat routes at root (/)
-app.register_blueprint(admin_bp)  # Admin routes at /admin
+# Create FastAPI application
+app = FastAPI(
+    title="Historical Figures Chat System",
+    lifespan=lifespan,
+    debug=DEBUG_MODE
+)
 
-# Preload FigureManager (loads embedding model) so first request is fast
-logger.info("Preloading FigureManager and embedding model...")
-get_figure_manager()
-logger.info("FigureManager ready")
+# Session middleware with secret key
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=os.environ.get('SECRET_KEY', secrets.token_hex(32)),
+    max_age=86400  # 24 hours
+)
 
-@app.errorhandler(413)
-def request_entity_too_large(error):
+# Store config in app state
+app.state.LOGS_DIR = str(LOGS_DIR)
+app.state.MAX_CONTENT_LENGTH = MAX_CONTENT_LENGTH
+
+# Mount static files
+static_path = Path(__file__).parent.parent / "static"
+app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+# Setup templates
+templates_path = Path(__file__).parent.parent / "templates"
+templates = Jinja2Templates(directory=str(templates_path))
+
+# Make templates available globally
+app.state.templates = templates
+
+
+# Error handler for request entity too large
+@app.exception_handler(413)
+async def request_entity_too_large(request: Request, exc):
     """Handle file upload too large errors."""
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     if is_ajax:
-        return jsonify({'error': 'Total upload size too large. Please upload fewer files at once.'}), 413
-    return 'Total upload size too large. Please upload fewer files at once.', 413
+        return JSONResponse(
+            status_code=413,
+            content={'error': 'Total upload size too large. Please upload fewer files at once.'}
+        )
+    return JSONResponse(
+        status_code=413,
+        content={'error': 'Total upload size too large. Please upload fewer files at once.'}
+    )
 
-def signal_handler(sig, frame):
-    """Handle shutdown signals gracefully."""
-    logger.info("Shutting down Historical Figures Chat System...")
-    sys.exit(0)
+
+# Import and include routers
+from chat_routes import chat_router
+from admin_routes import admin_router
+
+app.include_router(chat_router)
+app.include_router(admin_router, prefix="/admin")
+
 
 if __name__ == '__main__':
-    # Direct execution (development mode) - use Flask's built-in server
-    # For production, use: gunicorn -k gevent -w 1 scripts.main:app
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    import uvicorn
     
-    try:
-        logger.info(f"Starting Historical Figures Chat System on port {APP_PORT}")
-        logger.info(f"Chat Interface: http://localhost:{APP_PORT}/")
-        logger.info(f"Admin Interface: http://localhost:{APP_PORT}/admin/")
-        app.run(debug=DEBUG_MODE, host='0.0.0.0', port=APP_PORT)
-    except KeyboardInterrupt:
-        logger.info("Application stopped by user")
-    except Exception as e:
-        logger.error(f"Application error: {e}")
-    finally:
-        logger.info("Application shutdown complete")
-
+    logger.info(f"Starting Historical Figures Chat System on port {APP_PORT}")
+    logger.info(f"Chat Interface: http://localhost:{APP_PORT}/")
+    logger.info(f"Admin Interface: http://localhost:{APP_PORT}/admin/")
+    
+    uvicorn.run(
+        "main:app",
+        host="0.0.0.0",
+        port=APP_PORT,
+        reload=DEBUG_MODE,
+        log_level="debug" if DEBUG_MODE else "info"
+    )

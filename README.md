@@ -39,7 +39,7 @@ Access at:
 - Chat: `http://localhost:5001/`
 - Admin: `http://localhost:5001/admin/`
 
-The server uses Gunicorn with threaded workers (default: 20 threads) to handle multiple concurrent users, each with isolated sessions; adjust `GUNICORN_THREADS` in `.env` if needed.
+The server is built with FastAPI and runs on Uvicorn, handling multiple concurrent users efficiently with async/await. Each user gets an isolated session.
 
 ## Scripts
 
