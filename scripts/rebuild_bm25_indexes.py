@@ -111,7 +111,7 @@ def rebuild_all_bm25_indexes():
             print("✓ BM25 indexes have been rebuilt!")
             print()
             print("IMPORTANT: Please restart the server to load the new indexes:")
-            print("  ./restart.sh")
+            print("  ./start.sh")
             print()
         else:
             print("⚠ No indexes were rebuilt.")

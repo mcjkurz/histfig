@@ -212,6 +212,9 @@ async def create_figure(
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     
+    # Validate CSRF token
+    await require_csrf(request)
+    
     try:
         form_data = {
             'figure_id': figure_id.strip(),
@@ -343,6 +346,9 @@ async def update_figure(
     """Update a figure's metadata."""
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    
+    # Validate CSRF token
+    await require_csrf(request)
     
     try:
         figure_manager = get_figure_manager()

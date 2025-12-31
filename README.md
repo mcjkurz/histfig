@@ -48,6 +48,7 @@ Access at:
 | `./utils/check_status.sh` | Check server status |
 | `./utils/clean_logs.sh` | Remove old log files |
 | `./utils/rebuild_bm25.sh` | Rebuild BM25 search indexes |
+| `./utils/cleanup_database.sh` | Remove unused database files from deleted figures |
 
 ## Hardware Acceleration
 

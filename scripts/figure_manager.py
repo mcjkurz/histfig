@@ -50,7 +50,86 @@ class FigureManager:
         self.bm25_dir = Path(db_path) / "bm25_indexes"
         self.bm25_dir.mkdir(exist_ok=True)
         
+        # Persistent counter file for document IDs (avoids collision on delete)
+        self.counter_file = Path(db_path) / "chunk_counter.json"
+        self._doc_counters = self._load_counters()
+        
         logger.info("Figure manager initialized")
+    
+    def _load_counters(self) -> Dict[str, int]:
+        """Load document counters from persistent storage, initializing from ChromaDB if needed."""
+        counters = {}
+        
+        # Try to load existing counters
+        if self.counter_file.exists():
+            try:
+                with open(self.counter_file, 'r') as f:
+                    data = json.load(f)
+                    # Handle old format {"next_chunk_id": N} vs new format {"figure_id": N, ...}
+                    if isinstance(data, dict) and "next_chunk_id" not in data:
+                        counters = data
+            except (json.JSONDecodeError, IOError) as e:
+                logger.warning(f"Error loading counters: {e}")
+        
+        # Scan ChromaDB to ensure counters are at least as high as existing doc IDs
+        try:
+            collections = self.client.list_collections()
+            for collection in collections:
+                if collection.name.startswith("figure_"):
+                    figure_id = collection.name[7:]  # Remove "figure_" prefix
+                    max_id = self._get_max_doc_id_from_collection(collection)
+                    if max_id is not None:
+                        # Set counter to max+1 to avoid collisions
+                        current = counters.get(figure_id, 0)
+                        if max_id >= current:
+                            counters[figure_id] = max_id + 1
+                            logger.info(f"Initialized counter for {figure_id}: {max_id + 1}")
+        except Exception as e:
+            logger.warning(f"Error scanning collections for counters: {e}")
+        
+        return counters
+    
+    def _get_max_doc_id_from_collection(self, collection) -> Optional[int]:
+        """Get the maximum numeric ID suffix from a collection's documents."""
+        try:
+            if collection.count() == 0:
+                return None
+            
+            # Get all document IDs
+            results = collection.get(include=[])
+            if not results["ids"]:
+                return None
+            
+            max_id = -1
+            for doc_id in results["ids"]:
+                # Parse IDs like "zhenghe_123" to extract 123
+                parts = doc_id.rsplit("_", 1)
+                if len(parts) == 2:
+                    try:
+                        num = int(parts[1])
+                        max_id = max(max_id, num)
+                    except ValueError:
+                        continue
+            
+            return max_id if max_id >= 0 else None
+        except Exception as e:
+            logger.warning(f"Error getting max doc ID from {collection.name}: {e}")
+            return None
+    
+    def _save_counters(self):
+        """Save document counters to persistent storage."""
+        try:
+            with open(self.counter_file, 'w') as f:
+                json.dump(self._doc_counters, f)
+        except IOError as e:
+            logger.error(f"Error saving counters: {e}")
+    
+    def _get_next_doc_id(self, figure_id: str) -> str:
+        """Get next document ID for a figure (monotonically increasing)."""
+        current = self._doc_counters.get(figure_id, 0)
+        self._doc_counters[figure_id] = current + 1
+        self._save_counters()
+        return f"{figure_id}_{current}"
     
     def _get_bm25_paths(self, figure_id: str) -> tuple:
         """Get BM25 file paths for a figure."""
@@ -380,7 +459,7 @@ class FigureManager:
             
             embedding = self.embedding_provider.encode_document_sync(text)
             
-            doc_id = f"{figure_id}_{collection.count()}"
+            doc_id = self._get_next_doc_id(figure_id)
             
             processed_tokens = text_processor.process_text(text)
             
