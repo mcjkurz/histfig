@@ -1,6 +1,6 @@
 # Historical Figures Chat System
 
-Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style.
+Chat with historical figures using RAG-enhanced AI. Upload documents and have conversations in their authentic style. The server is built with FastAPI and runs on Uvicorn, handling multiple concurrent users efficiently with async/await. Each user gets an isolated session.
 
 Read a related blog post on the *Digital Orientalist*: https://digitalorientalist.com/2025/12/26/voices-from-the-past-retrieval-augmented-dialogues-with-chinese-historical-figures/
 
@@ -38,8 +38,6 @@ Then edit .env with your API keys and settings. You can use external API, local 
 Access at:
 - Chat: `http://localhost:5001/`
 - Admin: `http://localhost:5001/admin/`
-
-The server is built with FastAPI and runs on Uvicorn, handling multiple concurrent users efficiently with async/await. Each user gets an isolated session.
 
 ## Scripts
 
