@@ -10,7 +10,7 @@ from typing import Dict, Any, Tuple, Optional
 def validate_figure_id(figure_id: str) -> Tuple[bool, Optional[str]]:
     """
     Validate figure ID format.
-    Must contain only letters (no special characters or spaces).
+    Must contain only letters, underscores, and hyphens (no spaces or other special characters).
     
     Args:
         figure_id: The figure ID to validate
@@ -24,9 +24,9 @@ def validate_figure_id(figure_id: str) -> Tuple[bool, Optional[str]]:
     if len(figure_id) > 50:
         return False, "Figure ID must be 50 characters or less"
     
-    # Only allow letters (uppercase and lowercase)
-    if not re.match(r'^[a-zA-Z]+$', figure_id):
-        return False, "Figure ID must contain only alphabetic characters (no numbers, spaces, or special characters)"
+    # Allow letters (uppercase and lowercase), underscores, and hyphens
+    if not re.match(r'^[a-zA-Z_-]+$', figure_id):
+        return False, "Figure ID must contain only letters, underscores, and hyphens (no numbers, spaces, or other special characters)"
     
     return True, None
 
@@ -188,8 +188,8 @@ def sanitize_figure_id(figure_id: str) -> str:
     Returns:
         Sanitized figure ID
     """
-    # Remove all non-alphabetic characters
-    sanitized = re.sub(r'[^a-zA-Z]', '', figure_id)
+    # Remove all characters except letters, underscores, and hyphens
+    sanitized = re.sub(r'[^a-zA-Z_-]', '', figure_id)
     
     # Convert to lowercase for consistency
     sanitized = sanitized.lower()

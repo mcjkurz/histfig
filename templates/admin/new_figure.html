@@ -15,11 +15,11 @@
                     <div class="form-group">
                         <label for="figure_id">Figure ID *</label>
                         <input type="text" id="figure_id" name="figure_id" class="form-control" required
-                               placeholder="e.g., napoleonbonaparte"
-                               pattern="[a-zA-Z]+"
+                               placeholder="e.g., napoleon-bonaparte or napoleon_bonaparte"
+                               pattern="[a-zA-Z_\-]+"
                                maxlength="50"
-                               title="Use only letters (no numbers, spaces, or special characters)">
-                        <small style="color: #666; font-size: 0.8rem;">Unique identifier (letters only, no spaces or special characters)</small>
+                               title="Use only letters, underscores, and hyphens (no numbers, spaces, or other special characters)">
+                        <small style="color: #666; font-size: 0.8rem;">Unique identifier (letters, underscores, and hyphens only)</small>
                     </div>
 
                     <div class="form-group">
@@ -151,7 +151,7 @@
     updateCharCounter('description', 'desc-counter', 400);
     updateCharCounter('personality_prompt', 'prompt-counter', 400);
     
-    // Auto-generate figure ID from name (letters only)
+    // Auto-generate figure ID from name (letters, underscores, hyphens)
     document.getElementById('name').addEventListener('input', function() {
         const name = this.value;
         const figureIdField = document.getElementById('figure_id');
@@ -159,7 +159,8 @@
         if (!figureIdField.dataset.userModified) {
             const figureId = name
                 .toLowerCase()
-                .replace(/[^a-z]/g, '') // Remove all non-letter characters
+                .replace(/\s+/g, '-') // Replace spaces with hyphens
+                .replace(/[^a-z_-]/g, '') // Remove characters that aren't letters, underscores, or hyphens
                 .substring(0, 50);
             figureIdField.value = figureId;
         }
@@ -168,8 +169,8 @@
     // Mark figure ID as user-modified if manually edited
     document.getElementById('figure_id').addEventListener('input', function() {
         this.dataset.userModified = 'true';
-        // Remove any non-letter characters as user types
-        this.value = this.value.replace(/[^a-zA-Z]/g, '');
+        // Remove characters that aren't letters, underscores, or hyphens
+        this.value = this.value.replace(/[^a-zA-Z_-]/g, '');
     });
     
     // Validate year inputs (allow negative numbers for BCE)
@@ -208,10 +209,10 @@
             return false;
         }
         
-        // Figure ID validation (letters only)
-        if (!/^[a-zA-Z]+$/.test(figureId)) {
+        // Figure ID validation (letters, underscores, hyphens)
+        if (!/^[a-zA-Z_-]+$/.test(figureId)) {
             e.preventDefault();
-            alert('Figure ID must contain only letters (no numbers, spaces, or special characters)!');
+            alert('Figure ID must contain only letters, underscores, and hyphens (no numbers, spaces, or other special characters)!');
             return false;
         }
         
