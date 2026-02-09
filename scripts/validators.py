@@ -33,7 +33,8 @@ def validate_figure_id(figure_id: str) -> Tuple[bool, Optional[str]]:
 def validate_figure_name(name: str) -> Tuple[bool, Optional[str]]:
     """
     Validate figure name.
-    Allows alphabetic characters (including Unicode/Chinese) and spaces.
+    Allows alphabetic characters (including Unicode/Chinese), spaces, and basic punctuation
+    such as brackets, parentheses, hyphens, periods, commas, colons, and quotes.
     
     Args:
         name: The figure name to validate
@@ -47,10 +48,11 @@ def validate_figure_name(name: str) -> Tuple[bool, Optional[str]]:
     if len(name) > 100:
         return False, "Figure name must be 100 characters or less"
     
-    # Check for invalid characters (numbers, special characters except spaces)
-    # Allow Unicode letters including Chinese characters
-    if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', name):
-        return False, "Figure name must contain only alphabetic characters and spaces"
+    # Block only dangerous/unusual special characters
+    # Allow: letters (including Unicode/Chinese), spaces, hyphens, periods, commas,
+    # colons, semicolons, quotes, parentheses, brackets, and common CJK punctuation
+    if re.search(r'[#$%^&*+=\\|`~@]', name):
+        return False, "Figure name contains invalid characters"
     
     return True, None
 
@@ -199,8 +201,8 @@ def sanitize_figure_id(figure_id: str) -> str:
 
 def sanitize_figure_name(name: str) -> str:
     """
-    Sanitize figure name by removing invalid characters.
-    Allows Unicode letters (including Chinese characters) and spaces.
+    Sanitize figure name by removing dangerous characters.
+    Allows Unicode letters (including Chinese characters), spaces, and basic punctuation.
     
     Args:
         name: The figure name to sanitize
@@ -208,9 +210,8 @@ def sanitize_figure_name(name: str) -> str:
     Returns:
         Sanitized figure name
     """
-    # Remove only specific invalid characters (numbers and special characters)
-    # This preserves all Unicode letters including Chinese characters
-    sanitized = re.sub(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~\-]', '', name)
+    # Remove only dangerous/unusual special characters
+    sanitized = re.sub(r'[#$%^&*+=\\|`~@]', '', name)
     
     # Remove multiple spaces
     sanitized = ' '.join(sanitized.split())

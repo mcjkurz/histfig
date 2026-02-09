@@ -13,6 +13,7 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('admin.update_figure', figure_id=figure.figure_id) }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                 <div>
                     <div class="form-group">
@@ -29,7 +30,7 @@
                                value="{{ figure.name }}"
                                maxlength="100"
                                title="Display name (supports Chinese characters)">
-                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese (no special characters or numbers)</small>
+                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese, with basic punctuation like brackets</small>
                     </div>
 
                     <div class="form-group">
@@ -144,6 +145,7 @@
     </div>
     <div class="card-body">
         <form id="uploadForm" method="POST" enctype="multipart/form-data" action="{{ url_for('admin.upload_documents', figure_id=figure.figure_id) }}" accept-charset="utf-8">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="file-upload">
                 <p style="color: #666; margin-bottom: 1.5rem;">Upload PDF, DOCX, or text files containing this figure's writings, speeches, letters, or other relevant content.</p>
                 
@@ -209,6 +211,7 @@
                 <p style="margin: 0.5rem 0 0 0; font-size: 0.9rem; color: #856404;">⚠️ Cleaning documents will remove all content from this figure's knowledge base.</p>
             </div>
             <form method="POST" action="{{ url_for('admin.clean_figure_documents', figure_id=figure.figure_id) }}" onsubmit="return confirmClean('{{ figure.name }}')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button type="submit" class="btn btn-warning">Clean All Documents</button>
             </form>
         </div>
@@ -393,9 +396,9 @@
             return false;
         }
         
-        if (/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~]/.test(name)) {
+        if (/[#$%^&*+=\\|`~@]/.test(name)) {
             e.preventDefault();
-            alert('Display Name cannot contain numbers or special characters!');
+            alert('Display Name contains invalid characters!');
             return false;
         }
         

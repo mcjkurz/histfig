@@ -10,6 +10,7 @@
     </div>
     <div class="card-body">
         <form method="POST" action="{{ url_for('admin.create_figure') }}" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
                 <div>
                     <div class="form-group">
@@ -28,7 +29,7 @@
                                placeholder="e.g., Napoleon Bonaparte or 朱元璋"
                                maxlength="100"
                                title="Display name (supports Chinese characters)">
-                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese (no special characters or numbers)</small>
+                        <small style="color: #666; font-size: 0.8rem;">Supports Unicode characters including Chinese, with basic punctuation like brackets</small>
                     </div>
 
                     <div class="form-group">
@@ -216,10 +217,10 @@
             return false;
         }
         
-        // Name validation (allow Unicode characters, reject special characters and numbers)
-        if (/[0-9!@#$%^&*()_+=\[\]{};:'",.<>?/\\|`~]/.test(name)) {
+        // Name validation (block dangerous special characters)
+        if (/[#$%^&*+=\\|`~@]/.test(name)) {
             e.preventDefault();
-            alert('Display Name cannot contain numbers or special characters!');
+            alert('Display Name contains invalid characters!');
             return false;
         }
         

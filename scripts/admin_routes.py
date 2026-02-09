@@ -193,8 +193,9 @@ async def new_figure(request: Request):
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     
+    csrf_token = generate_csrf_token(request)
     templates = request.app.state.templates
-    return templates.TemplateResponse("admin/new_figure.html", {"request": request})
+    return templates.TemplateResponse("admin/new_figure.html", {"request": request, "csrf_token": csrf_token})
 
 
 @admin_router.post("/figure/create", name="admin.create_figure")
@@ -227,10 +228,11 @@ async def create_figure(
         
         validation_errors = validate_figure_data(form_data, is_update=False)
         if validation_errors:
+            csrf_token = generate_csrf_token(request)
             templates = request.app.state.templates
             return templates.TemplateResponse(
                 "admin/new_figure.html",
-                {"request": request, "error": "; ".join(validation_errors.values())}
+                {"request": request, "error": "; ".join(validation_errors.values()), "csrf_token": csrf_token}
             )
         
         figure_id_clean = sanitize_figure_id(form_data['figure_id'])
@@ -272,17 +274,19 @@ async def create_figure(
         if success:
             return RedirectResponse(url=f"/admin/figure/{figure_id_clean}", status_code=303)
         else:
+            csrf_token = generate_csrf_token(request)
             templates = request.app.state.templates
             return templates.TemplateResponse(
                 "admin/new_figure.html",
-                {"request": request, "error": f"Failed to create figure: {figure_id_clean}"}
+                {"request": request, "error": f"Failed to create figure: {figure_id_clean}", "csrf_token": csrf_token}
             )
     
     except Exception as e:
+        csrf_token = generate_csrf_token(request)
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "admin/new_figure.html",
-            {"request": request, "error": f"Error creating figure: {str(e)}"}
+            {"request": request, "error": f"Error creating figure: {str(e)}", "csrf_token": csrf_token}
         )
 
 
