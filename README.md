@@ -4,7 +4,7 @@ Chat with historical figures using RAG-enhanced AI. Upload documents and have co
 
 Read a related blog post on the *Digital Orientalist*: https://digitalorientalist.com/2025/12/26/voices-from-the-past-retrieval-augmented-dialogues-with-chinese-historical-figures/
 
-![Screenshot](img/screenshot_1.png)
+![Screenshot Chat](img/screenshot_chat.png)
 
 ## Quick Start
 
@@ -38,6 +38,8 @@ Then edit .env with your API keys and settings. You can use external API, local 
 Access at:
 - Chat: `http://localhost:5001/`
 - Admin: `http://localhost:5001/admin/`
+
+![Screenshot Admin](img/screenshot_admin.png)
 
 ## Scripts
 
