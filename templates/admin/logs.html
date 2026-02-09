@@ -343,7 +343,10 @@
     </div>
 </div>
 
+<input type="hidden" id="csrf-token" value="{{ csrf_token }}">
+
 <script>
+const csrfToken = document.getElementById('csrf-token').value;
 let currentLogFile = null;
 let rawLogContent = '';
 let isCurrentActive = false;
@@ -469,7 +472,10 @@ function deleteCurrentLog() {
     if (!confirm(`Are you sure you want to delete "${currentLogFile}"?`)) return;
     
     fetch(`/admin/api/logs/${encodeURIComponent(currentLogFile)}/delete`, {
-        method: 'POST'
+        method: 'POST',
+        headers: {
+            'X-CSRF-Token': csrfToken
+        }
     })
     .then(response => response.json())
     .then(data => {

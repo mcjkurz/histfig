@@ -561,6 +561,11 @@
         }
         formData.append('max_chunk_chars', document.getElementById('max_chunk_chars').value);
         formData.append('overlap_percent', document.getElementById('overlap_percent').value);
+        // Include CSRF token from the form
+        const csrfToken = uploadForm.querySelector('input[name="csrf_token"]');
+        if (csrfToken) {
+            formData.append('csrf_token', csrfToken.value);
+        }
         
         try {
             const streamUrl = uploadForm.action.replace('/upload', '/upload-stream');
@@ -569,6 +574,9 @@
                 method: 'POST',
                 body: formData
             }).then(response => {
+                if (!response.ok) {
+                    throw new Error(`Upload failed with status ${response.status}`);
+                }
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
