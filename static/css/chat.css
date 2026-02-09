@@ -732,51 +732,69 @@ body {
 /* Mobile-specific styles */
 @media (max-width: 768px) {
     .app-container {
-        height: 100%;
-        min-height: 100vh;
-        min-height: -webkit-fill-available;
-        overflow: hidden;
-    }
-
-    .chat-container {
-        width: 100%;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
-    
-    /* When keyboard is open, use fixed positioning for all main elements */
-    .chat-container.keyboard-open {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         bottom: 0;
+        overflow: hidden;
     }
-    
-    .chat-container.keyboard-open .chat-header {
+
+    .chat-container {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+
+    .chat-header {
         position: fixed;
         top: 0;
         left: 0;
         right: 0;
         z-index: 101;
+        padding: 12px 50px 12px 50px;
+        flex-shrink: 0;
+        flex-direction: column;
+        gap: 8px;
+        min-height: auto;
+        background: #1e2a3a;
     }
-    
-    .chat-container.keyboard-open .chat-messages {
-        position: fixed;
-        left: 0;
-        right: 0;
+
+    .chat-header h1 {
+        font-size: 1.1rem;
+    }
+
+    .save-conversation-btn {
+        position: static;
+        transform: none;
+        align-self: center;
+    }
+
+    .chat-messages {
+        flex: 1;
+        padding: 15px;
+        padding-top: 85px; /* Space for fixed header */
+        padding-bottom: 75px; /* Space for fixed input */
         overflow-y: auto;
-        /* Top and bottom will be set by JS based on header height and input position */
+        -webkit-overflow-scrolling: touch;
     }
-    
-    .chat-container.keyboard-open .chat-input-container {
+
+    .chat-input-container {
         position: fixed;
         left: 0;
         right: 0;
+        bottom: 0;
         z-index: 102;
-        /* Bottom will be set by JS based on visual viewport */
+        padding: 12px;
+        flex-shrink: 0;
+        background: #1e2a3a;
+        border-top: 1px solid #4a5f7a;
+        padding-bottom: calc(12px + env(safe-area-inset-bottom));
     }
 
     .control-toggle-btn {
@@ -803,24 +821,6 @@ body {
         height: 20px;
     }
 
-    .chat-header {
-        padding: 12px 50px 12px 50px;
-        flex-shrink: 0;
-        flex-direction: column;
-        gap: 8px;
-        min-height: auto;
-    }
-
-    .chat-header h1 {
-        font-size: 1.1rem;
-    }
-
-    .save-conversation-btn {
-        position: static;
-        transform: none;
-        align-self: center;
-    }
-
     .control-panel {
         width: 100%;
         max-width: 100%;
@@ -831,23 +831,6 @@ body {
     .figure-panel {
         height: 100vh;
         height: 100dvh;
-    }
-
-    .chat-messages {
-        padding: 15px;
-        flex: 1;
-        overflow-y: auto;
-        min-height: 0;
-    }
-
-    .chat-input-container {
-        padding: 12px;
-        flex-shrink: 0;
-        background: #1e2a3a;
-        border-top: 1px solid #4a5f7a;
-        position: relative;
-        z-index: 100;
-        padding-bottom: calc(12px + env(safe-area-inset-bottom));
     }
 
     .message-content {
