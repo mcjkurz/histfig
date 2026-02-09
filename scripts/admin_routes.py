@@ -177,13 +177,25 @@ async def index(request: Request):
     try:
         figure_manager = get_figure_manager()
         figures = await figure_manager.get_figure_list_async()
+        
+        # Get active session count from chat_routes
+        try:
+            from chat_routes import session_data
+            active_sessions = len(session_data)
+        except:
+            active_sessions = 0
+        
         templates = request.app.state.templates
-        return templates.TemplateResponse("admin/dashboard.html", {"request": request, "figures": figures})
+        return templates.TemplateResponse("admin/dashboard.html", {
+            "request": request, 
+            "figures": figures,
+            "active_sessions": active_sessions
+        })
     except Exception as e:
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "admin/dashboard.html", 
-            {"request": request, "figures": [], "error": f"Error loading figures: {str(e)}"}
+            {"request": request, "figures": [], "active_sessions": 0, "error": f"Error loading figures: {str(e)}"}
         )
 
 
