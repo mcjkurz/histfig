@@ -16,14 +16,14 @@ import datetime
 import asyncio
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Request
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response
+from fastapi import APIRouter, Request, Form
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
 from figure_manager import get_figure_manager
 from config import (
     DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES,
     FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL,
     RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL,
-    LOCAL_MODELS, EXTERNAL_MODELS, DOCS_TO_RETRIEVE
+    LOCAL_MODELS, EXTERNAL_MODELS, DOCS_TO_RETRIEVE, CHAT_PASSWORD
 )
 from search_utils import format_search_result_for_response
 from model_provider import LLMProvider
@@ -308,11 +308,67 @@ def truncate_messages_preserve_system(messages: List[Dict], system_message: Opti
         return messages
 
 
+# Chat authentication helpers
+
+def check_chat_login(request: Request) -> bool:
+    """Check if user is logged in to chat (when password is required)"""
+    if not CHAT_PASSWORD:
+        return True  # No password required
+    return request.session.get('chat_logged_in', False)
+
+
+def require_chat_login(request: Request):
+    """Redirect to login if chat password is required and user is not logged in"""
+    if CHAT_PASSWORD and not check_chat_login(request):
+        return RedirectResponse(url="/login", status_code=303)
+    return None
+
+
 # Routes
+
+@chat_router.get("/login", response_class=HTMLResponse)
+async def chat_login_page(request: Request):
+    """Serve the chat login page"""
+    if not CHAT_PASSWORD:
+        return RedirectResponse(url="/", status_code=303)
+    if check_chat_login(request):
+        return RedirectResponse(url="/", status_code=303)
+    templates = request.app.state.templates
+    return templates.TemplateResponse("chat_login.html", {"request": request, "error": None})
+
+
+@chat_router.post("/login")
+async def chat_login(request: Request, password: str = Form(...)):
+    """Handle chat login"""
+    if not CHAT_PASSWORD:
+        return RedirectResponse(url="/", status_code=303)
+    
+    if password == CHAT_PASSWORD:
+        request.session['chat_logged_in'] = True
+        return RedirectResponse(url="/", status_code=303)
+    
+    templates = request.app.state.templates
+    return templates.TemplateResponse("chat_login.html", {
+        "request": request,
+        "error": "Invalid password"
+    })
+
+
+@chat_router.get("/logout")
+async def chat_logout(request: Request):
+    """Logout from chat"""
+    request.session.pop('chat_logged_in', None)
+    if CHAT_PASSWORD:
+        return RedirectResponse(url="/login", status_code=303)
+    return RedirectResponse(url="/", status_code=303)
+
 
 @chat_router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     """Serve the main chat interface"""
+    redirect = require_chat_login(request)
+    if redirect:
+        return redirect
     templates = request.app.state.templates
     return templates.TemplateResponse("index.html", {"request": request})
 
