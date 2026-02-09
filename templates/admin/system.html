@@ -239,6 +239,14 @@
                 <strong style="color: #e74c3c;">Errors:</strong>
                 <ul id="rag-errors-list" style="margin: 0.5rem 0; padding-left: 1.5rem; color: #e74c3c;"></ul>
             </div>
+            
+            <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
+                <button class="btn btn-warning" onclick="rebuildBm25()" id="btn-rebuild-bm25">
+                    🔄 Rebuild BM25 Indexes
+                </button>
+                <small style="display: block; margin-top: 0.4rem; color: #999;">Rebuilds keyword search indexes for all figures.</small>
+                <div id="bm25-result" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
+            </div>
         </div>
     </div>
 </div>
@@ -384,6 +392,42 @@ async function loadRagStatus() {
     } catch (error) {
         document.getElementById('figures-list').innerHTML = 
             `<div class="empty-state" style="color: #e74c3c;">Error: ${error.message}</div>`;
+    } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+    }
+}
+
+async function rebuildBm25() {
+    const btn = document.getElementById('btn-rebuild-bm25');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<span class="loading-spinner"></span> Rebuilding...';
+    btn.disabled = true;
+    
+    const resultEl = document.getElementById('bm25-result');
+    resultEl.innerHTML = '';
+    
+    try {
+        const response = await fetch('/admin/api/debug/rebuild-bm25', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': csrfToken
+            }
+        });
+        const data = await response.json();
+        
+        if (data.error) {
+            throw new Error(data.error);
+        }
+        
+        let details = data.results.map(r => 
+            `${r.name}: ${r.success ? '✓' : '✗' + (r.error ? ' ' + r.error : ' no documents')}`
+        ).join('<br>');
+        
+        resultEl.innerHTML = `<span style="color: #27ae60;">✓ Rebuilt ${data.rebuilt}/${data.total} indexes</span><br><small style="color: #666;">${details}</small>`;
+    } catch (error) {
+        resultEl.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span>`;
     } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;

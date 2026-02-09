@@ -4,11 +4,11 @@ Handles CRUD operations for historical figures and their document collections.
 Provides async wrappers for ChromaDB operations using asyncio.to_thread.
 """
 
-import os
 import json
 import shutil
 import pickle
 import asyncio
+import uuid
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import logging
@@ -20,7 +20,7 @@ from chromadb.config import Settings
 import re
 import numpy as np
 from rank_bm25 import BM25Okapi
-from config import MIN_COSINE_SIMILARITY, SEARCH_MULTIPLIER, MAX_SEARCH_RESULTS, RRF_K
+from config import MIN_COSINE_SIMILARITY, SEARCH_MULTIPLIER, MAX_SEARCH_RESULTS, RRF_K, FIGURES_DIR, CHROMA_DB_PATH
 from text_processor import text_processor
 from search_utils import reciprocal_rank_fusion
 from embedding_provider import get_embedding_provider
@@ -50,86 +50,12 @@ class FigureManager:
         self.bm25_dir = Path(db_path) / "bm25_indexes"
         self.bm25_dir.mkdir(exist_ok=True)
         
-        # Persistent counter file for document IDs (avoids collision on delete)
-        self.counter_file = Path(db_path) / "chunk_counter.json"
-        self._doc_counters = self._load_counters()
-        
         logger.info("Figure manager initialized")
     
-    def _load_counters(self) -> Dict[str, int]:
-        """Load document counters from persistent storage, initializing from ChromaDB if needed."""
-        counters = {}
-        
-        # Try to load existing counters
-        if self.counter_file.exists():
-            try:
-                with open(self.counter_file, 'r') as f:
-                    data = json.load(f)
-                    # Handle old format {"next_chunk_id": N} vs new format {"figure_id": N, ...}
-                    if isinstance(data, dict) and "next_chunk_id" not in data:
-                        counters = data
-            except (json.JSONDecodeError, IOError) as e:
-                logger.warning(f"Error loading counters: {e}")
-        
-        # Scan ChromaDB to ensure counters are at least as high as existing doc IDs
-        try:
-            collections = self.client.list_collections()
-            for collection in collections:
-                if collection.name.startswith("figure_"):
-                    figure_id = collection.name[7:]  # Remove "figure_" prefix
-                    max_id = self._get_max_doc_id_from_collection(collection)
-                    if max_id is not None:
-                        # Set counter to max+1 to avoid collisions
-                        current = counters.get(figure_id, 0)
-                        if max_id >= current:
-                            counters[figure_id] = max_id + 1
-                            logger.info(f"Initialized counter for {figure_id}: {max_id + 1}")
-        except Exception as e:
-            logger.warning(f"Error scanning collections for counters: {e}")
-        
-        return counters
-    
-    def _get_max_doc_id_from_collection(self, collection) -> Optional[int]:
-        """Get the maximum numeric ID suffix from a collection's documents."""
-        try:
-            if collection.count() == 0:
-                return None
-            
-            # Get all document IDs
-            results = collection.get(include=[])
-            if not results["ids"]:
-                return None
-            
-            max_id = -1
-            for doc_id in results["ids"]:
-                # Parse IDs like "zhenghe_123" to extract 123
-                parts = doc_id.rsplit("_", 1)
-                if len(parts) == 2:
-                    try:
-                        num = int(parts[1])
-                        max_id = max(max_id, num)
-                    except ValueError:
-                        continue
-            
-            return max_id if max_id >= 0 else None
-        except Exception as e:
-            logger.warning(f"Error getting max doc ID from {collection.name}: {e}")
-            return None
-    
-    def _save_counters(self):
-        """Save document counters to persistent storage."""
-        try:
-            with open(self.counter_file, 'w') as f:
-                json.dump(self._doc_counters, f)
-        except IOError as e:
-            logger.error(f"Error saving counters: {e}")
-    
-    def _get_next_doc_id(self, figure_id: str) -> str:
-        """Get next document ID for a figure (monotonically increasing)."""
-        current = self._doc_counters.get(figure_id, 0)
-        self._doc_counters[figure_id] = current + 1
-        self._save_counters()
-        return f"{figure_id}_{current}"
+    @staticmethod
+    def _generate_doc_id(figure_id: str) -> str:
+        """Generate a unique document ID using UUID."""
+        return f"{figure_id}_{uuid.uuid4().hex[:12]}"
     
     def _get_bm25_paths(self, figure_id: str) -> tuple:
         """Get BM25 file paths for a figure."""
@@ -202,6 +128,10 @@ class FigureManager:
             logger.warning(f"Error removing BM25 files for figure {figure_id}: {e}")
             
         logger.debug(f"Invalidated BM25 cache for figure {figure_id}")
+    
+    async def invalidate_bm25_cache_async(self, figure_id: str):
+        """Async wrapper for _invalidate_bm25_cache."""
+        await asyncio.to_thread(self._invalidate_bm25_cache, figure_id)
     
     def preload_bm25_index(self, figure_id: str) -> bool:
         """Preload BM25 index for a figure from disk or build from ChromaDB."""
@@ -413,19 +343,36 @@ class FigureManager:
         return await asyncio.to_thread(self.update_figure_metadata, figure_id, updates)
     
     def delete_figure(self, figure_id: str) -> bool:
-        """Delete a figure and all its data."""
+        """Delete a figure and all its data: collection, files, BM25 cache, and image."""
         try:
             figure_path = self.figures_dir / figure_id
             if not figure_path.exists():
                 logger.error(f"Figure {figure_id} not found")
                 return False
             
+            # Delete ChromaDB collection
             collection_name = f"figure_{figure_id}"
             try:
                 self.client.delete_collection(collection_name)
             except Exception as e:
                 logger.warning(f"Error deleting collection {collection_name}: {e}")
             
+            # Invalidate BM25 cache and remove pickle files
+            self._invalidate_bm25_cache(figure_id)
+            
+            # Remove figure image if it exists
+            try:
+                figure_images_dir = self.figures_dir.parent / "static" / "figure_images"
+                if figure_images_dir.exists():
+                    for img_file in figure_images_dir.iterdir():
+                        if img_file.stem == figure_id:
+                            img_file.unlink()
+                            logger.debug(f"Removed figure image: {img_file}")
+                            break
+            except Exception as e:
+                logger.warning(f"Error removing figure image for {figure_id}: {e}")
+            
+            # Remove figure directory (metadata.json, etc.)
             shutil.rmtree(figure_path)
             
             logger.info(f"Deleted figure: {figure_id}")
@@ -450,7 +397,12 @@ class FigureManager:
             return None
     
     def add_document_to_figure(self, figure_id: str, text: str, metadata: Dict[str, Any]) -> Optional[str]:
-        """Add a document chunk to a figure's collection with hybrid search support."""
+        """Add a document chunk to a figure's collection.
+        
+        Stores the chunk text, embedding, and processed tokens in ChromaDB.
+        BM25 index is NOT rebuilt here — call invalidate_bm25_cache() after
+        the entire upload batch completes, and BM25 will rebuild lazily on next search.
+        """
         try:
             collection = self.get_figure_collection(figure_id)
             if not collection:
@@ -459,7 +411,7 @@ class FigureManager:
             
             embedding = self.embedding_provider.encode_document_sync(text)
             
-            doc_id = self._get_next_doc_id(figure_id)
+            doc_id = self._generate_doc_id(figure_id)
             
             processed_tokens = text_processor.process_text(text)
             
@@ -476,23 +428,6 @@ class FigureManager:
                 metadatas=[metadata_with_id],
                 ids=[doc_id]
             )
-            
-            if figure_id in self.bm25_cache and processed_tokens:
-                try:
-                    self.bm25_documents_cache.setdefault(figure_id, []).append(processed_tokens)
-                    self.bm25_metadata_cache.setdefault(figure_id, []).append(metadata_with_id)
-                    
-                    self.bm25_cache[figure_id] = BM25Okapi(self.bm25_documents_cache[figure_id])
-                    
-                    self._save_bm25_to_disk(figure_id)
-                    
-                    logger.debug(f"Updated BM25 index for figure {figure_id} with new document")
-                except Exception as e:
-                    logger.warning(f"Error updating BM25 cache, invalidating: {e}")
-                    self._invalidate_bm25_cache(figure_id)
-            else:
-                if figure_id in self.bm25_cache:
-                    self._invalidate_bm25_cache(figure_id)
             
             logger.debug(f"Added document to figure {figure_id}: {doc_id}")
             return doc_id
@@ -533,13 +468,11 @@ class FigureManager:
                                min_cosine_similarity: float = MIN_COSINE_SIMILARITY) -> List[Dict[str, Any]]:
         """Search for similar documents in a figure's collection using hybrid search."""
         try:
-            search_query = query
-            
             self.preload_bm25_index(figure_id)
             
             extended_n_results = min(n_results * SEARCH_MULTIPLIER, MAX_SEARCH_RESULTS)
             
-            vector_results = self._search_figure_vector(figure_id, search_query, extended_n_results)
+            vector_results = self._search_figure_vector(figure_id, query, extended_n_results)
             
             filtered_vector_results = [
                 r for r in vector_results 
@@ -553,7 +486,7 @@ class FigureManager:
                 logger.warning(f"No results with sufficient cosine similarity found for figure {figure_id}")
                 return []
             
-            bm25_results = self._search_figure_bm25(figure_id, search_query, extended_n_results)
+            bm25_results = self._search_figure_bm25(figure_id, query, extended_n_results)
             
             logger.info(f"Figure {figure_id} hybrid search: vector={len(filtered_vector_results)}, bm25={len(bm25_results)} results")
             
@@ -744,7 +677,7 @@ class FigureManager:
             
             self.client.create_collection(
                 name=collection_name,
-                metadata={"hnsw:space": "cosine"}
+                metadata={"hnsw:space": "cosine", "figure_id": figure_id}
             )
             
             self._invalidate_bm25_cache(figure_id)
@@ -799,5 +732,5 @@ def get_figure_manager() -> FigureManager:
     """Get or create global figure manager instance."""
     global figure_manager
     if figure_manager is None:
-        figure_manager = FigureManager()
+        figure_manager = FigureManager(figures_dir=FIGURES_DIR, db_path=CHROMA_DB_PATH)
     return figure_manager

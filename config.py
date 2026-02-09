@@ -63,7 +63,6 @@ EMBEDDING_API_URL = os.environ.get("EMBEDDING_API_URL", "https://api.openai.com/
 EMBEDDING_API_KEY = os.environ.get("EMBEDDING_API_KEY", "")
 
 # Document chunking
-CHUNK_SIZE_WORDS = int(os.environ.get("CHUNK_SIZE_WORDS", "250"))
 MAX_CHUNK_CHARS = int(os.environ.get("MAX_CHUNK_CHARS", "1000"))
 OVERLAP_PERCENT = int(os.environ.get("OVERLAP_PERCENT", "20"))
 
@@ -108,7 +107,7 @@ def validate_config() -> list[str]:
     elif EMBEDDING_SOURCE == "local":
         if not LOCAL_EMBEDDING_MODEL:
             errors.append("LOCAL_EMBEDDING_MODEL is required when EMBEDDING_SOURCE=local")
-    elif EMBEDDING_SOURCE not in ("local", "external"):
+    else:
         errors.append(f"EMBEDDING_SOURCE must be 'local' or 'external', got: {EMBEDDING_SOURCE}")
     
     # Validate query augmentation configuration (only warn, not error)

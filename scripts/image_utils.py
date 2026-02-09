@@ -22,8 +22,13 @@ async def serve_figure_image(filename: str):
         FastAPI FileResponse with image or 404 error
     """
     try:
-        figure_images_path = os.path.abspath(FIGURE_IMAGES_DIR)
-        file_path = os.path.join(figure_images_path, filename)
+        figure_images_path = os.path.realpath(FIGURE_IMAGES_DIR)
+        file_path = os.path.realpath(os.path.join(figure_images_path, filename))
+        
+        # Prevent path traversal attacks
+        if not file_path.startswith(figure_images_path + os.sep) and file_path != figure_images_path:
+            logger.warning(f"Path traversal attempt blocked: {filename}")
+            return JSONResponse(status_code=400, content={'error': 'Invalid filename'})
         
         if not os.path.exists(file_path):
             return JSONResponse(status_code=404, content={'error': 'Image not found'})

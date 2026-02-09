@@ -481,10 +481,6 @@ ChatApp.prototype.updateThinkingVisibility = function() {
     });
 };
 
-ChatApp.prototype.updateDocumentsVisibility = function() {
-    // Documents panel visibility is automatic based on retrieved sources
-};
-
 ChatApp.prototype.initializeToggles = function() {
     if (this.configRagEnabled && this.ragEnabled) {
         this.ragToggleSwitch.classList.add('active');
@@ -732,8 +728,9 @@ ChatApp.prototype.addSources = function(sources) {
         filename.style.fontWeight = '600';
         filename.style.color = '#7dd3fc';
         filename.style.marginBottom = '8px';
-        const docId = source.document_id || source.doc_id || source.chunk_id || 'unknown';
-        filename.textContent = `${docId}: ${source.filename}`;
+        const chunkNum = (source.chunk_index != null ? source.chunk_index + 1 : '?');
+        const totalChunks = source.total_chunks || '?';
+        filename.textContent = `${source.filename} - ${chunkNum}/${totalChunks}`;
         
         const preview = document.createElement('div');
         preview.style.color = '#a8c5d9';
@@ -774,23 +771,15 @@ ChatApp.prototype.clearDocuments = function() {
 
 // Modals
 ChatApp.prototype.showSourceModal = function(source) {
-    const chunkId = source.document_id || source.chunk_id || 'unknown';
-    this.sourceModalTitle.textContent = `${source.filename} - Chunk ${chunkId}`;
+    const chunkNum = (source.chunk_index != null ? source.chunk_index + 1 : '?');
+    const totalChunks = source.total_chunks || '?';
+    this.sourceModalTitle.textContent = `${source.filename} - ${chunkNum}/${totalChunks}`;
     this.sourceModalText.textContent = source.full_text || source.text;
     this.sourceModal.style.display = 'block';
 };
 
 ChatApp.prototype.closeSourceModal = function() {
     this.sourceModal.style.display = 'none';
-};
-
-ChatApp.prototype.showDocumentModal = function(docId) {
-    const source = this.currentSources[docId];
-    if (source) {
-        this.showSourceModal(source);
-    } else {
-        console.warn(`Document ${docId} not found in current sources`);
-    }
 };
 
 // Error/Warning Display

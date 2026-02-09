@@ -159,15 +159,7 @@
                             <input type="number" id="max_chunk_chars" name="max_chunk_chars" 
                                    value="1000" min="500" max="3000" step="100"
                                    style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
-                            <small style="color: #666; font-size: 0.8rem;">Primary chunking (500-3000 chars, default: 1000)</small>
-                        </div>
-                        
-                        <div style="margin-bottom: 1rem;">
-                            <label for="max_length" style="display: block; margin-bottom: 0.5rem; font-weight: 500; color: #495057;">Max Words per Chunk</label>
-                            <input type="number" id="max_length" name="max_length" 
-                                   value="250" min="50" max="1000" step="50"
-                                   style="width: 100%; padding: 0.5rem; border: 1px solid #ced4da; border-radius: 4px;">
-                            <small style="color: #666; font-size: 0.8rem;">Secondary parameter (50-1000 words, default: 250)</small>
+                            <small style="color: #666; font-size: 0.8rem;">500-3000 chars, default: 1000. Roughly 500-700 words in Chinese or 100-150 words in English per 1000 characters.</small>
                         </div>
                         
                         <div>
@@ -565,7 +557,6 @@
             formData.append('files', files[i]);
         }
         formData.append('max_chunk_chars', document.getElementById('max_chunk_chars').value);
-        formData.append('max_length', document.getElementById('max_length').value);
         formData.append('overlap_percent', document.getElementById('overlap_percent').value);
         
         try {

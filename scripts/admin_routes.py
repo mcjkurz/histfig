@@ -306,6 +306,7 @@ async def figure_detail(request: Request, figure_id: str):
             {"request": request, "figure": metadata, "stats": stats, "csrf_token": csrf_token}
         )
     except Exception as e:
+        logger.error(f"Error loading figure detail {figure_id}: {e}")
         return RedirectResponse(url="/admin/", status_code=303)
 
 
@@ -329,6 +330,7 @@ async def edit_figure(request: Request, figure_id: str):
             {"request": request, "figure": metadata, "stats": stats, "csrf_token": csrf_token}
         )
     except Exception as e:
+        logger.error(f"Error loading edit form for figure {figure_id}: {e}")
         return RedirectResponse(url="/admin/", status_code=303)
 
 
@@ -420,6 +422,7 @@ async def update_figure(
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
     
     except Exception as e:
+        logger.error(f"Error updating figure {figure_id}: {e}")
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
 
 
@@ -434,13 +437,15 @@ async def upload_documents(
     request: Request,
     figure_id: str,
     files: List[UploadFile] = File(...),
-    max_length: int = Form(250),
     max_chunk_chars: int = Form(1000),
     overlap_percent: int = Form(OVERLAP_PERCENT)
 ):
     """Upload documents to a figure."""
     if not await check_login(request):
         raise HTTPException(status_code=401, detail="Login required")
+    
+    # Validate CSRF token
+    await require_csrf(request)
     
     try:
         figure_manager = get_figure_manager()
@@ -453,12 +458,10 @@ async def upload_documents(
             return RedirectResponse(url="/admin/", status_code=303)
         
         # Validate chunking settings
-        max_length = max(50, min(1000, max_length))
         max_chunk_chars = max(500, min(3000, max_chunk_chars))
         overlap_percent = max(0, min(50, overlap_percent))
         
         document_processor = DocumentProcessor(
-            chunk_size=max_length,
             max_chunk_chars=max_chunk_chars,
             overlap_percent=overlap_percent
         )
@@ -546,6 +549,7 @@ async def upload_documents(
         
         if successful_uploads > 0:
             await figure_manager.sync_document_count_async(figure_id)
+            await figure_manager.invalidate_bm25_cache_async(figure_id)
         
         if is_ajax:
             return JSONResponse(content={
@@ -569,13 +573,15 @@ async def upload_documents_stream(
     request: Request,
     figure_id: str,
     files: List[UploadFile] = File(...),
-    max_length: int = Form(250),
     max_chunk_chars: int = Form(1000),
     overlap_percent: int = Form(OVERLAP_PERCENT)
 ):
     """Upload documents with streaming progress updates."""
     if not await check_login(request):
         raise HTTPException(status_code=401, detail="Login required")
+    
+    # Validate CSRF token
+    await require_csrf(request)
     
     # Read files before generator
     files_data = []
@@ -593,7 +599,6 @@ async def upload_documents_stream(
             })
     
     # Validate chunking settings
-    max_length = max(50, min(1000, max_length))
     max_chunk_chars = max(500, min(3000, max_chunk_chars))
     overlap_percent = max(0, min(50, overlap_percent))
     
@@ -607,7 +612,6 @@ async def upload_documents_stream(
                 return
             
             document_processor = DocumentProcessor(
-                chunk_size=max_length,
                 max_chunk_chars=max_chunk_chars,
                 overlap_percent=overlap_percent
             )
@@ -677,6 +681,7 @@ async def upload_documents_stream(
             
             if successful_uploads > 0:
                 await figure_manager.sync_document_count_async(figure_id)
+                await figure_manager.invalidate_bm25_cache_async(figure_id)
             
             yield f"data: {json.dumps({'event': 'upload_complete', 'successful_uploads': successful_uploads, 'total_files': total_files})}\n\n"
             
@@ -709,6 +714,7 @@ async def clean_figure_documents(request: Request, figure_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error cleaning documents for figure {figure_id}: {e}")
         return RedirectResponse(url=f"/admin/figure/{figure_id}", status_code=303)
 
 
@@ -735,6 +741,7 @@ async def delete_figure(request: Request, figure_id: str):
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"Error deleting figure {figure_id}: {e}")
         return RedirectResponse(url="/admin/", status_code=303)
 
 
@@ -746,7 +753,8 @@ async def api_figure_stats(figure_id: str):
         stats = await figure_manager.get_figure_stats_async(figure_id)
         return stats
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error getting stats for figure {figure_id}: {e}")
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 # ============== LOGS MANAGEMENT ==============
@@ -856,7 +864,7 @@ async def api_log_content(request: Request, filename: str, lines: Optional[int] 
         }
     except Exception as e:
         logger.error(f"Error reading log file {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @admin_router.get("/api/logs/{filename}/download")
@@ -903,7 +911,7 @@ async def delete_log(request: Request, filename: str):
         return {'success': True, 'message': f'Deleted {safe_filename}'}
     except Exception as e:
         logger.error(f"Error deleting log file {filename}: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 # ============== SYSTEM PAGE ==============
@@ -951,7 +959,8 @@ async def debug_sessions(request: Request):
             'sessions': sessions_info
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in debug sessions: {e}")
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @admin_router.post("/api/debug/sessions/cleanup")
@@ -971,7 +980,50 @@ async def cleanup_sessions_endpoint(request: Request):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in session cleanup: {e}")
+        return JSONResponse(status_code=500, content={'error': str(e)})
+
+
+@admin_router.post("/api/debug/rebuild-bm25")
+async def rebuild_bm25(request: Request):
+    """Rebuild BM25 indexes for all figures."""
+    if not await check_login(request):
+        raise HTTPException(status_code=401, detail="Login required")
+    
+    await require_csrf(request)
+    
+    try:
+        figure_manager = get_figure_manager()
+        figures = await figure_manager.get_figure_list_async()
+        
+        results = []
+        for fig in figures:
+            fig_id = fig.get('figure_id')
+            try:
+                await figure_manager.invalidate_bm25_cache_async(fig_id)
+                success = await asyncio.to_thread(figure_manager._build_bm25_from_chromadb, fig_id)
+                results.append({
+                    'figure_id': fig_id,
+                    'name': fig.get('name'),
+                    'success': success
+                })
+            except Exception as e:
+                results.append({
+                    'figure_id': fig_id,
+                    'name': fig.get('name'),
+                    'success': False,
+                    'error': str(e)
+                })
+        
+        rebuilt = sum(1 for r in results if r['success'])
+        return {
+            'rebuilt': rebuilt,
+            'total': len(results),
+            'results': results
+        }
+    except Exception as e:
+        logger.error(f"Error rebuilding BM25 indexes: {e}")
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @admin_router.get("/api/debug/rag")
@@ -1006,4 +1058,5 @@ async def debug_rag(request: Request):
         
         return debug_info
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in debug RAG: {e}")
+        return JSONResponse(status_code=500, content={'error': str(e)})

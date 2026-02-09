@@ -116,6 +116,7 @@ def format_search_result_for_response(
         'rrf_score': result.get('rrf_score', 0),
         'top_matching_words': result.get('top_matching_words', []),
         'chunk_index': result['metadata'].get('chunk_index', 0),
+        'total_chunks': result['metadata'].get('total_chunks', 1),
     }
     
     if figure_id:

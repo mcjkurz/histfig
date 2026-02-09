@@ -145,9 +145,7 @@ class FigureCLI:
             print(f"Figure '{figure_id}' not found.")
             return False
         
-        # Get figure-specific chunk size
-        max_length = figure_metadata.get('max_length', 250)
-        document_processor = DocumentProcessor(chunk_size=max_length)
+        document_processor = DocumentProcessor()
         
         successful_uploads = 0
         total_files = len(file_paths)
@@ -197,6 +195,10 @@ class FigureCLI:
                 continue
         
         print(f"\nUpload Summary: {successful_uploads}/{total_files} files processed successfully.")
+        
+        if successful_uploads > 0:
+            self.figure_manager._invalidate_bm25_cache(figure_id)
+            print(f"BM25 cache invalidated for {figure_id} (will rebuild on next search)")
         
         # Show updated stats
         stats = self.figure_manager.get_figure_stats(figure_id)

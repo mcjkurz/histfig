@@ -16,8 +16,8 @@ import datetime
 import asyncio
 from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
-from fastapi import APIRouter, Request, HTTPException, Depends
-from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response, RedirectResponse
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, FileResponse, Response
 from figure_manager import get_figure_manager
 from config import (
     DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES,
@@ -386,7 +386,7 @@ async def chat(request: Request, chat_request: ChatRequest):
     session_id = get_session_id(request)
     is_allowed, rate_limit_msg = await check_rate_limit(session_id)
     if not is_allowed:
-        raise HTTPException(status_code=429, detail=rate_limit_msg)
+        return JSONResponse(status_code=429, content={'error': rate_limit_msg})
     
     try:
         message = chat_request.message
@@ -487,8 +487,6 @@ async def chat(request: Request, chat_request: ChatRequest):
         all_conversation_messages = conversation_messages + [{"role": "user", "content": user_content}]
         messages = truncate_messages_preserve_system(all_conversation_messages, system_message)
         
-        session_id = get_session_id(request)
-        
         async def generate():
             try:
                 if external_config:
@@ -565,7 +563,7 @@ async def chat(request: Request, chat_request: ChatRequest):
         
     except Exception as e:
         logger.error(f"Error in chat endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.get("/api/health")
@@ -610,12 +608,10 @@ async def rag_stats(request: Request):
             stats = await figure_manager.get_figure_stats_async(current_figure)
             return stats
         else:
-            raise HTTPException(status_code=404, detail="No figure selected")
-    except HTTPException:
-        raise
+            return JSONResponse(status_code=404, content={'error': 'No figure selected'})
     except Exception as e:
         logger.error(f"Error getting RAG stats: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.get("/api/figures")
@@ -627,7 +623,7 @@ async def get_figures():
         return figures
     except Exception as e:
         logger.error(f"Error getting figures: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.get("/api/figure/{figure_id}")
@@ -637,15 +633,13 @@ async def get_figure_details(figure_id: str):
         figure_manager = get_figure_manager()
         metadata = await figure_manager.get_figure_metadata_async(figure_id)
         if not metadata:
-            raise HTTPException(status_code=404, detail="Figure not found")
+            return JSONResponse(status_code=404, content={'error': 'Figure not found'})
         
         stats = await figure_manager.get_figure_stats_async(figure_id)
         return {**metadata, **stats}
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error getting figure details: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.post("/api/figure/select")
@@ -659,7 +653,7 @@ async def select_figure(request: Request, data: SelectFigureRequest):
             figure_manager = get_figure_manager()
             metadata = await figure_manager.get_figure_metadata_async(figure_id)
             if not metadata:
-                raise HTTPException(status_code=404, detail="Figure not found")
+                return JSONResponse(status_code=404, content={'error': 'Figure not found'})
             
             async with session_lock:
                 user_session = await _get_or_create_session(session_id)
@@ -682,11 +676,9 @@ async def select_figure(request: Request, data: SelectFigureRequest):
                 'current_figure': None,
                 'figure_name': None
             }
-    except HTTPException:
-        raise
     except Exception as e:
         logger.error(f"Error selecting figure: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.get("/api/figure/current")
@@ -704,7 +696,7 @@ async def get_current_figure(request: Request):
         return {'figure_id': None, 'figure_name': None}
     except Exception as e:
         logger.error(f"Error getting current figure: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.post("/api/markdown")
@@ -724,7 +716,7 @@ async def convert_markdown(data: MarkdownRequest):
         return {'html': html_content}
     except Exception as e:
         logger.error(f"Error converting markdown: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})
 
 
 @chat_router.get("/figure_images/{filename}", name="chat.figure_image")
@@ -748,4 +740,4 @@ async def export_conversation_pdf(data: PDFExportRequest):
         
     except Exception as e:
         logger.error(f"Error generating PDF: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(status_code=500, content={'error': str(e)})

@@ -327,7 +327,6 @@ ChatApp.prototype.sendMessage = async function(message) {
         
         // Reset streaming state
         this.currentResponseElement = null;
-        this.currentResponseContent = '';
         this.paragraphBuffer = '';
         this.responseContentElement = null;
         this.isInThinking = false;

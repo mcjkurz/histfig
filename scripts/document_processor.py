@@ -3,7 +3,6 @@ Document processing utilities for extracting text from PDFs, text files, and DOC
 and chunking them for vector storage.
 """
 
-import os
 import re
 from typing import List, Dict, Any
 import PyPDF2
@@ -12,26 +11,21 @@ from io import BytesIO
 
 logger = logging.getLogger('histfig')
 from docx import Document
-from config import CHUNK_SIZE_WORDS, MAX_CHUNK_CHARS, OVERLAP_PERCENT
+from config import MAX_CHUNK_CHARS, OVERLAP_PERCENT
 
 class DocumentProcessor:
-    def __init__(self, chunk_size: int = None, max_chunk_chars: int = None,
-                 overlap_percent: int = None):
+    def __init__(self, max_chunk_chars: int = None, overlap_percent: int = None):
         """
-        Initialize document processor with character-based and word-based chunking.
+        Initialize document processor with character-based chunking.
         
         Args:
-            chunk_size: Words per chunk (defaults to config CHUNK_SIZE)
             max_chunk_chars: Characters per chunk (defaults to config MAX_CHUNK_CHARS)
             overlap_percent: Overlap percentage 0-50% (defaults to config OVERLAP_PERCENT)
         """
-        # Use config defaults if not provided
-        self.chunk_size = chunk_size if chunk_size is not None else CHUNK_SIZE_WORDS
         self.max_chunk_chars = max_chunk_chars if max_chunk_chars is not None else MAX_CHUNK_CHARS
         self.overlap_percent = max(0, min(50, overlap_percent if overlap_percent is not None else OVERLAP_PERCENT))
         
-        # Calculate overlaps from percentage
-        self.chunk_overlap = int(self.chunk_size * self.overlap_percent / 100)
+        # Calculate overlap from percentage
         self.char_overlap = int(self.max_chunk_chars * self.overlap_percent / 100)
     
     def extract_text_from_pdf(self, file_content: bytes) -> str:

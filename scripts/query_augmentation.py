@@ -45,7 +45,7 @@ User query: {query}
 
 Augmented query:"""
 
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=12.0) as client:
             response = await client.post(
                 f"{QUERY_AUGMENTATION_API_URL}/chat/completions",
                 headers={

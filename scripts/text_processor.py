@@ -233,18 +233,5 @@ class TextProcessor:
         """
         return self.process_text(query, ngram_range=ngram_range)
     
-    def filter_stopwords(self, tokens: List[str]) -> List[str]:
-        """
-        Filter stopwords from a list of unigram tokens.
-        Note: N-grams are filtered at generation time in generate_ngrams().
-        
-        Args:
-            tokens: List of tokens to filter
-            
-        Returns:
-            List of tokens with stopwords removed
-        """
-        return [token for token in tokens if token.lower() not in self.stopwords]
-
 # Global instance
 text_processor = TextProcessor()
