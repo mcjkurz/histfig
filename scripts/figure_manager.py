@@ -205,11 +205,11 @@ class FigureManager:
                      personality_prompt: str = "", metadata: Dict[str, Any] = None) -> bool:
         """Create a new historical figure with validation."""
         try:
-            if not re.match(r'^[a-zA-Z]+$', figure_id):
+            if not re.match(r'^[a-zA-Z_-]+$', figure_id):
                 logger.error(f"Invalid figure_id format: {figure_id}")
                 return False
             
-            if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', name):
+            if re.search(r'[#$%^&*+=\\|`~@]', name):
                 logger.error(f"Invalid name format: {name}")
                 return False
             
@@ -315,7 +315,7 @@ class FigureManager:
                 return False
             
             if 'name' in updates and updates['name']:
-                if re.search(r'[0-9!@#$%^&*()_+=\[\]{};:\'",.<>?/\\|`~]', updates['name']):
+                if re.search(r'[#$%^&*+=\\|`~@]', updates['name']):
                     logger.error(f"Invalid name format: {updates['name']}")
                     return False
             
