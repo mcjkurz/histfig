@@ -188,29 +188,22 @@ ChatApp.prototype.setupMobileKeyboardHandling = function() {
     // Only apply on touch devices
     if (!('ontouchstart' in window)) return;
 
-    const inputContainer = document.querySelector('.chat-input-container');
+    const chatContainer = document.querySelector('.chat-container');
+    const chatHeader = document.querySelector('.chat-header');
     const chatMessages = document.querySelector('.chat-messages');
-    if (!inputContainer) return;
+    const inputContainer = document.querySelector('.chat-input-container');
+    
+    if (!chatContainer || !chatHeader || !chatMessages || !inputContainer) return;
 
     let isKeyboardOpen = false;
-    let originalHeight = window.innerHeight;
-    
-    // Store original styles to restore later
-    const originalInputContainerStyles = {
-        position: inputContainer.style.position,
-        bottom: inputContainer.style.bottom,
-        left: inputContainer.style.left,
-        right: inputContainer.style.right
-    };
 
-    const updateInputPosition = () => {
+    const updateLayout = () => {
         if (!window.visualViewport) return;
         
         const viewport = window.visualViewport;
         const isInputFocused = document.activeElement === this.messageInput;
         
         // Calculate the difference between layout viewport and visual viewport
-        // This tells us if keyboard is likely open
         const keyboardHeight = window.innerHeight - viewport.height;
         const keyboardThreshold = 150; // Minimum height to consider keyboard open
         
@@ -218,55 +211,56 @@ ChatApp.prototype.setupMobileKeyboardHandling = function() {
             // Keyboard is open
             if (!isKeyboardOpen) {
                 isKeyboardOpen = true;
-                inputContainer.classList.add('keyboard-open');
+                chatContainer.classList.add('keyboard-open');
             }
             
-            // Position the input container at the bottom of the visual viewport
-            // The visual viewport's offsetTop tells us how much the viewport has scrolled
-            const bottomPosition = window.innerHeight - viewport.height - viewport.offsetTop;
-            inputContainer.style.position = 'fixed';
-            inputContainer.style.bottom = `${Math.max(0, bottomPosition)}px`;
-            inputContainer.style.left = '0';
-            inputContainer.style.right = '0';
+            // Get header height
+            const headerHeight = chatHeader.offsetHeight;
             
-            // Adjust chat messages padding to prevent content being hidden behind fixed input
-            if (chatMessages) {
-                chatMessages.style.paddingBottom = `${inputContainer.offsetHeight + 20}px`;
-            }
+            // Calculate input container bottom position
+            // viewport.offsetTop accounts for any scroll of the visual viewport
+            const inputBottom = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
             
-            // Scroll to keep the input visible
+            // Position header at top
+            chatHeader.style.top = '0';
+            
+            // Position input at bottom of visual viewport
+            inputContainer.style.bottom = `${inputBottom}px`;
+            
+            // Position messages between header and input
+            const inputHeight = inputContainer.offsetHeight;
+            chatMessages.style.top = `${headerHeight}px`;
+            chatMessages.style.bottom = `${inputBottom + inputHeight}px`;
+            
+            // Scroll to bottom of messages to show latest content
             requestAnimationFrame(() => {
-                this.messageInput.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+                chatMessages.scrollTop = chatMessages.scrollHeight;
             });
         } else {
             // Keyboard is closed
             if (isKeyboardOpen) {
                 isKeyboardOpen = false;
-                inputContainer.classList.remove('keyboard-open');
+                chatContainer.classList.remove('keyboard-open');
                 
-                // Restore original styles
-                inputContainer.style.position = originalInputContainerStyles.position || '';
-                inputContainer.style.bottom = originalInputContainerStyles.bottom || '';
-                inputContainer.style.left = originalInputContainerStyles.left || '';
-                inputContainer.style.right = originalInputContainerStyles.right || '';
-                
-                if (chatMessages) {
-                    chatMessages.style.paddingBottom = '';
-                }
+                // Clear inline styles - CSS will handle normal layout
+                chatHeader.style.top = '';
+                chatMessages.style.top = '';
+                chatMessages.style.bottom = '';
+                inputContainer.style.bottom = '';
             }
         }
     };
 
     // Use Visual Viewport API for precise keyboard detection
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', updateInputPosition);
-        window.visualViewport.addEventListener('scroll', updateInputPosition);
+        window.visualViewport.addEventListener('resize', updateLayout);
+        window.visualViewport.addEventListener('scroll', updateLayout);
     }
 
     this.messageInput.addEventListener('focus', () => {
         // Small delay to let the keyboard animation start
-        setTimeout(updateInputPosition, 100);
-        setTimeout(updateInputPosition, 300);
+        setTimeout(updateLayout, 100);
+        setTimeout(updateLayout, 300);
     });
 
     this.messageInput.addEventListener('blur', () => {
@@ -274,17 +268,13 @@ ChatApp.prototype.setupMobileKeyboardHandling = function() {
         setTimeout(() => {
             if (document.activeElement !== this.messageInput) {
                 isKeyboardOpen = false;
-                inputContainer.classList.remove('keyboard-open');
+                chatContainer.classList.remove('keyboard-open');
                 
-                // Restore original styles
-                inputContainer.style.position = originalInputContainerStyles.position || '';
-                inputContainer.style.bottom = originalInputContainerStyles.bottom || '';
-                inputContainer.style.left = originalInputContainerStyles.left || '';
-                inputContainer.style.right = originalInputContainerStyles.right || '';
-                
-                if (chatMessages) {
-                    chatMessages.style.paddingBottom = '';
-                }
+                // Clear inline styles
+                chatHeader.style.top = '';
+                chatMessages.style.top = '';
+                chatMessages.style.bottom = '';
+                inputContainer.style.bottom = '';
             }
         }, 100);
     });

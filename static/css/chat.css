@@ -745,6 +745,39 @@ body {
         flex-direction: column;
         overflow: hidden;
     }
+    
+    /* When keyboard is open, use fixed positioning for all main elements */
+    .chat-container.keyboard-open {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+    }
+    
+    .chat-container.keyboard-open .chat-header {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        z-index: 101;
+    }
+    
+    .chat-container.keyboard-open .chat-messages {
+        position: fixed;
+        left: 0;
+        right: 0;
+        overflow-y: auto;
+        /* Top and bottom will be set by JS based on header height and input position */
+    }
+    
+    .chat-container.keyboard-open .chat-input-container {
+        position: fixed;
+        left: 0;
+        right: 0;
+        z-index: 102;
+        /* Bottom will be set by JS based on visual viewport */
+    }
 
     .control-toggle-btn {
         top: 10px;
@@ -805,8 +838,6 @@ body {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
-        /* Extra padding at bottom to account for input when keyboard is open */
-        padding-bottom: 80px;
     }
 
     .chat-input-container {
@@ -817,15 +848,6 @@ body {
         position: relative;
         z-index: 100;
         padding-bottom: calc(12px + env(safe-area-inset-bottom));
-    }
-    
-    /* When keyboard is open, fix the input to the visual viewport bottom */
-    .chat-input-container.keyboard-open {
-        position: fixed;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        /* The JS will set the actual bottom position based on visualViewport */
     }
 
     .message-content {
