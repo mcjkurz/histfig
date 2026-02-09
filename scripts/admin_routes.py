@@ -817,14 +817,8 @@ def get_log_files(request: Request) -> List[dict]:
 
 @admin_router.get("/logs", response_class=HTMLResponse, name="admin.logs")
 async def logs(request: Request):
-    """Display log files viewer."""
-    if not await check_login(request):
-        return RedirectResponse(url="/admin/login", status_code=303)
-    
-    log_files = get_log_files(request)
-    csrf_token = generate_csrf_token(request)
-    templates = request.app.state.templates
-    return templates.TemplateResponse("admin/logs.html", {"request": request, "log_files": log_files, "csrf_token": csrf_token})
+    """Redirect old logs page to system page."""
+    return RedirectResponse(url="/admin/system", status_code=301)
 
 
 @admin_router.get("/api/logs")
@@ -934,13 +928,18 @@ async def delete_log(request: Request, filename: str):
 
 @admin_router.get("/system", response_class=HTMLResponse, name="admin.system")
 async def system(request: Request):
-    """Display system status and debug tools."""
+    """Display system status, debug tools, and logs."""
     if not await check_login(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     
+    log_files = get_log_files(request)
     csrf_token = generate_csrf_token(request)
     templates = request.app.state.templates
-    return templates.TemplateResponse("admin/system.html", {"request": request, "csrf_token": csrf_token})
+    return templates.TemplateResponse("admin/system.html", {
+        "request": request, 
+        "log_files": log_files,
+        "csrf_token": csrf_token
+    })
 
 
 # ============== DEBUG ENDPOINTS ==============

@@ -8,6 +8,7 @@
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
         gap: 1.5rem;
+        margin-bottom: 1.5rem;
     }
     
     .system-card {
@@ -61,52 +62,8 @@
     .stat-value.warning { color: #f39c12; }
     .stat-value.error { color: #e74c3c; }
     
-    .btn {
-        padding: 0.5rem 1rem;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.85rem;
-        transition: all 0.2s;
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
-    .btn-primary {
-        background: #3498db;
-        color: white;
-    }
-    
-    .btn-primary:hover {
-        background: #2980b9;
-    }
-    
-    .btn-warning {
-        background: #f39c12;
-        color: white;
-    }
-    
-    .btn-warning:hover {
-        background: #d68910;
-    }
-    
-    .btn-success {
-        background: #27ae60;
-        color: white;
-    }
-    
-    .btn-success:hover {
-        background: #229954;
-    }
-    
-    .btn:disabled {
-        opacity: 0.6;
-        cursor: not-allowed;
-    }
-    
     .sessions-list {
-        max-height: 300px;
+        max-height: 200px;
         overflow-y: auto;
         margin-top: 1rem;
     }
@@ -129,7 +86,7 @@
     }
     
     .figure-list {
-        max-height: 300px;
+        max-height: 200px;
         overflow-y: auto;
     }
     
@@ -162,15 +119,267 @@
     .empty-state {
         text-align: center;
         color: #999;
-        padding: 2rem;
+        padding: 1rem;
     }
     
     .refresh-time {
         font-size: 0.75rem;
         color: #999;
     }
+
+    /* Logs Section */
+    .logs-container {
+        display: grid;
+        grid-template-columns: 250px 1fr;
+        gap: 1.5rem;
+        height: 500px;
+    }
+    
+    .log-files-panel {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .log-files-header {
+        padding: 1rem;
+        border-bottom: 1px solid #e9ecef;
+        background: #f8f9fa;
+    }
+    
+    .log-files-header h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: #2c3e50;
+    }
+    
+    .log-files-list {
+        flex: 1;
+        overflow-y: auto;
+    }
+    
+    .log-file-item {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e9ecef;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .log-file-item:hover {
+        background: #f8f9fa;
+    }
+    
+    .log-file-item.active {
+        background: #e3f2fd;
+        border-left: 3px solid #3498db;
+    }
+    
+    .log-file-item.current {
+        position: relative;
+    }
+    
+    .log-file-item.current::after {
+        content: '●';
+        position: absolute;
+        right: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #27ae60;
+        font-size: 0.8rem;
+    }
+    
+    .log-file-name {
+        font-size: 0.8rem;
+        font-weight: 500;
+        color: #2c3e50;
+        word-break: break-all;
+    }
+    
+    .log-file-meta {
+        font-size: 0.7rem;
+        color: #999;
+        margin-top: 0.25rem;
+    }
+    
+    .log-viewer-panel {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    .log-viewer-header {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid #e9ecef;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        background: #f8f9fa;
+    }
+    
+    .log-viewer-title {
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #2c3e50;
+    }
+    
+    .log-controls {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+    
+    .log-controls input,
+    .log-controls select {
+        padding: 0.3rem 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.8rem;
+    }
+    
+    .log-controls input {
+        width: 140px;
+    }
+    
+    .log-controls select {
+        width: 90px;
+    }
+    
+    .log-controls button {
+        padding: 0.3rem 0.6rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+        transition: background 0.2s;
+    }
+    
+    .btn-refresh {
+        background: #3498db;
+        color: white;
+    }
+    
+    .btn-refresh:hover {
+        background: #2980b9;
+    }
+    
+    .btn-download {
+        background: #27ae60;
+        color: white;
+    }
+    
+    .btn-download:hover {
+        background: #229954;
+    }
+    
+    .btn-delete {
+        background: #e74c3c;
+        color: white;
+    }
+    
+    .btn-delete:hover {
+        background: #c0392b;
+    }
+    
+    .log-content-wrapper {
+        flex: 1;
+        overflow: hidden;
+        position: relative;
+    }
+    
+    .log-content {
+        position: absolute;
+        inset: 0;
+        overflow: auto;
+        padding: 1rem;
+        font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
+        font-size: 0.75rem;
+        line-height: 1.4;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+    
+    .log-content .log-line {
+        padding: 1px 0;
+    }
+    
+    .log-content .log-line:hover {
+        background: rgba(255,255,255,0.05);
+    }
+    
+    .log-content .level-INFO { color: #4fc3f7; }
+    .log-content .level-DEBUG { color: #81c784; }
+    .log-content .level-WARNING { color: #ffb74d; }
+    .log-content .level-ERROR { color: #ef5350; }
+    .log-content .level-CRITICAL { color: #ff5252; font-weight: bold; }
+    
+    .log-content .highlight { background: #5c4d1a; color: #ffeb3b; }
+    
+    .log-status {
+        padding: 0.4rem 1rem;
+        background: #2c3e50;
+        color: #bdc3c7;
+        font-size: 0.7rem;
+        display: flex;
+        justify-content: space-between;
+        border-top: 1px solid #34495e;
+    }
+    
+    .logs-empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #999;
+        text-align: center;
+        padding: 2rem;
+    }
+    
+    .loading {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: #999;
+    }
+    
+    .spinner {
+        width: 32px;
+        height: 32px;
+        border: 3px solid #e9ecef;
+        border-top-color: #3498db;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @media (max-width: 900px) {
+        .logs-container {
+            grid-template-columns: 1fr;
+            height: auto;
+        }
+        
+        .log-files-panel {
+            max-height: 150px;
+        }
+        
+        .log-viewer-panel {
+            min-height: 300px;
+        }
+    }
 </style>
 
+<!-- System Status Section -->
 <div class="card" style="margin-bottom: 1.5rem;">
     <div class="card-header">
         <h2>System Status</h2>
@@ -182,7 +391,7 @@
     <!-- Sessions Panel -->
     <div class="system-card">
         <div class="system-card-header">
-            <h3>💬 Active Sessions</h3>
+            <h3>Active Sessions</h3>
             <button class="btn btn-primary" onclick="loadSessions()" id="btn-refresh-sessions">
                 ↻ Refresh
             </button>
@@ -205,7 +414,7 @@
             
             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
                 <button class="btn btn-warning" onclick="cleanupSessions()" id="btn-cleanup">
-                    🧹 Cleanup Expired Sessions
+                    Cleanup Expired
                 </button>
                 <div id="cleanup-result" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
             </div>
@@ -215,7 +424,7 @@
     <!-- RAG Status Panel -->
     <div class="system-card">
         <div class="system-card-header">
-            <h3>📚 RAG System Status</h3>
+            <h3>RAG System</h3>
             <button class="btn btn-primary" onclick="loadRagStatus()" id="btn-refresh-rag">
                 ↻ Refresh
             </button>
@@ -242,11 +451,83 @@
             
             <div style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e9ecef;">
                 <button class="btn btn-warning" onclick="rebuildBm25()" id="btn-rebuild-bm25">
-                    🔄 Rebuild BM25 Indexes
+                    Rebuild BM25 Indexes
                 </button>
-                <small style="display: block; margin-top: 0.4rem; color: #999;">Rebuilds keyword search indexes for all figures.</small>
                 <div id="bm25-result" style="margin-top: 0.5rem; font-size: 0.85rem;"></div>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Server Logs Section -->
+<div class="card" style="margin-bottom: 1rem;">
+    <div class="card-header">
+        <h2>Server Logs</h2>
+        <span style="color: #666; font-size: 0.9rem;">
+            {{ log_files|length }} log file{% if log_files|length != 1 %}s{% endif %}
+        </span>
+    </div>
+</div>
+
+<div class="logs-container">
+    <div class="log-files-panel">
+        <div class="log-files-header">
+            <h3>Log Files</h3>
+        </div>
+        <div class="log-files-list" id="log-files-list">
+            {% if log_files %}
+                {% for log in log_files %}
+                <div class="log-file-item {% if log.is_current %}current{% endif %}" 
+                     data-filename="{{ log.filename }}"
+                     onclick="loadLogFile('{{ log.filename }}')">
+                    <div class="log-file-name">{{ log.filename }}</div>
+                    <div class="log-file-meta">
+                        {{ log.size_human }} • {{ log.created.strftime('%b %d, %H:%M') }}
+                        {% if log.is_current %}<span style="color: #27ae60;"> (active)</span>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="logs-empty-state">
+                    <p>No log files found</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <div class="log-viewer-panel">
+        <div class="log-viewer-header">
+            <span class="log-viewer-title" id="current-log-title">Select a log file</span>
+            <div class="log-controls">
+                <input type="text" id="search-input" placeholder="Search..." oninput="filterLogs()">
+                <select id="level-filter" onchange="filterLogs()">
+                    <option value="">All</option>
+                    <option value="DEBUG">DEBUG</option>
+                    <option value="INFO">INFO</option>
+                    <option value="WARNING">WARN</option>
+                    <option value="ERROR">ERROR</option>
+                </select>
+                <select id="lines-limit" onchange="loadCurrentLog()">
+                    <option value="100">100</option>
+                    <option value="500">500</option>
+                    <option value="1000">1000</option>
+                    <option value="">All</option>
+                </select>
+                <button class="btn-refresh" onclick="loadCurrentLog()" title="Refresh">↻</button>
+                <button class="btn-download" onclick="downloadCurrentLog()" title="Download" id="btn-download" disabled>↓</button>
+                <button class="btn-delete" onclick="deleteCurrentLog()" title="Delete" id="btn-delete" disabled>✕</button>
+            </div>
+        </div>
+        <div class="log-content-wrapper">
+            <div class="log-content" id="log-content">
+                <div class="logs-empty-state">
+                    <p>Select a log file to view</p>
+                </div>
+            </div>
+        </div>
+        <div class="log-status" id="log-status" style="display: none;">
+            <span id="line-count">0 lines</span>
+            <span id="log-file-info"></span>
         </div>
     </div>
 </div>
@@ -261,33 +542,30 @@ function updateRefreshTime() {
         'Last refresh: ' + new Date().toLocaleTimeString();
 }
 
+// ===== SESSIONS =====
 async function loadSessions() {
     const btn = document.getElementById('btn-refresh-sessions');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<span class="loading-spinner"></span> Loading...';
+    btn.innerHTML = '<span class="loading-spinner"></span>';
     btn.disabled = true;
     
     try {
         const response = await fetch('/admin/api/debug/sessions');
         const data = await response.json();
         
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
         
         document.getElementById('active-count').textContent = data.active_sessions;
-        document.getElementById('timeout-hours').textContent = data.timeout_hours + ' hours';
+        document.getElementById('timeout-hours').textContent = data.timeout_hours + 'h';
         
         const listEl = document.getElementById('sessions-list');
         if (data.sessions && data.sessions.length > 0) {
             listEl.innerHTML = data.sessions.map(s => `
                 <div class="session-item">
-                    <span class="session-id">${s.session_id}</span>
+                    <span class="session-id">${s.session_id.substring(0, 12)}...</span>
                     <br>
                     <span style="color: #666;">
-                        Figure: <strong>${s.figure || 'None'}</strong> | 
-                        Messages: ${s.messages} | 
-                        Inactive: ${s.inactive_minutes}m
+                        ${s.figure || 'No figure'} | ${s.messages} msgs | ${s.inactive_minutes}m idle
                     </span>
                 </div>
             `).join('');
@@ -308,7 +586,7 @@ async function loadSessions() {
 async function cleanupSessions() {
     const btn = document.getElementById('btn-cleanup');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<span class="loading-spinner"></span> Cleaning...';
+    btn.innerHTML = '<span class="loading-spinner"></span>';
     btn.disabled = true;
     
     const resultEl = document.getElementById('cleanup-result');
@@ -316,20 +594,13 @@ async function cleanupSessions() {
     try {
         const response = await fetch('/admin/api/debug/sessions/cleanup', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken
-            }
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }
         });
         const data = await response.json();
         
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
         
-        resultEl.innerHTML = `<span style="color: #27ae60;">✓ Cleaned ${data.cleaned} session(s). ${data.remaining} remaining.</span>`;
-        
-        // Refresh sessions list
+        resultEl.innerHTML = `<span style="color: #27ae60;">✓ Cleaned ${data.cleaned}, ${data.remaining} remaining</span>`;
         await loadSessions();
     } catch (error) {
         resultEl.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span>`;
@@ -339,31 +610,28 @@ async function cleanupSessions() {
     }
 }
 
+// ===== RAG STATUS =====
 async function loadRagStatus() {
     const btn = document.getElementById('btn-refresh-rag');
     const originalText = btn.innerHTML;
-    btn.innerHTML = '<span class="loading-spinner"></span> Loading...';
+    btn.innerHTML = '<span class="loading-spinner"></span>';
     btn.disabled = true;
     
     try {
         const response = await fetch('/admin/api/debug/rag');
         const data = await response.json();
         
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
         
-        // Update status
         const statusEl = document.getElementById('figure-manager-status');
         if (data.figure_manager_initialized) {
-            statusEl.textContent = '✓ Initialized';
+            statusEl.textContent = '✓ OK';
             statusEl.className = 'stat-value success';
         } else {
-            statusEl.textContent = '✗ Not initialized';
+            statusEl.textContent = '✗ Error';
             statusEl.className = 'stat-value error';
         }
         
-        // Update figures list
         const figuresEl = document.getElementById('figures-list');
         if (data.figures && data.figures.length > 0) {
             figuresEl.innerHTML = data.figures.map(f => `
@@ -375,10 +643,9 @@ async function loadRagStatus() {
                 </div>
             `).join('');
         } else {
-            figuresEl.innerHTML = '<div class="empty-state">No figures found</div>';
+            figuresEl.innerHTML = '<div class="empty-state">No figures</div>';
         }
         
-        // Update errors
         const errorsContainer = document.getElementById('rag-errors');
         const errorsList = document.getElementById('rag-errors-list');
         if (data.errors && data.errors.length > 0) {
@@ -410,22 +677,13 @@ async function rebuildBm25() {
     try {
         const response = await fetch('/admin/api/debug/rebuild-bm25', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': csrfToken
-            }
+            headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfToken }
         });
         const data = await response.json();
         
-        if (data.error) {
-            throw new Error(data.error);
-        }
+        if (data.error) throw new Error(data.error);
         
-        let details = data.results.map(r => 
-            `${r.name}: ${r.success ? '✓' : '✗' + (r.error ? ' ' + r.error : ' no documents')}`
-        ).join('<br>');
-        
-        resultEl.innerHTML = `<span style="color: #27ae60;">✓ Rebuilt ${data.rebuilt}/${data.total} indexes</span><br><small style="color: #666;">${details}</small>`;
+        resultEl.innerHTML = `<span style="color: #27ae60;">✓ Rebuilt ${data.rebuilt}/${data.total}</span>`;
     } catch (error) {
         resultEl.innerHTML = `<span style="color: #e74c3c;">Error: ${error.message}</span>`;
     } finally {
@@ -434,11 +692,163 @@ async function rebuildBm25() {
     }
 }
 
-// Load data on page load
+// ===== LOGS =====
+let currentLogFile = null;
+let rawLogContent = '';
+let isCurrentActive = false;
+
+function loadLogFile(filename) {
+    currentLogFile = filename;
+    
+    document.querySelectorAll('.log-file-item').forEach(item => {
+        item.classList.remove('active');
+        if (item.dataset.filename === filename) {
+            item.classList.add('active');
+            isCurrentActive = item.classList.contains('current');
+        }
+    });
+    
+    document.getElementById('current-log-title').textContent = filename;
+    document.getElementById('btn-download').disabled = false;
+    document.getElementById('btn-delete').disabled = isCurrentActive;
+    
+    loadCurrentLog();
+}
+
+function loadCurrentLog() {
+    if (!currentLogFile) return;
+    
+    const logContent = document.getElementById('log-content');
+    const logStatus = document.getElementById('log-status');
+    const linesLimit = document.getElementById('lines-limit').value;
+    
+    logContent.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    
+    let url = `/admin/api/logs/${encodeURIComponent(currentLogFile)}`;
+    if (linesLimit) url += `?lines=${linesLimit}`;
+    
+    fetch(url)
+        .then(response => response.json())
+        .then(data => {
+            if (data.error) {
+                logContent.innerHTML = `<div class="logs-empty-state"><p style="color: #e74c3c;">Error: ${data.error}</p></div>`;
+                return;
+            }
+            
+            rawLogContent = data.content;
+            renderLogContent(rawLogContent);
+            
+            logStatus.style.display = 'flex';
+            document.getElementById('line-count').textContent = `${data.total_lines} lines`;
+            document.getElementById('log-file-info').textContent = data.is_current ? 'Active' : '';
+        })
+        .catch(error => {
+            logContent.innerHTML = `<div class="logs-empty-state"><p style="color: #e74c3c;">Failed: ${error}</p></div>`;
+        });
+}
+
+function renderLogContent(content) {
+    const logContent = document.getElementById('log-content');
+    const searchTerm = document.getElementById('search-input').value.toLowerCase();
+    const levelFilter = document.getElementById('level-filter').value;
+    
+    if (!content || content.trim() === '') {
+        logContent.innerHTML = '<div class="logs-empty-state"><p>Empty log file</p></div>';
+        return;
+    }
+    
+    const lines = content.split('\n');
+    let filteredLines = lines;
+    
+    if (levelFilter) {
+        filteredLines = filteredLines.filter(line => 
+            line.includes(`| ${levelFilter}`) || line.substring(0, 50).includes(levelFilter)
+        );
+    }
+    
+    if (searchTerm) {
+        filteredLines = filteredLines.filter(line => 
+            line.toLowerCase().includes(searchTerm)
+        );
+    }
+    
+    const html = filteredLines.map(line => {
+        let className = 'log-line';
+        
+        if (line.includes('| ERROR') || line.includes('ERROR |')) className += ' level-ERROR';
+        else if (line.includes('| WARNING') || line.includes('WARNING |')) className += ' level-WARNING';
+        else if (line.includes('| DEBUG') || line.includes('DEBUG |')) className += ' level-DEBUG';
+        else if (line.includes('| INFO') || line.includes('INFO |')) className += ' level-INFO';
+        
+        let displayLine = escapeHtml(line);
+        if (searchTerm) {
+            const regex = new RegExp(`(${escapeRegex(searchTerm)})`, 'gi');
+            displayLine = displayLine.replace(regex, '<span class="highlight">$1</span>');
+        }
+        
+        return `<div class="${className}">${displayLine}</div>`;
+    }).join('');
+    
+    logContent.innerHTML = html || '<div class="logs-empty-state"><p>No matches</p></div>';
+    logContent.scrollTop = logContent.scrollHeight;
+    document.getElementById('line-count').textContent = `${filteredLines.length} lines`;
+}
+
+function filterLogs() {
+    renderLogContent(rawLogContent);
+}
+
+function downloadCurrentLog() {
+    if (!currentLogFile) return;
+    window.location.href = `/admin/api/logs/${encodeURIComponent(currentLogFile)}/download`;
+}
+
+function deleteCurrentLog() {
+    if (!currentLogFile || isCurrentActive) return;
+    if (!confirm(`Delete "${currentLogFile}"?`)) return;
+    
+    fetch(`/admin/api/logs/${encodeURIComponent(currentLogFile)}/delete`, {
+        method: 'POST',
+        headers: { 'X-CSRF-Token': csrfToken }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) { alert('Error: ' + data.error); return; }
+        
+        const item = document.querySelector(`.log-file-item[data-filename="${currentLogFile}"]`);
+        if (item) item.remove();
+        
+        currentLogFile = null;
+        document.getElementById('current-log-title').textContent = 'Select a log file';
+        document.getElementById('log-content').innerHTML = '<div class="logs-empty-state"><p>Deleted</p></div>';
+        document.getElementById('log-status').style.display = 'none';
+        document.getElementById('btn-download').disabled = true;
+        document.getElementById('btn-delete').disabled = true;
+    })
+    .catch(error => alert('Failed: ' + error));
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function escapeRegex(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// Load on page load
 document.addEventListener('DOMContentLoaded', () => {
     loadSessions();
     loadRagStatus();
+    const firstLog = document.querySelector('.log-file-item');
+    if (firstLog) loadLogFile(firstLog.dataset.filename);
 });
+
+// Auto-refresh logs every 10 seconds if viewing active log
+setInterval(() => {
+    if (currentLogFile && isCurrentActive) loadCurrentLog();
+}, 10000);
 </script>
 {% endblock %}
-

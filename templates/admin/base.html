@@ -13,9 +13,8 @@
             <nav class="nav">
                 <a href="{{ url_for('admin.index') }}" {% if request.url.path == '/admin/' or request.url.path == '/admin' %}class="active"{% endif %}>Dashboard</a>
                 <a href="{{ url_for('admin.new_figure') }}" {% if '/figure/new' in request.url.path %}class="active"{% endif %}>New Figure</a>
-                <a href="{{ url_for('admin.logs') }}" {% if '/logs' in request.url.path %}class="active"{% endif %}>Logs</a>
                 <a href="{{ url_for('admin.system') }}" {% if '/system' in request.url.path %}class="active"{% endif %}>System</a>
-                <a href="/" target="_blank">Chat Interface</a>
+                <a href="/" target="_blank">Chat</a>
                 <a href="{{ url_for('admin.logout') }}" style="color: #e74c3c;">Logout</a>
             </nav>
         </div>

@@ -9,7 +9,7 @@ FIGURE_SYSTEM_PROMPT = """{base_instruction}
 
 Answer as {figure_name} would. You should respond in their speech style and reflecting their opinions, drawing from the provided documents when relevant. You must not use tables or other formatting, write as though you were chatting, responding verbally to a question. Your response must be exactly one paragraph—no bullet points, no numbered lists, no multiple paragraphs.
 
-CRITICAL: You MUST respond in the same language that the user is using. If the user asks in English, respond in English. If Chinese, respond in Chinese. Even if documents are in a different language, always match the user's language."""
+CRITICAL: You MUST respond in the same language that the user is using. If the user asks in English, respond in English. If Chinese, respond in Chinese. Even if the retrieved documents (if any) are in a different language, always must always match the user's language."""
 
 # Default base instruction when no personality prompt is provided
 DEFAULT_FIGURE_INSTRUCTION = "You are responding as {figure_name}."
