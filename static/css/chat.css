@@ -8,22 +8,33 @@
     box-sizing: border-box;
 }
 
+html {
+    height: 100%;
+    height: -webkit-fill-available;
+    overflow: hidden;
+}
+
 body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background: #1a2332;
-    height: 100vh;
-    height: 100dvh;
+    height: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
     display: flex;
     color: #e8f4f8;
     overflow: hidden;
     margin: 0;
     padding: 0;
+    /* Prevent iOS bounce scroll */
+    overscroll-behavior: none;
+    -webkit-overflow-scrolling: touch;
 }
 
 .app-container {
     width: 100%;
-    height: 100vh;
-    height: 100dvh;
+    height: 100%;
+    min-height: 100vh;
+    min-height: -webkit-fill-available;
     display: flex;
     position: relative;
 }
@@ -721,8 +732,9 @@ body {
 /* Mobile-specific styles */
 @media (max-width: 768px) {
     .app-container {
-        height: 100vh;
-        height: 100dvh;
+        height: 100%;
+        min-height: 100vh;
+        min-height: -webkit-fill-available;
         overflow: hidden;
     }
 
@@ -793,6 +805,8 @@ body {
         flex: 1;
         overflow-y: auto;
         min-height: 0;
+        /* Extra padding at bottom to account for input when keyboard is open */
+        padding-bottom: 80px;
     }
 
     .chat-input-container {
@@ -803,6 +817,15 @@ body {
         position: relative;
         z-index: 100;
         padding-bottom: calc(12px + env(safe-area-inset-bottom));
+    }
+    
+    /* When keyboard is open, fix the input to the visual viewport bottom */
+    .chat-input-container.keyboard-open {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        /* The JS will set the actual bottom position based on visualViewport */
     }
 
     .message-content {

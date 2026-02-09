@@ -374,7 +374,7 @@ ChatApp.prototype.sendMessage = async function(message) {
                         
                         if (data.content) {
                             fullContent += data.content;
-                            if (this.loadingIndicator && fullContent.length >= 10) {
+                            if (this.loadingIndicator && fullContent.length >= 3) {
                                 this.hideLoadingIndicator();
                             }
                             this.processStreamingContent(data.content);

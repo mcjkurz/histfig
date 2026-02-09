@@ -77,12 +77,14 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting Historical Figures Chat System...")
     
-    # Preload FigureManager (loads embedding model) so first request is fast
-    from figure_manager import get_figure_manager
+    # Preload FigureManager and warm up models so first request is fast
+    from figure_manager import get_figure_manager, warmup_models
     import asyncio
-    logger.info("Preloading FigureManager and embedding model...")
+    logger.info("Preloading FigureManager...")
     await asyncio.to_thread(get_figure_manager)
-    logger.info("FigureManager ready")
+    logger.info("Warming up jieba, text processor, and embedding model...")
+    await asyncio.to_thread(warmup_models)
+    logger.info("System ready")
     
     # Start session cleanup task
     from chat_routes import start_session_cleanup_task

@@ -47,10 +47,64 @@ class FigureManager:
         self.bm25_documents_cache = {}
         self.bm25_metadata_cache = {}
         
+        # Per-figure read-write locks for BM25 cache protection
+        # Allows multiple concurrent readers, but writers get exclusive access
+        # Note: Locks are lazily initialized in async context to avoid event loop issues
+        self._bm25_locks: Dict[str, asyncio.Lock] = {}
+        self._bm25_readers: Dict[str, int] = {}  # Count of active readers per figure
+        self._bm25_master_lock: Optional[asyncio.Lock] = None  # Lazily initialized
+        
         self.bm25_dir = Path(db_path) / "bm25_indexes"
         self.bm25_dir.mkdir(exist_ok=True)
         
         logger.info("Figure manager initialized")
+    
+    def _get_master_lock(self) -> asyncio.Lock:
+        """Get the master lock for BM25 lock management (lazily initialized)."""
+        if self._bm25_master_lock is None:
+            self._bm25_master_lock = asyncio.Lock()
+        return self._bm25_master_lock
+    
+    async def _get_figure_lock(self, figure_id: str) -> asyncio.Lock:
+        """Get or create a lock for a specific figure."""
+        async with self._get_master_lock():
+            if figure_id not in self._bm25_locks:
+                self._bm25_locks[figure_id] = asyncio.Lock()
+                self._bm25_readers[figure_id] = 0
+            return self._bm25_locks[figure_id]
+    
+    async def _acquire_bm25_read_lock(self, figure_id: str):
+        """Acquire a read lock for BM25 cache access (multiple readers allowed)."""
+        lock = await self._get_figure_lock(figure_id)
+        async with self._get_master_lock():
+            # Wait if a writer has the lock
+            while self._bm25_readers.get(figure_id, 0) < 0:
+                await asyncio.sleep(0.01)
+            self._bm25_readers[figure_id] = self._bm25_readers.get(figure_id, 0) + 1
+    
+    async def _release_bm25_read_lock(self, figure_id: str):
+        """Release a read lock for BM25 cache access."""
+        async with self._get_master_lock():
+            self._bm25_readers[figure_id] = max(0, self._bm25_readers.get(figure_id, 1) - 1)
+    
+    async def _acquire_bm25_write_lock(self, figure_id: str):
+        """Acquire an exclusive write lock for BM25 cache modification."""
+        lock = await self._get_figure_lock(figure_id)
+        await lock.acquire()
+        # Wait for all readers to finish
+        while True:
+            async with self._get_master_lock():
+                if self._bm25_readers.get(figure_id, 0) == 0:
+                    self._bm25_readers[figure_id] = -1  # Mark as write-locked
+                    break
+            await asyncio.sleep(0.01)
+    
+    async def _release_bm25_write_lock(self, figure_id: str):
+        """Release the exclusive write lock for BM25 cache."""
+        lock = await self._get_figure_lock(figure_id)
+        async with self._get_master_lock():
+            self._bm25_readers[figure_id] = 0  # Clear write-lock marker
+        lock.release()
     
     @staticmethod
     def _generate_doc_id(figure_id: str) -> str:
@@ -130,8 +184,12 @@ class FigureManager:
         logger.debug(f"Invalidated BM25 cache for figure {figure_id}")
     
     async def invalidate_bm25_cache_async(self, figure_id: str):
-        """Async wrapper for _invalidate_bm25_cache."""
-        await asyncio.to_thread(self._invalidate_bm25_cache, figure_id)
+        """Async wrapper for _invalidate_bm25_cache with write lock protection."""
+        await self._acquire_bm25_write_lock(figure_id)
+        try:
+            await asyncio.to_thread(self._invalidate_bm25_cache, figure_id)
+        finally:
+            await self._release_bm25_write_lock(figure_id)
     
     def preload_bm25_index(self, figure_id: str) -> bool:
         """Preload BM25 index for a figure from disk or build from ChromaDB."""
@@ -193,6 +251,14 @@ class FigureManager:
         except Exception as e:
             logger.error(f"Error building BM25 index for figure {figure_id}: {e}")
             return False
+    
+    async def build_bm25_from_chromadb_async(self, figure_id: str) -> bool:
+        """Async wrapper for _build_bm25_from_chromadb with write lock protection."""
+        await self._acquire_bm25_write_lock(figure_id)
+        try:
+            return await asyncio.to_thread(self._build_bm25_from_chromadb, figure_id)
+        finally:
+            await self._release_bm25_write_lock(figure_id)
     
     def _get_bm25_index(self, figure_id: str) -> Optional[BM25Okapi]:
         """Get BM25 index for a figure, preloading if necessary."""
@@ -506,10 +572,14 @@ class FigureManager:
     # Async wrapper
     async def search_figure_documents_async(self, figure_id: str, query: str, n_results: int = 5,
                                            min_cosine_similarity: float = MIN_COSINE_SIMILARITY) -> List[Dict[str, Any]]:
-        """Async wrapper for search_figure_documents."""
-        return await asyncio.to_thread(
-            self.search_figure_documents, figure_id, query, n_results, min_cosine_similarity
-        )
+        """Async wrapper for search_figure_documents with read lock protection."""
+        await self._acquire_bm25_read_lock(figure_id)
+        try:
+            return await asyncio.to_thread(
+                self.search_figure_documents, figure_id, query, n_results, min_cosine_similarity
+            )
+        finally:
+            await self._release_bm25_read_lock(figure_id)
     
     def _search_figure_vector(self, figure_id: str, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
         """Perform vector search for a figure."""
@@ -734,3 +804,32 @@ def get_figure_manager() -> FigureManager:
     if figure_manager is None:
         figure_manager = FigureManager(figures_dir=FIGURES_DIR, db_path=CHROMA_DB_PATH)
     return figure_manager
+
+
+def warmup_models():
+    """
+    Warm up jieba and embedding model by running simple operations.
+    This loads the models into memory so first user request is fast.
+    Call this during server startup.
+    """
+    import jieba
+    from text_processor import text_processor
+    from embedding_provider import get_embedding_provider
+    
+    logger.info("Warming up models...")
+    
+    # Warm up jieba - first call loads the dictionary
+    logger.info("  - Loading jieba tokenizer...")
+    jieba.lcut("测试句子 test sentence")
+    
+    # Warm up text processor (uses jieba + NLTK lemmatizer)
+    logger.info("  - Loading text processor...")
+    text_processor.process_text("This is a test sentence for warming up the text processor.")
+    
+    # Warm up embedding model - first encode loads the model weights
+    logger.info("  - Loading embedding model...")
+    embedding_provider = get_embedding_provider()
+    # Use sync method directly since we're in a thread already
+    embedding_provider._encode_local_sync("Test sentence for embedding warmup")
+    
+    logger.info("Models warmed up and ready")

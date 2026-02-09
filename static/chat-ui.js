@@ -185,55 +185,112 @@ ChatApp.prototype.autoResizeTextarea = function() {
 };
 
 ChatApp.prototype.setupMobileKeyboardHandling = function() {
+    // Only apply on touch devices
     if (!('ontouchstart' in window)) return;
 
     const inputContainer = document.querySelector('.chat-input-container');
+    const chatMessages = document.querySelector('.chat-messages');
     if (!inputContainer) return;
 
-    let initialViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+    let isKeyboardOpen = false;
+    let originalHeight = window.innerHeight;
     
-    const handleViewportChange = () => {
-        const currentViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        const isInputFocused = document.activeElement === this.messageInput;
+    // Store original styles to restore later
+    const originalInputContainerStyles = {
+        position: inputContainer.style.position,
+        bottom: inputContainer.style.bottom,
+        left: inputContainer.style.left,
+        right: inputContainer.style.right
+    };
 
-        if (!isInputFocused) {
-            initialViewportHeight = currentViewportHeight;
-            inputContainer.style.transform = 'translateY(0)';
-            inputContainer.style.transition = 'transform 0.3s ease';
-            return;
-        }
-
-        const heightDifference = initialViewportHeight - currentViewportHeight;
+    const updateInputPosition = () => {
+        if (!window.visualViewport) return;
         
-        if (heightDifference > 150) {
-            inputContainer.style.transform = `translateY(-${Math.max(0, heightDifference - 150)}px)`;
-            inputContainer.style.transition = 'transform 0.3s ease';
+        const viewport = window.visualViewport;
+        const isInputFocused = document.activeElement === this.messageInput;
+        
+        // Calculate the difference between layout viewport and visual viewport
+        // This tells us if keyboard is likely open
+        const keyboardHeight = window.innerHeight - viewport.height;
+        const keyboardThreshold = 150; // Minimum height to consider keyboard open
+        
+        if (isInputFocused && keyboardHeight > keyboardThreshold) {
+            // Keyboard is open
+            if (!isKeyboardOpen) {
+                isKeyboardOpen = true;
+                inputContainer.classList.add('keyboard-open');
+            }
+            
+            // Position the input container at the bottom of the visual viewport
+            // The visual viewport's offsetTop tells us how much the viewport has scrolled
+            const bottomPosition = window.innerHeight - viewport.height - viewport.offsetTop;
+            inputContainer.style.position = 'fixed';
+            inputContainer.style.bottom = `${Math.max(0, bottomPosition)}px`;
+            inputContainer.style.left = '0';
+            inputContainer.style.right = '0';
+            
+            // Adjust chat messages padding to prevent content being hidden behind fixed input
+            if (chatMessages) {
+                chatMessages.style.paddingBottom = `${inputContainer.offsetHeight + 20}px`;
+            }
+            
+            // Scroll to keep the input visible
+            requestAnimationFrame(() => {
+                this.messageInput.scrollIntoView({ behavior: 'instant', block: 'nearest' });
+            });
         } else {
-            inputContainer.style.transform = 'translateY(0)';
-            inputContainer.style.transition = 'transform 0.3s ease';
+            // Keyboard is closed
+            if (isKeyboardOpen) {
+                isKeyboardOpen = false;
+                inputContainer.classList.remove('keyboard-open');
+                
+                // Restore original styles
+                inputContainer.style.position = originalInputContainerStyles.position || '';
+                inputContainer.style.bottom = originalInputContainerStyles.bottom || '';
+                inputContainer.style.left = originalInputContainerStyles.left || '';
+                inputContainer.style.right = originalInputContainerStyles.right || '';
+                
+                if (chatMessages) {
+                    chatMessages.style.paddingBottom = '';
+                }
+            }
         }
     };
 
+    // Use Visual Viewport API for precise keyboard detection
     if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleViewportChange);
-    } else {
-        window.addEventListener('resize', handleViewportChange);
+        window.visualViewport.addEventListener('resize', updateInputPosition);
+        window.visualViewport.addEventListener('scroll', updateInputPosition);
     }
 
     this.messageInput.addEventListener('focus', () => {
-        initialViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
-        setTimeout(() => {
-            this.messageInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 300);
+        // Small delay to let the keyboard animation start
+        setTimeout(updateInputPosition, 100);
+        setTimeout(updateInputPosition, 300);
     });
 
     this.messageInput.addEventListener('blur', () => {
-        inputContainer.style.transform = 'translateY(0)';
-        inputContainer.style.transition = 'transform 0.3s ease';
-        initialViewportHeight = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+        // Delay to allow for potential refocus
+        setTimeout(() => {
+            if (document.activeElement !== this.messageInput) {
+                isKeyboardOpen = false;
+                inputContainer.classList.remove('keyboard-open');
+                
+                // Restore original styles
+                inputContainer.style.position = originalInputContainerStyles.position || '';
+                inputContainer.style.bottom = originalInputContainerStyles.bottom || '';
+                inputContainer.style.left = originalInputContainerStyles.left || '';
+                inputContainer.style.right = originalInputContainerStyles.right || '';
+                
+                if (chatMessages) {
+                    chatMessages.style.paddingBottom = '';
+                }
+            }
+        }, 100);
     });
 
-    this.messageInput.addEventListener('touchstart', (e) => {
+    // Prevent iOS zoom on input focus (font-size must be >= 16px)
+    this.messageInput.addEventListener('touchstart', () => {
         if (this.messageInput.style.fontSize !== '16px') {
             this.messageInput.style.fontSize = '16px';
         }

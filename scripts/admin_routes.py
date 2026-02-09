@@ -1016,7 +1016,7 @@ async def rebuild_bm25(request: Request):
             fig_id = fig.get('figure_id')
             try:
                 await figure_manager.invalidate_bm25_cache_async(fig_id)
-                success = await asyncio.to_thread(figure_manager._build_bm25_from_chromadb, fig_id)
+                success = await figure_manager.build_bm25_from_chromadb_async(fig_id)
                 results.append({
                     'figure_id': fig_id,
                     'name': fig.get('name'),
