@@ -47,6 +47,11 @@ class DocumentProcessor:
                 try:
                     page_text = page.extract_text()
                     if page_text.strip():
+                        # Ensure a space between pages so words at page
+                        # boundaries don't merge when whitespace is later
+                        # normalized (e.g. "word\nword" → "word word").
+                        if text and not text[-1].isspace():
+                            text += "\n"
                         text += page_text
                 except Exception as e:
                     logger.warning(f"Error extracting text from page: {e}")

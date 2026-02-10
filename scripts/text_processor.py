@@ -1,33 +1,80 @@
 """
 Text processing utilities for hybrid search system.
 Handles Chinese segmentation with jieba and English lemmatization with NLTK.
+
+Tokenizer abstraction:
+    Subclass ``Tokenizer`` and pass an instance to ``TextProcessor`` to swap
+    the segmentation backend without touching the rest of the pipeline.
 """
 
 import re
 import logging
+from abc import ABC, abstractmethod
 from typing import List, Set, Tuple
 
 logger = logging.getLogger('histfig')
-import jieba
 import nltk
 from nltk.stem import WordNetLemmatizer
 import string
 
-class TextProcessor:
-    def __init__(self, stopwords_dir: str = "./data/stopwords"):
+
+# ---------------------------------------------------------------------------
+# Tokenizer abstraction
+# ---------------------------------------------------------------------------
+
+class Tokenizer(ABC):
+    """Base class for tokenizers used by TextProcessor."""
+
+    @abstractmethod
+    def tokenize(self, text: str) -> List[str]:
         """
-        Initialize text processor with required NLTK data.
+        Split *text* into a list of tokens.
+
+        The returned tokens may include whitespace or empty strings —
+        TextProcessor will filter those out downstream.
+        """
+        ...
+
+    def warmup(self) -> None:
+        """Optional: pre-load heavy resources so the first real call is fast."""
+        pass
+
+    @property
+    def name(self) -> str:
+        return self.__class__.__name__
+
+
+class JiebaTokenizer(Tokenizer):
+    """Tokenizer backed by jieba (Chinese + English segmentation)."""
+
+    def tokenize(self, text: str) -> List[str]:
+        import jieba
+        return jieba.lcut(text)
+
+    def warmup(self) -> None:
+        import jieba
+        jieba.lcut("测试句子 test sentence")
+
+
+class TextProcessor:
+    def __init__(self, stopwords_dir: str = "./data/stopwords", tokenizer: Tokenizer = None):
+        """
+        Initialize text processor with character-based chunking.
         
         Args:
             stopwords_dir: Directory containing stopword files
+            tokenizer: Tokenizer instance to use for segmentation.
+                        Defaults to JiebaTokenizer if not provided.
         """
+        self.tokenizer = tokenizer or JiebaTokenizer()
         self._download_nltk_data()
         self.lemmatizer = WordNetLemmatizer()
         
         # Load stopwords from files (used for filtering n-grams at indexing time)
         self.stopwords = self._load_stopwords(stopwords_dir)
         
-        logger.info(f"Text processor initialized with {len(self.stopwords)} stopwords")
+        logger.info(f"Text processor initialized with {len(self.stopwords)} stopwords "
+                     f"(tokenizer: {self.tokenizer.name})")
     
     def _download_nltk_data(self):
         """Download required NLTK data if not present."""
@@ -78,16 +125,15 @@ class TextProcessor:
     
     def segment_text(self, text: str) -> List[str]:
         """
-        Segment text using jieba for both Chinese and English content.
+        Segment text using the configured tokenizer.
         
         Args:
             text: Input text
             
         Returns:
-            List of segmented tokens
+            List of segmented tokens (whitespace / empty tokens removed)
         """
-        # Use jieba for segmentation (handles both Chinese and English)
-        tokens = jieba.lcut(text)
+        tokens = self.tokenizer.tokenize(text)
         
         # Filter out whitespace and empty tokens
         filtered_tokens = []
@@ -185,7 +231,7 @@ class TextProcessor:
     
     def process_text(self, text: str, ngram_range: Tuple[int, int] = (1, 2)) -> List[str]:
         """
-        Process text using jieba segmentation followed by NLTK lemmatization.
+        Process text using tokenizer segmentation followed by NLTK lemmatization.
         Generates n-grams within the specified range.
         
         Args:
@@ -202,7 +248,7 @@ class TextProcessor:
         if not text or not text.strip():
             return []
         
-        # Segment text using jieba (handles both Chinese and English)
+        # Segment text using the configured tokenizer
         tokens = self.segment_text(text)
         
         # Lemmatize tokens (English tokens get lemmatized, Chinese remain unchanged)

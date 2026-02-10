@@ -185,17 +185,20 @@ async def index(request: Request):
         except:
             active_sessions = 0
         
+        csrf_token = generate_csrf_token(request)
         templates = request.app.state.templates
         return templates.TemplateResponse("admin/dashboard.html", {
             "request": request, 
             "figures": figures,
-            "active_sessions": active_sessions
+            "active_sessions": active_sessions,
+            "csrf_token": csrf_token
         })
     except Exception as e:
+        csrf_token = generate_csrf_token(request)
         templates = request.app.state.templates
         return templates.TemplateResponse(
             "admin/dashboard.html", 
-            {"request": request, "figures": [], "active_sessions": 0, "error": f"Error loading figures: {str(e)}"}
+            {"request": request, "figures": [], "active_sessions": 0, "error": f"Error loading figures: {str(e)}", "csrf_token": csrf_token}
         )
 
 

@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
     import asyncio
     logger.info("Preloading FigureManager...")
     await asyncio.to_thread(get_figure_manager)
-    logger.info("Warming up jieba, text processor, and embedding model...")
+    logger.info("Warming up tokenizer, text processor, and embedding model...")
     await asyncio.to_thread(warmup_models)
     logger.info("System ready")
     

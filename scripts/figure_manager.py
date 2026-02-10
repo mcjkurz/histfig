@@ -808,21 +808,20 @@ def get_figure_manager() -> FigureManager:
 
 def warmup_models():
     """
-    Warm up jieba and embedding model by running simple operations.
-    This loads the models into memory so first user request is fast.
-    Call this during server startup.
+    Warm up tokenizer, text processor, and embedding model by running simple
+    operations.  This loads the models into memory so the first user request
+    is fast.  Call this during server startup.
     """
-    import jieba
     from text_processor import text_processor
     from embedding_provider import get_embedding_provider
     
     logger.info("Warming up models...")
     
-    # Warm up jieba - first call loads the dictionary
-    logger.info("  - Loading jieba tokenizer...")
-    jieba.lcut("测试句子 test sentence")
+    # Warm up tokenizer (e.g. jieba loads its dictionary on first call)
+    logger.info(f"  - Loading tokenizer ({text_processor.tokenizer.name})...")
+    text_processor.tokenizer.warmup()
     
-    # Warm up text processor (uses jieba + NLTK lemmatizer)
+    # Warm up text processor (tokenizer + NLTK lemmatizer)
     logger.info("  - Loading text processor...")
     text_processor.process_text("This is a test sentence for warming up the text processor.")
     
