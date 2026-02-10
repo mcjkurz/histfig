@@ -184,6 +184,10 @@ ChatApp.prototype.loadFeatureFlags = async function() {
         this.configQueryAugmentationEnabled = data.query_augmentation_enabled;
         this.queryAugmentationModel = data.query_augmentation_model || '';
         
+        if (data.max_message_length) {
+            this.messageInput.maxLength = data.max_message_length;
+        }
+        
         if (data.docs_to_retrieve && Array.isArray(data.docs_to_retrieve) && data.docs_to_retrieve.length > 0) {
             this.docsToRetrieveOptions = data.docs_to_retrieve;
         }

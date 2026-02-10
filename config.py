@@ -49,6 +49,7 @@ MAX_CONTENT_LENGTH = MAX_FILES_PER_REQUEST * MAX_FILE_SIZE
 
 # Chat
 MAX_CONTEXT_MESSAGES = 15
+MAX_MESSAGE_LENGTH = int(os.environ.get("MAX_MESSAGE_LENGTH", "2000"))
 DEBUG_MODE = os.environ.get("DEBUG_MODE", "false").lower() == "true"
 
 # Paths (relative to project root)

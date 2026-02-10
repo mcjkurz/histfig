@@ -21,9 +21,10 @@ from fastapi.responses import HTMLResponse, StreamingResponse, JSONResponse, Fil
 from figure_manager import get_figure_manager
 from config import (
     DEFAULT_LOCAL_MODEL, DEFAULT_EXTERNAL_MODEL, MAX_CONTEXT_MESSAGES,
-    FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL, LOCAL_API_URL,
-    RAG_ENABLED, QUERY_AUGMENTATION_ENABLED, QUERY_AUGMENTATION_MODEL,
-    LOCAL_MODELS, EXTERNAL_MODELS, DOCS_TO_RETRIEVE, CHAT_PASSWORD
+    MAX_MESSAGE_LENGTH, FIGURE_IMAGES_DIR, EXTERNAL_API_KEY, EXTERNAL_API_URL,
+    LOCAL_API_URL, RAG_ENABLED, QUERY_AUGMENTATION_ENABLED,
+    QUERY_AUGMENTATION_MODEL, LOCAL_MODELS, EXTERNAL_MODELS,
+    DOCS_TO_RETRIEVE, CHAT_PASSWORD
 )
 from search_utils import format_search_result_for_response
 from model_provider import LLMProvider
@@ -431,7 +432,8 @@ async def get_feature_flags():
         "rag_enabled": RAG_ENABLED,
         "query_augmentation_enabled": QUERY_AUGMENTATION_ENABLED,
         "query_augmentation_model": QUERY_AUGMENTATION_MODEL,
-        "docs_to_retrieve": DOCS_TO_RETRIEVE
+        "docs_to_retrieve": DOCS_TO_RETRIEVE,
+        "max_message_length": MAX_MESSAGE_LENGTH
     }
 
 
@@ -446,6 +448,10 @@ async def chat(request: Request, chat_request: ChatRequest):
     
     try:
         message = chat_request.message
+        
+        # Truncate user message to configured limit (RAG/system content is unaffected)
+        message = message[:MAX_MESSAGE_LENGTH]
+        
         model = chat_request.model
         use_rag = chat_request.use_rag
         k = chat_request.k
