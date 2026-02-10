@@ -15,6 +15,7 @@ from typing import List, Set, Tuple
 logger = logging.getLogger('histfig')
 import nltk
 from nltk.stem import WordNetLemmatizer
+from nltk.corpus import wordnet
 import string
 
 
@@ -78,11 +79,17 @@ class TextProcessor:
     
     def _download_nltk_data(self):
         """Download required NLTK data if not present."""
-        required_data = ['punkt', 'wordnet', 'averaged_perceptron_tagger']
+        # (resource_id, search_prefix) — search_prefix is used by nltk.data.find()
+        required_data = [
+            ('punkt', 'tokenizers'),
+            ('punkt_tab', 'tokenizers'),
+            ('wordnet', 'corpora'),
+            ('averaged_perceptron_tagger_eng', 'taggers'),
+        ]
         
-        for data_name in required_data:
+        for data_name, prefix in required_data:
             try:
-                nltk.data.find(f'tokenizers/{data_name}')
+                nltk.data.find(f'{prefix}/{data_name}')
             except LookupError:
                 try:
                     logger.info(f"Downloading NLTK data: {data_name}")
@@ -144,9 +151,22 @@ class TextProcessor:
         
         return filtered_tokens
     
+    @staticmethod
+    def _penn_to_wordnet(tag: str):
+        """Convert Penn Treebank POS tag to WordNet POS tag."""
+        if tag.startswith('J'):
+            return wordnet.ADJ
+        elif tag.startswith('V'):
+            return wordnet.VERB
+        elif tag.startswith('R'):
+            return wordnet.ADV
+        else:
+            return wordnet.NOUN  # default
+
     def lemmatize_tokens(self, tokens: List[str]) -> List[str]:
         """
-        Lemmatize tokens using NLTK. Chinese tokens remain unchanged.
+        Lemmatize tokens using NLTK with POS tagging for accurate results.
+        Chinese tokens remain unchanged.
         Filters out URLs, long numbers, and footnote references.
         
         Args:
@@ -155,49 +175,68 @@ class TextProcessor:
         Returns:
             List of lemmatized tokens
         """
+        # Separate English-alphabetic tokens from others so we can POS-tag
+        # the English tokens in one batch (much faster than one-by-one).
+        english_tokens = []   # (index, lowered_token)
         processed_tokens = []
-        
+
         for token in tokens:
             token = token.lower()
-            
+
             # Skip pure punctuation (Chinese and English)
             if token in string.punctuation or token in ["。", "，", "、", "：", "？", "！", "；"]:
                 continue
-                
+
             # Skip empty or whitespace tokens
             if not token or token.isspace():
                 continue
-            
+
             # Filter out long tokens (likely URLs)
             if len(token) > 24:
                 continue
-            
+
             # Filter out footnote references like [18], [19]
             if re.match(r'^\[\d+\]$', token):
                 continue
-            
+
             # Filter out long numbers (more than 4 digits)
             if token.isdigit() and len(token) > 4:
                 continue
-            
+
             # Filter out single-letter English tokens (e.g., "s" from "Mao's", "t" from "don't")
             # These are typically artifacts from possessives/contractions and add no value
             if len(token) == 1 and token.isalpha() and token.isascii():
                 continue
-            
-            # Lemmatize if it's alphabetic (English), otherwise keep as is (Chinese/mixed)
-            if token.isalpha():
-                try:
-                    lemmatized = self.lemmatizer.lemmatize(token)
-                    processed_tokens.append(lemmatized)
-                except Exception as e:
-                    logger.warning(f"Error lemmatizing token '{token}': {e}")
-                    processed_tokens.append(token)
+
+            if token.isalpha() and token.isascii():
+                # Collect English tokens for batch POS tagging
+                english_tokens.append((len(processed_tokens), token))
+                processed_tokens.append(token)  # placeholder
+            elif token.isalpha():
+                # Non-ASCII alphabetic (Chinese, etc.) — keep as-is
+                processed_tokens.append(token)
             else:
                 # Keep alphanumeric tokens (like "covid-19", "3d", etc.) and Chinese tokens
                 if any(c.isalnum() for c in token):
                     processed_tokens.append(token)
-        
+
+        # Batch POS-tag all English tokens and lemmatize with the correct POS
+        if english_tokens:
+            words = [t for _, t in english_tokens]
+            try:
+                tagged = nltk.pos_tag(words)
+            except Exception as e:
+                logger.warning(f"POS tagging failed, falling back to noun-only lemmatization: {e}")
+                tagged = [(w, 'NN') for w in words]
+
+            for (idx, token), (_, tag) in zip(english_tokens, tagged):
+                wn_pos = self._penn_to_wordnet(tag)
+                try:
+                    processed_tokens[idx] = self.lemmatizer.lemmatize(token, pos=wn_pos)
+                except Exception as e:
+                    logger.warning(f"Error lemmatizing token '{token}': {e}")
+                    # placeholder already contains the original token
+
         return processed_tokens
     
     def generate_ngrams(self, tokens: List[str], n: int = 2, filter_stopwords: bool = True) -> List[str]:
