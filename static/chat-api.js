@@ -36,6 +36,8 @@ ChatApp.prototype.loadModels = async function() {
         
         this.localModels = data.local || [];
         this.externalModels = data.external;
+        this.defaultLocalModel = data.default_local || '';
+        this.defaultExternalModel = data.default_external || '';
         
         const hasLocalModels = this.localModels && this.localModels.length > 0;
         const hasExternalModels = this.externalModels && this.externalModels.length > 0;
@@ -113,8 +115,10 @@ ChatApp.prototype.loadExternalModelsFromApi = async function() {
             const models = data.data || [];
             
             this.modelSelect.innerHTML = '';
+            const modelIds = [];
             models.forEach(model => {
                 const modelId = model.id || model.name || model;
+                modelIds.push(modelId);
                 const option = document.createElement('option');
                 option.value = modelId;
                 option.textContent = modelId;
@@ -125,6 +129,10 @@ ChatApp.prototype.loadExternalModelsFromApi = async function() {
             otherOption.value = 'Other';
             otherOption.textContent = 'Other';
             this.modelSelect.appendChild(otherOption);
+            
+            if (this.defaultExternalModel && modelIds.includes(this.defaultExternalModel)) {
+                this.modelSelect.value = this.defaultExternalModel;
+            }
             return;
         }
     } catch (e) {
@@ -340,61 +348,127 @@ ChatApp.prototype.sendMessage = async function(message) {
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let fullContent = '';
-        
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-            
-            for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-                        
-                        if (data.error) {
-                            this.hideLoadingIndicator();
-                            const errorMsg = data.error.toLowerCase();
-                            if (this.currentSource === 'external' && 
-                                (errorMsg.includes('api key') || 
-                                 errorMsg.includes('unauthorized') || 
-                                 errorMsg.includes('401') ||
-                                 errorMsg.includes('authentication'))) {
-                                this.showApiKeyWarning('Invalid or missing API key. Please check your API key and try again.');
-                            } else {
-                                throw new Error(data.error);
-                            }
-                            return;
-                        }
-                        
-                        if (data.augmented_query) {
-                            this.updateAugmentedQuery(data.augmented_query);
-                        }
-                        
-                        if (data.sources) {
-                            this.addSources(data.sources);
-                        }
-                        
-                        if (data.content) {
-                            fullContent += data.content;
-                            if (this.loadingIndicator && fullContent.length >= 3) {
-                                this.hideLoadingIndicator();
-                            }
-                            this.processStreamingContent(data.content);
-                            this.scrollToBottom();
-                        }
-                        
-                        if (data.done) {
-                            this.hideLoadingIndicator();
-                            await this.processFinalContent();
-                            break;
-                        }
-                    } catch (e) {
-                        console.error('Error parsing SSE data:', e);
-                    }
+        let sseBuffer = '';
+
+        const parseSsePayload = (raw) => {
+            const s = raw.trimStart();
+            if (!s || s === '[DONE]') return null;
+            if (!s.startsWith('{')) return null;
+            return JSON.parse(s);
+        };
+
+        const handleSseEvent = async (data) => {
+            if (data.error) {
+                this.hideLoadingIndicator();
+                const errorMsg = data.error.toLowerCase();
+                if (this.currentSource === 'external' &&
+                    (errorMsg.includes('api key') ||
+                     errorMsg.includes('unauthorized') ||
+                     errorMsg.includes('401') ||
+                     errorMsg.includes('authentication'))) {
+                    this.showApiKeyWarning('Invalid or missing API key. Please check your API key and try again.');
+                } else {
+                    throw new Error(data.error);
+                }
+                return 'abort';
+            }
+
+            if (data.augmented_query) {
+                this.updateAugmentedQuery(data.augmented_query);
+            }
+
+            if (data.sources) {
+                this.addSources(data.sources);
+            }
+
+            if (data.content) {
+                fullContent += data.content;
+                if (this.loadingIndicator && fullContent.length >= 3) {
+                    this.hideLoadingIndicator();
+                }
+                this.processStreamingContent(data.content);
+                this.scrollToBottom();
+            }
+
+            if (data.done) {
+                this.hideLoadingIndicator();
+                await this.processFinalContent();
+                return 'done';
+            }
+            return 'ok';
+        };
+
+        let eventDataLines = [];
+
+        const processSseEvent = async () => {
+            if (!eventDataLines.length) return 'ok';
+            const raw = eventDataLines.join('\n');
+            eventDataLines = [];
+            try {
+                const data = parseSsePayload(raw);
+                if (!data) return 'ok';
+                const outcome = await handleSseEvent(data);
+                if (outcome === 'abort') return 'abort';
+                if (outcome === 'done') return 'done';
+            } catch (e) {
+                console.error('Error parsing SSE data:', e);
+            }
+            return 'ok';
+        };
+
+        const drainSseBuffer = async (isFinal = false) => {
+            let i = 0;
+            while (i < sseBuffer.length) {
+                let j = i;
+                while (j < sseBuffer.length && sseBuffer[j] !== '\n' && sseBuffer[j] !== '\r') {
+                    j += 1;
+                }
+                if (j >= sseBuffer.length) break;
+
+                const line = sseBuffer.slice(i, j);
+                if (sseBuffer[j] === '\r' && sseBuffer[j + 1] === '\n') {
+                    i = j + 2;
+                } else {
+                    i = j + 1;
+                }
+
+                if (line === '') {
+                    const outcome = await processSseEvent();
+                    if (outcome !== 'ok') return outcome;
+                    continue;
+                }
+                if (line.startsWith('data:')) {
+                    eventDataLines.push(line.slice(5).trimStart());
                 }
             }
+
+            sseBuffer = sseBuffer.slice(i);
+            if (isFinal) {
+                if (sseBuffer.startsWith('data:')) {
+                    eventDataLines.push(sseBuffer.slice(5).trimStart());
+                }
+                sseBuffer = '';
+                return processSseEvent();
+            }
+            return 'ok';
+        };
+
+        readLoop: while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                if (value) {
+                    sseBuffer += decoder.decode(value, { stream: true });
+                }
+                sseBuffer += decoder.decode();
+                const end = await drainSseBuffer(true);
+                if (end === 'abort') return;
+                if (end === 'done') break readLoop;
+                break;
+            }
+            sseBuffer += decoder.decode(value, { stream: true });
+            const mid = await drainSseBuffer();
+            if (mid === 'abort') return;
+            if (mid === 'done') break readLoop;
         }
     } catch (error) {
         this.hideLoadingIndicator();

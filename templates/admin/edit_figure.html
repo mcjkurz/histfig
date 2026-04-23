@@ -580,25 +580,53 @@
                 const reader = response.body.getReader();
                 const decoder = new TextDecoder();
                 let buffer = '';
+
+                function tryHandleLine(line) {
+                    if (!line.startsWith('data:')) return;
+                    try {
+                        const payload = line.slice(5).trimStart();
+                        if (!payload || payload === '[DONE]') return;
+                        const data = JSON.parse(payload);
+                        handleStreamEvent(data);
+                    } catch (e) {
+                        console.error('Error parsing SSE data:', e);
+                    }
+                }
+
+                function drainBuffer() {
+                    let i = 0;
+                    while (i < buffer.length) {
+                        let j = i;
+                        while (j < buffer.length && buffer[j] !== '\n' && buffer[j] !== '\r') {
+                            j += 1;
+                        }
+                        if (j >= buffer.length) break;
+
+                        const line = buffer.slice(i, j);
+                        if (buffer[j] === '\r' && buffer[j + 1] === '\n') {
+                            i = j + 2;
+                        } else {
+                            i = j + 1;
+                        }
+                        tryHandleLine(line);
+                    }
+                    buffer = buffer.slice(i);
+                }
                 
                 function processStream() {
                     reader.read().then(({ done, value }) => {
-                        if (done) return;
+                        if (done) {
+                            if (value) {
+                                buffer += decoder.decode(value, { stream: true });
+                            }
+                            buffer += decoder.decode();
+                            drainBuffer();
+                            tryHandleLine(buffer.trimEnd());
+                            return;
+                        }
                         
                         buffer += decoder.decode(value, { stream: true });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || '';
-                        
-                        for (const line of lines) {
-                            if (line.startsWith('data: ')) {
-                                try {
-                                    const data = JSON.parse(line.slice(6));
-                                    handleStreamEvent(data);
-                                } catch (e) {
-                                    console.error('Error parsing SSE data:', e);
-                                }
-                            }
-                        }
+                        drainBuffer();
                         processStream();
                     });
                 }

@@ -46,7 +46,7 @@ echo "📝 Log file: $LOG_FILE"
     source venv/bin/activate
     cd "$(dirname "$0")"
     uvicorn scripts.main:app \
-        --host 0.0.0.0 \
+        --host 127.0.0.1 \
         --port $APP_PORT \
         --workers 1 \
         --timeout-keep-alive 120 \

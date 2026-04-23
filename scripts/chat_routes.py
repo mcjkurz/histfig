@@ -36,6 +36,11 @@ from prompts import (
     get_thinking_instructions
 )
 
+
+def _sse_json(obj: Dict[str, Any]) -> str:
+    """JSON for SSE: UTF-8 text (not \\uXXXX escapes) and strict JSON (no NaN/Infinity)."""
+    return json.dumps(obj, ensure_ascii=False, allow_nan=False)
+
 # Create FastAPI router
 chat_router = APIRouter(tags=["chat"])
 
@@ -400,7 +405,12 @@ async def get_models_by_source():
         
         external_models = EXTERNAL_MODELS if EXTERNAL_MODELS else None
         
-        return {"local": local_models, "external": external_models}
+        return {
+            "local": local_models, 
+            "external": external_models,
+            "default_local": DEFAULT_LOCAL_MODEL,
+            "default_external": DEFAULT_EXTERNAL_MODEL
+        }
     except Exception as e:
         logger.error(f"Error fetching models by source: {e}")
         return {"local": [], "external": None}
@@ -573,23 +583,23 @@ async def chat(request: Request, chat_request: ChatRequest):
                     )
                 
                 if augmented_query and augmented_query != message:
-                    yield f"data: {json.dumps({'augmented_query': augmented_query})}\n\n"
+                    yield f"data: {_sse_json({'augmented_query': augmented_query})}\n\n"
                 
                 if use_rag and search_results:
                     sources_data = [format_search_result_for_response(r, current_figure) for r in search_results]
-                    yield f"data: {json.dumps({'sources': sources_data})}\n\n"
+                    yield f"data: {_sse_json({'sources': sources_data})}\n\n"
                 
                 full_response = ""
                 
                 async for chunk in provider.chat_stream(messages, model_to_use, temperature):
                     if 'error' in chunk:
-                        yield f"data: {json.dumps({'error': chunk['error']})}\n\n"
+                        yield f"data: {_sse_json({'error': chunk['error']})}\n\n"
                         break
                     
                     if 'content' in chunk:
                         content = chunk['content']
                         full_response += content
-                        yield f"data: {json.dumps({'content': content})}\n\n"
+                        yield f"data: {_sse_json({'content': content})}\n\n"
                     
                     if chunk.get('done', False):
                         async with session_lock:
@@ -614,12 +624,12 @@ async def chat(request: Request, chat_request: ChatRequest):
                                     
                                     save_conversation_to_json(user_session, session_id)
                         
-                        yield f"data: {json.dumps({'done': True})}\n\n"
+                        yield f"data: {_sse_json({'done': True})}\n\n"
                         break
                         
             except Exception as e:
                 logger.error(f"Error in chat stream: {e}")
-                yield f"data: {json.dumps({'error': str(e)})}\n\n"
+                yield f"data: {_sse_json({'error': str(e)})}\n\n"
         
         return StreamingResponse(generate(), media_type='text/event-stream')
         

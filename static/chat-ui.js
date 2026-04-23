@@ -203,6 +203,9 @@ ChatApp.prototype.updateModelListForSource = function() {
                 this.modelSelect.appendChild(option);
             });
             this.modelSelect.disabled = false;
+            if (this.defaultLocalModel && this.localModels.includes(this.defaultLocalModel)) {
+                this.modelSelect.value = this.defaultLocalModel;
+            }
         } else {
             const option = document.createElement('option');
             option.value = '';
@@ -227,6 +230,9 @@ ChatApp.prototype.updateModelListForSource = function() {
             otherOption.value = 'Other';
             otherOption.textContent = 'Other';
             this.modelSelect.appendChild(otherOption);
+            if (this.defaultExternalModel && this.externalModels.includes(this.defaultExternalModel)) {
+                this.modelSelect.value = this.defaultExternalModel;
+            }
         } else if (this.externalModels === null) {
             this.loadExternalModelsFromApi();
         } else {

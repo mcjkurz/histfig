@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
     import asyncio
     logger.info("Preloading FigureManager...")
     await asyncio.to_thread(get_figure_manager)
-    logger.info("Warming up tokenizer, text processor, and embedding model...")
+    logger.info("Warming up jieba, text processor, and embedding model...")
     await asyncio.to_thread(warmup_models)
     logger.info("System ready")
     
@@ -153,7 +153,7 @@ if __name__ == '__main__':
     
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
+        host="127.0.0.1",
         port=APP_PORT,
         reload=DEBUG_MODE,
         log_level="debug" if DEBUG_MODE else "info",

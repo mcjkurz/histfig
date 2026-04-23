@@ -2,6 +2,7 @@
 Shared search utilities for hybrid search and result formatting.
 """
 
+import math
 from typing import List, Dict, Any
 from config import RRF_K
 
@@ -89,6 +90,16 @@ def reciprocal_rank_fusion(
     return fused_results
 
 
+def _json_safe_float(value, default: float = 0.0) -> float:
+    try:
+        v = float(value)
+        if math.isnan(v) or math.isinf(v):
+            return default
+        return v
+    except (TypeError, ValueError):
+        return default
+
+
 def format_search_result_for_response(
     result: Dict[str, Any], 
     figure_id: str = None
@@ -110,10 +121,12 @@ def format_search_result_for_response(
         'filename': result['metadata'].get('filename', 'Unknown'),
         'text': text[:200] + '...' if len(text) > 200 else text,
         'full_text': text,
-        'similarity': result.get('similarity', 0),
-        'cosine_similarity': result.get('cosine_similarity', result.get('similarity', 0)),
-        'bm25_score': result.get('bm25_score', 0),
-        'rrf_score': result.get('rrf_score', 0),
+        'similarity': _json_safe_float(result.get('similarity', 0)),
+        'cosine_similarity': _json_safe_float(
+            result.get('cosine_similarity', result.get('similarity', 0))
+        ),
+        'bm25_score': _json_safe_float(result.get('bm25_score', 0)),
+        'rrf_score': _json_safe_float(result.get('rrf_score', 0)),
         'top_matching_words': result.get('top_matching_words', []),
         'chunk_index': result['metadata'].get('chunk_index', 0),
         'total_chunks': result['metadata'].get('total_chunks', 1),
