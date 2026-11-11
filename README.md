@@ -10,6 +10,9 @@ answers in the figure's voice. Every answer shows the passages it was based on.
 
 Everything (settings, database, uploaded files, conversations) lives in the `data/` folder.
 
+> The older version of HistFig is kept in the
+> [`legacy` branch](https://github.com/mcjkurz/histfig/tree/legacy).
+
 ## What you need
 
 - **Python 3.11 or newer**
