@@ -1,0 +1,17 @@
+{
+  "name": "HistFig",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  "postCreateCommand": "pip install --user uv && uv sync",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "HistFig", "onAutoForward": "openBrowser" }
+  },
+  "secrets": {
+    "OPENROUTER_API_KEY": {
+      "description": "OpenRouter API key (optional; in `histfig setup`, press Enter at the key question and answer OPENROUTER_API_KEY)."
+    }
+  },
+  "customizations": {
+    "vscode": { "extensions": ["ms-python.python"] }
+  }
+}
