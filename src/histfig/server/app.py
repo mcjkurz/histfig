@@ -14,7 +14,8 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from histfig.config import ChatConfig, Config
+from histfig import backup
+from histfig.config import ChatConfig, Config, save_config
 from histfig.db import Database
 from histfig.ingest.jobs import IngestWorker
 from histfig.providers.chat import ChatProvider, list_models
@@ -73,6 +74,7 @@ class AppState:
     prefetch_models: bool = True
     public: bool = False
     limiter: RateLimiter | None = None  # only in public mode
+    generation: int = 0  # +1 at every restore, so work begun before it doesn't write into the new data
 
     def apply_config(self, new: Config) -> None:
         """Use a new configuration right away (saved from the Settings page)."""
@@ -86,6 +88,20 @@ class AppState:
         if new.embedding != old.embedding:
             self.embedder = make_embedder(new.embedding, key=self.embedding_key)
             self.worker.embedder = self.embedder
+
+    async def restore(self, staging: Path) -> None:
+        """Swap in an unpacked, checked backup (backup.unpack) and use its settings."""
+        await self.worker.stop()
+        try:
+            await asyncio.to_thread(backup.swap_in, self.data_dir, self.db, staging)
+            self.generation += 1
+            new = backup.restored_config(staging, self.cfg)
+            save_config(new, self.data_dir)
+            self.apply_config(new)
+        finally:  # whatever happened, continue with a fresh index and worker
+            self.index.clear()
+            self.worker = IngestWorker(self.db, self.cfg, self.embedder, self.index, self.uploads_dir)
+            self.worker.start()
 
     def embedding_key(self) -> str:
         return self.cfg.embedding_key()  # always the current settings (shares the chat key)
@@ -129,7 +145,7 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         state = AppState(cfg, data_dir, db, index, embedder, chat,
-                         IngestWorker(db, cfg, embedder, index), ModelCache(cfg.chat), prefetch_models,
+                         IngestWorker(db, cfg, embedder, index, data_dir / "uploads"), ModelCache(cfg.chat), prefetch_models,
                          public, RateLimiter(cfg.public.messages_per_hour) if public else None)
         if prefetch_models:
             state.models.prefetch()

@@ -7,6 +7,7 @@ light concurrency of a single-user app (web requests + one ingestion worker).
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -114,6 +115,9 @@ class Database:
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._gate = threading.Condition()  # see exclusive()
+        self._active = 0
+        self._paused = False
         self.prepare()
 
     def _open(self) -> sqlite3.Connection:
@@ -127,15 +131,39 @@ class Database:
     @contextmanager
     def connect(self):
         """Yield a connection; commit on success, roll back on error."""
-        conn = self._open()
+        with self._gate:
+            while self._paused:
+                self._gate.wait()
+            self._active += 1
         try:
-            yield conn
-            conn.commit()
-        except BaseException:
-            conn.rollback()
-            raise
+            conn = self._open()
+            try:
+                yield conn
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+            finally:
+                conn.close()
         finally:
-            conn.close()
+            with self._gate:
+                self._active -= 1
+                self._gate.notify_all()
+
+    @contextmanager
+    def exclusive(self):
+        """Wait until no connection is open, and keep new ones waiting meanwhile: for replacing
+        the database file (restoring a backup). Use self._open() inside, not connect()."""
+        with self._gate:
+            self._paused = True
+            while self._active:
+                self._gate.wait()
+        try:
+            yield
+        finally:
+            with self._gate:
+                self._paused = False
+                self._gate.notify_all()
 
     def prepare(self) -> None:
         """Create the tables in a new database; check that an existing one is current."""

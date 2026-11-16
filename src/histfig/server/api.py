@@ -2,26 +2,29 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import re
+import secrets
 import shutil
 from dataclasses import asdict
-from pathlib import Path
 from typing import Literal
 from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, Response, StreamingResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from histfig import agent, export, prompts
+from histfig import agent, backup, export, prompts
 from histfig.config import OLLAMA_URL, OPENROUTER_URL, config_path, save_config, suggested_prefixes, updated
 from histfig.db import now
 from histfig.fields import clean_line, clean_text, parse_year
 from histfig.ingest.extract import SUPPORTED, file_type
+from histfig.ingest.jobs import document_file
 from histfig.providers.chat import (ProviderError, available_models, check_chat, model_available, similar,
                                     strip_thinking)
 from histfig.providers.embed import check_embedder
@@ -288,7 +291,7 @@ async def upload_documents(figure_id: int, files: list[UploadFile], s: AppState 
         doc_id = s.db.execute(
             "INSERT INTO documents (figure_id, filename, file_type, sha256, path, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?)",
-            (figure_id, name, kind, digest, str(path), now()),
+            (figure_id, name, kind, digest, f"{figure_id}/{path.name}", now()),
         )
         s.worker.enqueue(doc_id)
         added.append({"id": doc_id, "filename": name})
@@ -301,7 +304,7 @@ def delete_document(doc_id: int, s: AppState = Depends(S)):
     if doc is None:
         raise HTTPException(404, "Document not found")
     s.db.execute("DELETE FROM documents WHERE id=?", (doc_id,))
-    Path(doc["path"]).unlink(missing_ok=True)
+    document_file(s.uploads_dir, doc).unlink(missing_ok=True)
     if s.db.one("SELECT 1 FROM documents WHERE figure_id=?", (doc["figure_id"],)) is None:
         s.db.execute("UPDATE figures SET embed_model=NULL, embed_dim=NULL WHERE id=?", (doc["figure_id"],))
     s.index.invalidate(doc["figure_id"])
@@ -479,6 +482,8 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
     # A model removed from the list since the conversation chose it falls back to the default.
     model = conv["model"] if conv["model"] and s.cfg.chat.allows(conv["model"]) else s.cfg.chat.model
 
+    generation = s.generation  # a backup restored meanwhile: the answer isn't saved into it
+
     async def events():
         hits: list[dict] = []
         steps: list[str] = []
@@ -527,6 +532,8 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
         finally:
             # Runs on normal completion, on errors and when the user presses Stop.
             content = strip_thinking("".join(answer))
+            if s.generation != generation:
+                return
             if content:
                 s.db.execute(
                     "INSERT INTO messages (conversation_id, role, content, sources, steps, created_at) "
@@ -776,6 +783,32 @@ async def embedding_models(s: AppState = Depends(S)):
         return {"models": await available_models(e.base_url, s.cfg.embedding_key(), embedding=True)}
     except Exception as ex:
         return {"models": [], "error": str(ex)}
+
+
+# Backup ----------------------------------------------------------------------
+
+
+@router.get("/backup", dependencies=EDIT)
+def download_backup(s: AppState = Depends(S)):
+    """Everything in one .zip (without API keys), to keep or to continue elsewhere."""
+    archive = backup.make_backup(s.data_dir, s.db, s.cfg)
+    return FileResponse(archive, media_type="application/zip", filename=f"histfig-backup-{now()[:10]}.zip",
+                        background=BackgroundTask(shutil.rmtree, archive.parent, ignore_errors=True))
+
+
+@router.post("/restore", dependencies=EDIT)
+async def restore_backup(file: UploadFile, s: AppState = Depends(S)):
+    """Replace all figures, documents, conversations, prompts and settings with a backup's.
+    The backup is checked completely first; the replaced data goes to <data>/previous."""
+    staging = s.data_dir / f".restore-{secrets.token_hex(4)}"
+    try:
+        await asyncio.to_thread(backup.unpack, file.file, staging)
+        await s.restore(staging)
+    except backup.RestoreError as e:
+        raise HTTPException(400, str(e)) from e
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    return {"figures": s.db.one("SELECT COUNT(*) AS n FROM figures")["n"], "warnings": s.cfg.validate()}
 
 
 @router.get("/info")

@@ -75,6 +75,10 @@ class SearchIndex:
         with self._lock:
             self._cache.pop(figure_id, None)
 
+    def clear(self) -> None:
+        with self._lock:
+            self._cache.clear()
+
     def _build(self, figure_id: int) -> FigureIndex:
         rows = self.db.all(
             """SELECT c.id, c.tokens, c.embedding FROM chunks c

@@ -644,3 +644,99 @@ def test_find_text_and_read_around(cfg, tmp_path):
         around = agent.read_around(db, fid, first)
         assert [h["chunk"] for h in around] == [0, 1]  # nothing before the first part
         assert agent.read_around(db, fid + 99, first) == []
+
+
+# Backup and restore ----------------------------------------------------------
+
+
+def test_backup_and_restore_elsewhere(cfg, tmp_path):
+    import io
+    import zipfile
+
+    from histfig.config import load_config, save_config
+
+    home, other = tmp_path / "home", tmp_path / "codespace"
+    cfg.chat.api_key = "sk-secret"
+    save_config(cfg, home)
+    with make_client(cfg, home) as client:
+        fid = client.post("/api/figures", json={"name": "鲁迅"}).json()["id"]
+        client.post(f"/api/figures/{fid}/image", files={"file": ("p.png", PNG, "image/png")})
+        client.post(f"/api/figures/{fid}/documents", files=[("files", ("memoir.txt", RIVER.encode(), "text/plain"))])
+        wait_ready(client, fid)
+        ask(client, fid, "Tell me about the river")
+        r = client.get("/api/backup")
+        assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+        archive = r.content
+    names = zipfile.ZipFile(io.BytesIO(archive)).namelist()
+    assert {"histfig.db", "config.toml"} <= set(names)
+    assert any(n.startswith("uploads/") for n in names) and any(n.startswith("images/") for n in names)
+    assert b"sk-secret" not in zipfile.ZipFile(io.BytesIO(archive)).read("config.toml")  # no keys in backups
+
+    # Another HistFig (say, a new Codespace) with its own key and an older figure
+    cfg.chat.api_key = "sk-mine"
+    save_config(cfg, other)
+    with make_client(cfg, other) as client:
+        client.post("/api/figures", json={"name": "To be replaced"})
+        r = client.post("/api/restore", files={"file": ("backup.zip", archive, "application/zip")})
+        assert r.status_code == 200 and r.json()["figures"] == 1, r.text
+        figs = client.get("/api/figures").json()
+        assert [f["name"] for f in figs] == ["鲁迅"] and not figs[0]["needs_rebuild"]
+        fid = figs[0]["id"]
+        assert client.get(f"/api/figures/{fid}/image").status_code == 200
+        conv = client.get(f"/api/figures/{fid}/conversations").json()[0]
+        assert len(client.get(f"/api/conversations/{conv['id']}").json()["messages"]) == 2
+        assert ask(client, fid, "Yangtze river")[0]  # search works on the restored index
+        # the uploaded files moved along: rebuilding reads them from this data folder
+        client.post(f"/api/figures/{fid}/rebuild")
+        assert all(d["status"] == "ready" for d in wait_ready(client, fid))
+        assert load_config(other).chat.api_key == "sk-mine"  # this computer's key is kept
+        assert (other / "previous" / "histfig.db").exists()  # the replaced data, just in case
+
+
+def test_restore_refuses_what_is_not_a_good_backup(cfg, tmp_path):
+    import io
+    import sqlite3
+    import zipfile
+
+    def zipped(files: dict) -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            for name, data in files.items():
+                z.writestr(name, data)
+        return buf.getvalue()
+
+    old_db = tmp_path / "old.db"
+    conn = sqlite3.connect(old_db)
+    conn.execute("PRAGMA user_version = 3")
+    conn.close()
+    with make_client(cfg, tmp_path / "data") as client:
+        client.post("/api/figures", json={"name": "Keep me"})
+        restore = lambda data: client.post("/api/restore", files={"file": ("b.zip", data, "application/zip")})
+        cases = {
+            b"not a zip": "not a .zip",
+            zipped({"notes.txt": "hi"}): "no histfig.db",
+            zipped({"histfig.db": "x", "../evil.txt": "x"}): "unsafe path",
+            zipped({"histfig.db": "garbage" * 100}): "can't be read",
+            zipped({"histfig.db": old_db.read_bytes()}): "different version",
+        }
+        for data, reason in cases.items():
+            r = restore(data)
+            assert r.status_code == 400 and reason in r.json()["detail"], (reason, r.text)
+        assert [f["name"] for f in client.get("/api/figures").json()] == ["Keep me"]  # nothing changed
+        assert not list((tmp_path / "data").glob(".restore-*"))  # nothing left behind
+
+
+def test_documents_stored_with_absolute_paths_still_work(cfg, tmp_path):
+    """Older databases stored each file's full path; the file is found in this data folder."""
+    from histfig.db import Database
+
+    with make_client(cfg, tmp_path) as client:
+        fid = client.post("/api/figures", json={"name": "Old"}).json()["id"]
+        client.post(f"/api/figures/{fid}/documents", files=[("files", ("a.txt", RIVER.encode(), "text/plain"))])
+        wait_ready(client, fid)
+        db = Database(tmp_path / "histfig.db")
+        db.execute("UPDATE documents SET path = '/somewhere/else/data/uploads/' || figure_id || '/' || "
+                   "replace(path, figure_id || '/', '')")
+        assert db.one("SELECT path FROM documents")["path"].startswith("/somewhere/else")
+        client.post(f"/api/figures/{fid}/rebuild")
+        assert wait_ready(client, fid)[0]["status"] == "ready"

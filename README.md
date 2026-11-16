@@ -65,6 +65,11 @@ no GPU, so use an OpenAI-compatible API. Either paste the key on the Settings pa
 Codespaces secret called `OPENROUTER_API_KEY` and enter that name under **Advanced → Key from
 environment variable** on the Settings page. Run `uv run histfig`; Codespaces offers to open the forwarded port 8000.
 
+Your data stays in the codespace while it exists, also when it stops and restarts. But GitHub
+deletes codespaces that go unused for a while (30 days by default), and `data/` is not part of the
+repository. So use **Settings → Download backup** to keep a copy, and **Restore backup** to continue
+in a new codespace (see [Backups](#backups)).
+
 ### Without uv
 
 ```bash
@@ -174,7 +179,7 @@ To let others (students, a class, a website audience) talk to figures you prepar
 them change anything:
 
 1. Prepare everything as usual: figures, documents, prompts, models and API key. Do it on the server,
-   or on your computer and then copy the whole `data/` folder to the server.
+   or on your computer and then restore a backup of it on the server (see [Backups](#backups)).
 2. Start it locked:
 
    ```bash
@@ -218,7 +223,18 @@ histfig.example.org {
 - **Retrieval** is hybrid: vector similarity plus keyword search (BM25), merged with reciprocal rank
   fusion. Keywords are words (jieba segments Chinese), English words are stemmed (rivers → river),
   and pairs of neighbouring words are added, so a shared phrase counts for more.
-- **Backups:** copy the `data/` folder.
+- **Backups:** see below.
+
+## Backups
+
+**Settings → Download backup** saves one `.zip` file with all figures, documents (and their
+passages), conversations, prompts and settings. API keys are left out of it, so it is safe to keep or
+pass on. **Restore backup** replaces everything in this HistFig with the contents of such a file. It
+works in any copy of HistFig (another computer, a new codespace, a server), and the API keys already set
+up there are kept. The backup is checked completely before anything changes, and the data it
+replaces is kept in `data/previous/` until the next restore.
+
+On your own computer, copying the `data/` folder (while HistFig is stopped) works as a backup too.
 
 ## Development
 

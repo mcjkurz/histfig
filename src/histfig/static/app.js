@@ -37,6 +37,21 @@ async function api(path, opts = {}) {
   return type.includes("json") ? res.json() : res.text();
 }
 
+/* POST a FormData with upload progress, onProgress(0…1); resolves with the JSON reply. */
+function postWithProgress(path, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api" + path);
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+    xhr.onload = async () => {
+      const res = new Response(xhr.responseText, { status: xhr.status, statusText: xhr.statusText });
+      if (res.ok) resolve(await res.json()); else reject(new Error(await errorMessage(res)));
+    };
+    xhr.onerror = () => reject(new Error("The upload failed: the connection to HistFig was lost."));
+    xhr.send(body);
+  });
+}
+
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -458,16 +473,26 @@ async function pageFigure(id) {
 
   // Documents list with polling while work is in progress
   let timer = null;
+  // Files still on their way to the server: {key, label, pct}, shown at the top of the list
+  let uploads = [], uploadKey = 0;
+  const uploadRow = (u) => `<li data-upload="${u.key}">
+      <span class="name">${esc(u.label)}</span>
+      <span class="row"><span class="badge processing">uploading ${u.pct}%</span></span>
+      <span></span><div class="progress"><div style="width:${u.pct}%"></div></div></li>`;
+  // What a document is doing: queued → reading (split into passages) → embedding N% → ready
+  const stage = (d, pct) => d.status === "pending" ? "queued"
+    : d.status === "processing" ? (d.chunk_count ? `embedding ${pct}%` : "reading") : d.status;
+
   const loadDocs = async () => {
     const docs = await api(`/figures/${id}/documents`);
     const el = document.getElementById("docs");
     if (!el) return;
-    el.innerHTML = docs.length ? docs.map((d) => {
+    el.innerHTML = uploads.map(uploadRow).join("") + (docs.length ? docs.map((d) => {
       const pct = d.chunk_count ? Math.round((100 * d.embedded_count) / d.chunk_count) : 0;
       const working = d.status === "pending" || d.status === "processing";
       return `<li>
         <span class="name">${esc(d.filename)}</span>
-        <span class="row"><span class="badge ${d.status}">${d.status === "processing" ? `embedding ${pct}%` : d.status}</span>
+        <span class="row"><span class="badge ${d.status}">${stage(d, pct)}</span>
           ${d.status !== "error" ? "" : fig.needs_rebuild // retrying can't help: the index needs rebuilding
             ? `<button class="link" data-rebuild-doc>rebuild index</button>`
             : `<button class="link" data-retry="${d.id}">retry</button>`}
@@ -476,7 +501,7 @@ async function pageFigure(id) {
           ${d.error ? `<span class="error">${esc(d.error)}</span>` : ""}</span>
         ${working ? `<div class="progress"><div style="width:${pct}%"></div></div>` : ""}
       </li>`;
-    }).join("") : `<li class="muted">No documents yet.</li>`;
+    }).join("") : uploads.length ? "" : `<li class="muted">No documents yet.</li>`);
     clearTimeout(timer);
     fig = await api(`/figures/${id}`); renderBanner(); // keeps the usage total live
     if (docs.some((d) => d.status === "pending" || d.status === "processing")) {
@@ -504,13 +529,20 @@ async function pageFigure(id) {
     if (!files.length) return;
     const body = new FormData();
     for (const f of files) body.append("files", f);
+    const u = { key: ++uploadKey, pct: 0,
+      label: files.length === 1 ? files[0].name : `${files.length} files (${files.map((f) => f.name).join(", ")})` };
+    uploads.push(u);
+    await loadDocs().catch(fail); // the row appears right away
     try {
-      toast(`Uploading ${files.length} file(s)…`);
-      const res = await api(`/figures/${id}/documents`, { method: "POST", body });
+      const res = await postWithProgress(`/figures/${id}/documents`, body, (fraction) => {
+        u.pct = Math.min(99, Math.round(100 * fraction)); // 100% = the server has it
+        const row = document.querySelector(`[data-upload="${u.key}"]`);
+        if (row) row.outerHTML = uploadRow(u);
+      });
       if (res.skipped.length) toast("Skipped: " + res.skipped.map((s) => `${s.filename} (${s.reason})`).join(", "), true);
-      else toast(`Added ${res.added.length} file(s); processing in the background.`);
-      await loadDocs();
     } catch (err) { fail(err); }
+    uploads = uploads.filter((x) => x !== u);
+    await loadDocs().catch(fail);
   };
   const dz = document.getElementById("dropzone"), fileInput = document.getElementById("file-input");
   dz.onclick = () => fileInput.click();
@@ -940,6 +972,10 @@ async function pageChat(figureId, convId) {
         const ans = wrap.querySelector(".answer");
         ans.innerHTML = linkCitations(renderText(answer), this.sources) || (streaming ? "<p></p>" : "");
         ans.classList.toggle("working", streaming);
+        // Each update re-creates the spinner; starting its turn at the page clock's phase
+        // makes it continue smoothly instead of jumping back to the start
+        // (2400 ms fits both the normal 0.8 s turn and the 2.4 s one for reduced motion)
+        if (streaming) ans.style.setProperty("--spin-phase", `-${(document.timeline?.currentTime ?? performance.now()) % 2400}ms`);
       },
       setSources(hits) {
         this.sources = hits;
@@ -1297,11 +1333,21 @@ async function pageSettings(notes = []) {
           <span class="spacer"></span><button class="btn small primary" disabled>Save</button></div>
       </form>
       <div class="card settings-card">
-        <h2>Files</h2>
+        <h2>Data &amp; backup</h2>
         <dl class="kv">
+          <dt>Backup</dt><dd>
+            <div class="row">
+              <a class="btn small" href="/api/backup" download>Download backup</a>
+              <label class="btn small">Restore backup…<input type="file" id="restore-input" accept=".zip,application/zip" hidden></label>
+              <span class="small" id="restore-status"></span>
+            </div>
+            <span class="muted">One .zip with all figures, documents, conversations, prompts and settings (API keys
+              are left out). Keep it safe, or restore it in another copy of HistFig, e.g. a new Codespace.
+              Restoring replaces everything here; what it replaces is kept in the data folder's
+              <code>previous</code> folder until the next restore.</span></dd>
           <dt>Config file</dt><dd><code>${esc(s.config_path)}</code><br><span class="muted">Settings are saved here.
             You can also edit it by hand (then restart HistFig) or run <code>histfig setup</code> in a terminal.</span></dd>
-          <dt>Data folder</dt><dd><code>${esc(s.data_dir)}</code><br><span class="muted">database, uploads and portraits — copy it to back up</span></dd>
+          <dt>Data folder</dt><dd><code>${esc(s.data_dir)}</code><br><span class="muted">database, uploads and portraits</span></dd>
         </dl>
       </div>
     </div>`;
@@ -1554,6 +1600,25 @@ async function pageSettings(notes = []) {
         await loadGeneral();
       }
     } catch (err) { fail(err); }
+  };
+
+  // ----- restoring a backup (downloading is a plain link)
+  document.getElementById("restore-input").onchange = async (e) => {
+    const file = e.target.files[0], status = document.getElementById("restore-status");
+    e.target.value = "";
+    if (!file || !confirm(`Restore “${file.name}”? All figures, documents, conversations, prompts and settings ` +
+                          "here are replaced by the backup's (the current ones are kept in the “previous” folder).")) return;
+    const body = new FormData();
+    body.append("file", file);
+    try {
+      const res = await postWithProgress("/restore", body, (fraction) => {
+        status.textContent = fraction < 1 ? `Uploading ${Math.round(100 * fraction)}%…` : "Restoring…";
+      });
+      session.set("lastChat", null); session.set("lastConv", {}); // ids from before mean other things now
+      modelsPromise = null;
+      toast(`Restored: ${res.figures} figure${res.figures === 1 ? "" : "s"}.`);
+      await pageSettings(res.warnings.length ? ["Restored. Some settings still need attention: " + res.warnings.join("; ")] : []);
+    } catch (err) { status.textContent = ""; fail(err); }
   };
 
   // ----- connection tests (of the saved settings)

@@ -203,7 +203,7 @@ label.btn.small { font-size: .85rem; }
 .answer.working > p:last-child::after {
   content: ""; display: inline-block; width: .8em; height: .8em; margin-left: .4em; vertical-align: -.05em;
   border: 2px solid var(--accent-soft); border-top-color: var(--accent); border-radius: 50%;
-  animation: spin .8s linear infinite;
+  animation: spin .8s linear infinite; animation-delay: var(--spin-phase, 0ms);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .answer.working > p:last-child::after { animation-duration: 2.4s; } }

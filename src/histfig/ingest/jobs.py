@@ -32,9 +32,16 @@ class JobError(RuntimeError):
     pass
 
 
+def document_file(uploads_dir: Path, doc: dict) -> Path:
+    """Where a document's uploaded file is: <uploads>/<figure id>/<file name>. Only the name
+    is taken from the stored path, so a data folder that was moved or restored elsewhere works."""
+    return uploads_dir / str(doc["figure_id"]) / Path(doc["path"]).name
+
+
 class IngestWorker:
-    def __init__(self, db: Database, cfg: Config, embedder: Embedder, index: SearchIndex):
+    def __init__(self, db: Database, cfg: Config, embedder: Embedder, index: SearchIndex, uploads_dir: Path):
         self.db = db
+        self.uploads_dir = uploads_dir
         self.cfg = cfg
         self.embedder = embedder
         self.index = index
@@ -137,7 +144,7 @@ class IngestWorker:
 
     async def _chunk(self, doc: dict) -> bool:
         """Split the document into passages; False if it was deleted or reset meanwhile."""
-        data = Path(doc["path"]).read_bytes()
+        data = document_file(self.uploads_dir, doc).read_bytes()
         cfg = self.cfg.chunking
 
         def work():

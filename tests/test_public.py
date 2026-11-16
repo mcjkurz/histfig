@@ -53,6 +53,8 @@ def test_public_server_is_read_only(cfg, tmp_path):
             c.put("/api/settings", json={"chat": {"model": "x"}}),
             c.post("/api/settings/test/chat"),
             c.get("/api/settings/embedding-models"),
+            c.get("/api/backup"),
+            c.post("/api/restore", files={"file": ("b.zip", b"x", "application/zip")}),
         ]
         assert [r.status_code for r in refused] == [403] * len(refused)
         # Reading is fine
