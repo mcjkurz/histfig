@@ -10,6 +10,7 @@ import re
 import secrets
 import shutil
 from dataclasses import asdict
+from datetime import datetime
 from typing import Literal
 from urllib.parse import quote
 
@@ -812,7 +813,8 @@ async def embedding_models(s: AppState = Depends(S)):
 def download_backup(s: AppState = Depends(S)):
     """Everything in one .zip (without API keys), to keep or to continue elsewhere."""
     archive = backup.make_backup(s.data_dir, s.db, s.cfg)
-    return FileResponse(archive, media_type="application/zip", filename=f"histfig-backup-{now()[:10]}.zip",
+    stamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # this computer's time; no ":" (not allowed on Windows)
+    return FileResponse(archive, media_type="application/zip", filename=f"histfig-backup-{stamp}.zip",
                         background=BackgroundTask(shutil.rmtree, archive.parent, ignore_errors=True))
 
 

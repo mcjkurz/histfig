@@ -1,6 +1,7 @@
 """End-to-end through the HTTP API with fake providers (no network)."""
 
 import json
+import re
 import time
 
 from fastapi.testclient import TestClient
@@ -666,6 +667,8 @@ def test_backup_and_restore_elsewhere(cfg, tmp_path):
         ask(client, fid, "Tell me about the river")
         r = client.get("/api/backup")
         assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+        assert re.search(r'filename="histfig-backup-\d{4}-\d\d-\d\d_\d\d-\d\d-\d\d\.zip"',
+                         r.headers["content-disposition"])
         archive = r.content
     names = zipfile.ZipFile(io.BytesIO(archive)).namelist()
     assert {"histfig.db", "config.toml"} <= set(names)
