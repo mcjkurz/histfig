@@ -186,7 +186,7 @@ label.btn.small { font-size: .85rem; }
   padding: 12px 16px; border-radius: 16px 16px 16px 4px;
   font-family: var(--serif); font-size: 1.02rem;
 }
-.msg.assistant .avatar { margin-top: 2px; }
+.msg.assistant .avatar { margin-top: 2px; width: 46px; height: 46px; font-size: 1.15rem; }
 .msg.assistant .bubble p { margin: 0 0 .7em; }
 .msg.assistant .bubble p:last-child { margin-bottom: 0; }
 .msg .tools { display: flex; gap: 4px; font-family: var(--sans); }
