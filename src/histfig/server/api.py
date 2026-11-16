@@ -495,7 +495,7 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
             if body.documents == "agent":
                 try:
                     found = agent.research(
-                        s.chat, s.db, fig, body.content, [{"role": m["role"], "content": m["content"]} for m in history],
+                        s.chat, s.db, fig, body.content, [prompts.history_message(m) for m in history],
                         model, body.top_k or s.cfg.retrieval.top_k, lambda q, k: retrieve(s, fig, q, k),
                         max_steps=s.cfg.retrieval.agent_steps)
                     async for kind, value in found:
@@ -518,7 +518,7 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
             yield _sse({"type": "sources", "sources": hits})
 
             messages = [{"role": "system", "content": prompts.system_prompt(fig, _prompt_text(s, conv, fig))}]
-            messages += [{"role": m["role"], "content": m["content"]} for m in history]
+            messages += [prompts.history_message(m) for m in history]
             messages.append({"role": "user", "content": prompts.user_message(body.content, hits)})
 
             async for kind, text in s.chat.stream(messages, model, body.temperature):

@@ -81,6 +81,19 @@ def system_prompt(figure: dict, template: str | None = None) -> str:
     return render(template or SYSTEM_PROMPT, figure)
 
 
+_CITE_RE = re.compile(r"\s*\[(?:source:?\s*)?\d+(?:\s*[,，、]\s*\d+)*\]", re.IGNORECASE)
+
+
+def history_message(m) -> dict:
+    """An earlier message as the model sees it again. Its passage numbers ("[2]") pointed at
+    that turn's passages, which are no longer in the context: removed, so the model doesn't
+    imitate them and cite passages it hasn't got."""
+    content = m["content"]
+    if m["role"] == "assistant":
+        content = _CITE_RE.sub("", content)
+    return {"role": m["role"], "content": content}
+
+
 def user_message(message: str, hits: list[dict]) -> str:
     if not hits:
         return message

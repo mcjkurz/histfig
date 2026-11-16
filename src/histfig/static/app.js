@@ -119,8 +119,7 @@ function renderText(text) {
 
 /* Passage numbers the model cites, "[2]" or "[1, 3]", as small source buttons that open the
    passage in the Sources panel. A number without a passage (the model got it wrong) is greyed out. */
-function linkCitations(html, sources) {
-  if (!sources.length) return html;
+function linkCitations(html, sources = []) {
   return html.replace(/\s*\[(?:source:?\s*)?(\d+(?:\s*[,，、]\s*\d+)*)\]/gi, (all, list) =>
     `<span class="cite">${list.split(/\s*[,，、]\s*/).map(Number).map((n) => {
       const h = sources[n - 1];

@@ -114,6 +114,25 @@ histfig
   accidental **Ctrl+Z** (which pauses it instead of stopping it), `uv run histfig` notices and asks
   *"Stop it and start a new one?"*. Press Enter to restart it.
 
+## Updating
+
+Stop HistFig (Ctrl+C), then in the HistFig folder run:
+
+```bash
+git pull           # download the newest version
+uv run histfig     # start it again (uv installs any new dependencies by itself)
+```
+
+Your `data/` folder (settings, figures, documents, conversations) is not part of the repository, so
+updating never touches it. To be safe, make a [backup](#backups) first.
+
+- **"Your local changes would be overwritten"**: you edited HistFig's own files. Run `git stash`
+  to set your changes aside (or `git checkout .` to throw them away), then `git pull` again.
+- **Downloaded as a ZIP instead of `git clone`?** Download the new ZIP, unpack it, and move your old
+  `data/` folder into the new HistFig folder.
+- **Codespaces:** run the same `git pull` in the codespace's terminal.
+- **Without uv:** after `git pull`, run `pip install -e .` again in the activated environment.
+
 ## Commands
 
 | Command | What it does |

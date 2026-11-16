@@ -34,7 +34,9 @@ language of the documents, if the first results don't fit.
 
 If the message needs nothing from the writings (a greeting, small talk, a question \
 about the conversation itself), call no tool and reply "no search needed". Otherwise \
-search, judge the results, refine if they are not good enough, then call finish."""
+search, judge the results, refine if they are not good enough, then call finish. \
+Passages found for earlier messages are no longer available, so a follow-up that asks \
+about a work, person, event or view needs a new search, even if the topic came up before."""
 
 
 def _tool(name: str, description: str, properties: dict, required: list[str]) -> dict:
