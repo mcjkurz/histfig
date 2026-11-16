@@ -414,3 +414,7 @@ body.public .admin-only { display: none !important; }
 
 /* Immersive: just the conversation */
 .immersive .cite, .immersive .research, .immersive .thinking, .immersive .msg .tools { display: none !important; }
+
+.hint .tool-list { margin: 4px 0; padding-left: 18px; }
+.hint .tool-list li { margin: 1px 0; }
+.btn.busy { opacity: .6; cursor: progress; }

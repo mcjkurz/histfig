@@ -200,11 +200,18 @@ editor restores the original text, which lives in `src/histfig/prompts.py`.
 Under **⚙ Options → Documents** in the chat:
 
 - **Simple search** (default): the passages that best match the question go to the model with it.
-- **Agent search**: the model looks things up itself before it answers. It can search by meaning,
-  look for exact words (names, titles, phrases), read the passages around a hit, and try again with
-  other words. Then it picks the passages to answer from, or decides that no lookup is needed,
-  e.g. for a greeting. The steps are shown above the answer and included in the export. It is
-  slower and makes a few more model calls per question (at most 5 rounds by default; see
+- **Agent search**: the model looks things up itself before it answers, with these tools:
+  - **search**: finds passages by meaning and keywords (it can retry with other wordings, or in
+    the language of the documents);
+  - **find_text**: finds passages containing exact words, e.g. names, titles or a phrase
+    (alternatives separated by `|`, e.g. `阿Q|Ah Q`; shows up to 10 matches);
+  - **read_around**: reads the passages just before and after a passage;
+  - **finish**: ends the research with the passages to answer from (at most as many as
+    **Passages per question**).
+
+  It may also call no tool when the message needs nothing from the writings, e.g. a greeting; the
+  answer then has no sources. The steps are shown above the answer and included in the export. It
+  is slower and makes a few more model calls per question (at most 5 rounds by default; see
   **Agent search steps** in Settings). The model must support tool calling. If it doesn't,
   HistFig says so and uses simple search.
 - **Don't use**: chat without the documents.

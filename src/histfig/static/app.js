@@ -806,10 +806,16 @@ async function pageChat(figureId, convId) {
   const documents = $("documents"), topK = $("top-k"), showThinking = $("show-thinking"), modelInput = $("model");
   const DOCUMENT_MODES = {
     simple: "The passages that best match each question are given to the model.",
-    agent: "The model looks things up itself before answering. Slower, with a few more model calls.",
+    agent: `The model researches before answering, with these tools:
+      <ul class="tool-list">
+        <li><b>search</b>: finds passages by meaning and keywords</li>
+        <li><b>find_text</b>: finds passages containing exact words (names, titles, phrases)</li>
+        <li><b>read_around</b>: reads the passages just before and after one</li>
+        <li><b>finish</b>: picks the passages to answer from</li>
+      </ul>It may also decide no lookup is needed (e.g. a greeting). Slower: a few more model calls.`,
     off: "Chat without looking anything up in the documents.",
   };
-  const showDocumentsMode = () => { $("documents-hint").textContent = DOCUMENT_MODES[documents.value] || ""; };
+  const showDocumentsMode = () => { $("documents-hint").innerHTML = DOCUMENT_MODES[documents.value] || ""; };
   documents.value = prefs.get("documents", "simple");
   if (!DOCUMENT_MODES[documents.value]) documents.value = "simple";
   showDocumentsMode();
@@ -1345,7 +1351,7 @@ async function pageSettings(notes = []) {
         <dl class="kv">
           <dt>Backup</dt><dd>
             <div class="row">
-              <a class="btn small" href="/api/backup" download>Download backup</a>
+              <a class="btn small" href="/api/backup" download id="backup-link">Download backup</a>
               <label class="btn small">Restore backup…<input type="file" id="restore-input" accept=".zip,application/zip" hidden></label>
               <span class="small" id="restore-status"></span>
             </div>
@@ -1640,7 +1646,37 @@ async function pageSettings(notes = []) {
     } catch (err) { fail(err); }
   };
 
-  // ----- restoring a backup (downloading is a plain link)
+  // ----- downloading a backup: the .zip is made first, which can take a while, so say so
+  document.getElementById("backup-link").onclick = async (e) => {
+    e.preventDefault();
+    const link = e.currentTarget, status = document.getElementById("restore-status");
+    if (link.classList.contains("busy")) return;
+    link.classList.add("busy");
+    status.textContent = "Preparing backup…";
+    try {
+      const res = await fetch(link.href);
+      if (!res.ok) throw new Error(await errorMessage(res));
+      const total = Number(res.headers.get("content-length")) || 0, parts = [];
+      let got = 0;
+      for (const reader = res.body.getReader(); ;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        parts.push(value); got += value.length;
+        status.textContent = total ? `Downloading ${Math.round(100 * got / total)}%…`
+          : `Downloading ${(got / 1e6).toFixed(1)} MB…`;
+      }
+      const name = /filename="?([^";]+)"?/.exec(res.headers.get("content-disposition") || "")?.[1] || "histfig-backup.zip";
+      const url = URL.createObjectURL(new Blob(parts, { type: "application/zip" }));
+      const a = Object.assign(document.createElement("a"), { href: url, download: name });
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      status.textContent = "";
+      toast(`Backup saved: ${name}`);
+    } catch (err) { status.textContent = ""; fail(err); }
+    finally { link.classList.remove("busy"); }
+  };
+
+  // ----- restoring a backup
   document.getElementById("restore-input").onchange = async (e) => {
     const file = e.target.files[0], status = document.getElementById("restore-status");
     e.target.value = "";
