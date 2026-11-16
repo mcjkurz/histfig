@@ -740,3 +740,26 @@ def test_documents_stored_with_absolute_paths_still_work(cfg, tmp_path):
         assert db.one("SELECT path FROM documents")["path"].startswith("/somewhere/else")
         client.post(f"/api/figures/{fid}/rebuild")
         assert wait_ready(client, fid)[0]["status"] == "ready"
+
+
+def test_settings_save_both_models_together_or_neither(cfg, tmp_path, monkeypatch):
+    """The Settings page saves all changed cards in one request: all of it, or nothing."""
+    from histfig.config import load_config, save_config
+    from histfig.server import api
+
+    async def fake_models(base_url, api_key="", embedding=False):
+        return ["good/embed"] if embedding else ["fake-chat", "new/chat"]
+
+    monkeypatch.setattr(api, "available_models", fake_models)
+    save_config(cfg, tmp_path)
+    with make_client(cfg, tmp_path) as client:
+        both = lambda embed: client.put("/api/settings", json={
+            "chat": {"model": "new/chat"}, "embedding": {"model": embed}, "same_key_as_chat": True,
+            "chunking": {"chunk_size": 800, "overlap": 100}})
+        r = both("missing/embed")
+        assert r.status_code == 400 and "missing/embed" in r.json()["detail"]
+        saved = load_config(tmp_path)
+        assert saved.chat.model == "fake-chat" and saved.chunking.chunk_size == 100  # nothing half-saved
+        assert both("good/embed").status_code == 200
+        saved = load_config(tmp_path)
+        assert (saved.chat.model, saved.embedding.model, saved.chunking.chunk_size) == ("new/chat", "good/embed", 800)

@@ -324,7 +324,18 @@ const routes = [
   [/^#\/settings$/, pageSettings],
 ];
 
+/* A page with unsaved changes sets this to a function returning true while there are some. */
+let hasUnsavedChanges = null, currentHash = location.hash;
+window.addEventListener("beforeunload", (e) => { if (hasUnsavedChanges?.()) e.preventDefault(); });
+
 function route() {
+  if (hasUnsavedChanges?.() && location.hash !== currentHash &&
+      !confirm("You have unsaved changes on this page. Leave without saving them?")) {
+    history.replaceState(null, "", currentHash || "#/"); // stay (this fires no hashchange)
+    return;
+  }
+  hasUnsavedChanges = null;
+  currentHash = location.hash;
   cleanup.forEach((fn) => fn());
   cleanup = [];
   const hash = location.hash || "#/";
@@ -1267,8 +1278,7 @@ async function pageSettings(notes = []) {
           "Instead of storing the key, read it from this environment variable (handy for Codespaces secrets). Used when no key is saved.")}
         ${advanced}
       </div></details>
-      <div class="form-actions"><div class="test-detail small" id="detail-${which}"></div><span class="spacer"></span>
-        <button class="btn small primary" disabled>Save</button></div>
+      <div class="form-actions"><div class="test-detail small" id="detail-${which}"></div></div>
     </form>`;
 
   const usage = usageText(s.embedding_usage.tokens, s.embedding_usage.cost);
@@ -1278,7 +1288,7 @@ async function pageSettings(notes = []) {
       <div class="row" style="margin-bottom:16px"><h1 style="margin:0">Settings</h1><span class="spacer"></span>
         <button class="primary" id="test-all">Test connections</button></div>
       ${s.problems.length ? `<div class="banner"><b>Welcome to HistFig!</b> Choose a chat model and an embedding
-        model below and click Save. OpenRouter needs one API key for both; Ollama runs free models on your own computer.</div>` : ""}
+        model below, then click “Save changes” at the bottom. OpenRouter needs one API key for both; Ollama runs free models on your own computer.</div>` : ""}
       ${notes.map((n) => `<div class="banner">${esc(n)}</div>`).join("")}
       ${s.figures.outdated ? `<div class="banner">${s.figures.outdated === 1 ? "One figure was" : `${s.figures.outdated} figures were`}
         embedded with a different model than the one configured now, so search falls back to keywords
@@ -1329,8 +1339,7 @@ async function pageSettings(notes = []) {
         </div>
         <div class="form-actions">
           <button type="button" class="btn small" data-rebuild-all ${s.figures.with_documents ? "" : "disabled"}
-            title="Re-chunk and re-embed the documents of every figure with the saved settings">Rebuild all figures</button>
-          <span class="spacer"></span><button class="btn small primary" disabled>Save</button></div>
+            title="Re-chunk and re-embed the documents of every figure with the saved settings">Rebuild all figures</button></div>
       </form>
       <div class="card settings-card">
         <h2>Data &amp; backup</h2>
@@ -1350,16 +1359,25 @@ async function pageSettings(notes = []) {
           <dt>Data folder</dt><dd><code>${esc(s.data_dir)}</code><br><span class="muted">database, uploads and portraits</span></dd>
         </dl>
       </div>
+      <div class="save-bar hidden" id="save-bar">
+        <span id="save-what"></span><span class="spacer"></span>
+        <button type="button" class="btn small" id="discard">Discard</button>
+        <button type="button" class="btn small primary" id="save-all">Save changes</button>
+      </div>
     </div>`;
 
-  // ----- unsaved changes: Save becomes available; Test (which uses the saved settings) waits for it
+  // ----- unsaved changes: one Save for all cards (each card puts its part of the request in
+  //       builders); Test, which uses the saved settings, waits until they are saved
+  const CARD_NAMES = { chat: "Chat model", embedding: "Embedding model", passages: "Passages & retrieval" };
+  const dirty = new Set(), builders = {};
+  hasUnsavedChanges = () => dirty.size > 0;
   let testing = false;
   function updateTestButtons() {
     const all = document.getElementById("test-all");
     if (!all) return; // left the page
     let anyUnsaved = false;
     for (const which of ["chat", "embedding"]) {
-      const unsaved = !app.querySelector(`form[data-section="${which}"] button.primary`).disabled;
+      const unsaved = dirty.has(which);
       anyUnsaved ||= unsaved;
       const b = app.querySelector(`[data-test="${which}"]`);
       b.disabled = testing || unsaved;
@@ -1369,9 +1387,42 @@ async function pageSettings(notes = []) {
     all.title = anyUnsaved ? "Save your changes first: the tests use the saved settings" : "";
   }
   function markDirty(form) {
-    form.querySelector("button.primary").disabled = false;
+    dirty.add(form.dataset.section);
+    form.classList.add("unsaved");
+    document.getElementById("save-what").textContent =
+      "Unsaved changes: " + [...dirty].map((name) => CARD_NAMES[name]).join(", ");
+    document.getElementById("save-bar").classList.remove("hidden");
     updateTestButtons();
   }
+  const saveBtn = document.getElementById("save-all");
+  async function saveAll() {
+    if (!dirty.size) return;
+    const body = {};
+    try {
+      for (const name of dirty) Object.assign(body, builders[name]());
+    } catch (err) { return fail(err); } // something incomplete, e.g. no model chosen
+    saveBtn.disabled = true; saveBtn.textContent = "Saving…";
+    try { // one request: either everything is saved, or nothing
+      const res = await api("/settings", { method: "PUT", json: body });
+      modelsPromise = null; // the model list / defaults may have changed
+      dirty.clear();
+      toast("Saved");
+      await pageSettings(res.warnings || []);
+    } catch (err) {
+      fail(err);
+      saveBtn.disabled = false; saveBtn.textContent = "Save changes";
+    }
+  }
+  saveBtn.onclick = saveAll;
+  document.getElementById("discard").onclick = () => {
+    if (confirm("Discard your unsaved changes?")) { dirty.clear(); pageSettings(); }
+  };
+  // Actions that reload this page would lose unsaved changes: save or discard them first
+  const unsavedFirst = () => {
+    if (!dirty.size) return false;
+    toast("Save or discard your changes first (the bar at the bottom).", true);
+    return true;
+  };
 
   // ----- "Browse models…": a searchable list of the provider's models (used by both model cards)
   //   load()   → the model names        state(m) → "default", "added ✓", … or null if pickable
@@ -1509,19 +1560,20 @@ async function pageSettings(notes = []) {
     };
     if (which === "chat") wireChatModels(form, initialService); else wireEmbeddingModel(form, initialService);
     form.oninput = form.onchange = (e) => {
+      if (e.target.classList.contains("model-filter")) return; // just searching the model list
       if (e.target.name === "same_key" || e.target.name === "base_url") sync();
       markDirty(form);
     };
     sync();
-    form.onsubmit = async (e) => {
-      e.preventDefault();
+    form.onsubmit = (e) => { e.preventDefault(); saveAll(); }; // Enter in a field
+    builders[which] = () => {
       const sv = form.service.value;
       const section = {
         provider: sv === "ollama" ? "ollama" : sv === "local" ? "sentence_transformers" : "openai_compatible",
         base_url: sv === "openrouter" ? s.urls.openrouter : sv === "ollama" ? s.urls.ollama : sv === "local" ? "" : form.base_url.value.trim(),
         model: which === "chat" ? defaultModel : form.model.value.trim(),
       };
-      if (!section.model) return fail(new Error(which === "chat" ? "Add at least one chat model." : "Enter an embedding model."));
+      if (!section.model) throw new Error(which === "chat" ? "Add at least one chat model." : "Enter an embedding model.");
       const shared = which === "embedding" && !row("same_key").classList.contains("hidden") && form.same_key.checked;
       if (!shared) {
         const key = form.api_key.value.trim(), env = form.api_key_env.value.trim();
@@ -1539,38 +1591,25 @@ async function pageSettings(notes = []) {
         section.query_prefix = form.query_prefix.value;
         section.document_prefix = form.document_prefix.value;
       }
-      await save({ [which]: section, same_key_as_chat: shared }, form);
+      return which === "chat" ? { chat: section } : { embedding: section, same_key_as_chat: shared };
     };
   }
 
   // ----- passages & retrieval
   const pform = app.querySelector('form[data-section="passages"]');
   pform.oninput = () => markDirty(pform);
-  pform.onsubmit = async (e) => {
-    e.preventDefault();
+  pform.onsubmit = (e) => { e.preventDefault(); saveAll(); };
+  builders.passages = () => {
     const n = (name) => Number(pform[name].value);
-    await save({
+    return {
       chunking: { chunk_size: n("chunk_size"), overlap: n("overlap") },
       retrieval: { top_k: n("top_k"), candidates: n("candidates"), min_similarity: n("min_similarity"), agent_steps: n("agent_steps") },
-    }, pform);
+    };
   };
-
-  async function save(body, form) {
-    const button = form.querySelector("button.primary");
-    button.disabled = true; button.textContent = "Saving…";
-    try {
-      const res = await api("/settings", { method: "PUT", json: body });
-      modelsPromise = null; // the model list / defaults may have changed
-      toast("Saved");
-      await pageSettings(res.warnings || []);
-    } catch (err) {
-      fail(err);
-      button.disabled = false; button.textContent = "Save";
-    }
-  }
 
   // ----- rebuilding every figure (after changing the embedding model or passage sizes)
   app.querySelectorAll("[data-rebuild-all]").forEach((b) => (b.onclick = async () => {
+    if (unsavedFirst()) return;
     if (!confirm("Re-chunk and re-embed the documents of all figures with the saved settings? " +
                  "This may take a while, and uses the embedding model for every passage again.")) return;
     try {
@@ -1606,7 +1645,8 @@ async function pageSettings(notes = []) {
   document.getElementById("restore-input").onchange = async (e) => {
     const file = e.target.files[0], status = document.getElementById("restore-status");
     e.target.value = "";
-    if (!file || !confirm(`Restore “${file.name}”? All figures, documents, conversations, prompts and settings ` +
+    if (!file || unsavedFirst()) return;
+    if (!confirm(`Restore “${file.name}”? All figures, documents, conversations, prompts and settings ` +
                           "here are replaced by the backup's (the current ones are kept in the “previous” folder).")) return;
     const body = new FormData();
     body.append("file", file);

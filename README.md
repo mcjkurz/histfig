@@ -40,7 +40,7 @@ The first time, the browser opens on the **Settings** page. Choose:
 1. the **chat model**: OpenRouter, Ollama or another OpenAI-compatible API, its API key, and the model name;
 2. the **embedding model**: the same choices, plus sentence-transformers running inside HistFig.
 
-Click **Save** (model names are checked, with suggestions for typos) and **Test connections**. Then create a figure (optionally with a portrait: an image file or a link to one, which is downloaded and kept locally), upload texts, and start chatting.
+Click **Save changes** at the bottom (model names are checked, with suggestions for typos) and **Test connections**. Then create a figure (optionally with a portrait: an image file or a link to one, which is downloaded and kept locally), upload texts, and start chatting.
 
 ### Windows
 
@@ -58,17 +58,46 @@ then run the same `uv sync` / `uv run histfig` commands in a new terminal.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-### GitHub Codespaces
+### GitHub Codespaces (nothing to install)
 
-Open the repository in a codespace; dependencies are installed automatically. Codespaces have
-no GPU, so use an OpenAI-compatible API. Either paste the key on the Settings page, or (better) add it as a
-Codespaces secret called `OPENROUTER_API_KEY` and enter that name under **Advanced → Key from
-environment variable** on the Settings page. Run `uv run histfig`; Codespaces offers to open the forwarded port 8000.
+A codespace is a computer in the cloud that GitHub runs for you; you use it in your web browser.
+Personal GitHub accounts include a free monthly allowance. Codespaces have no GPU, so use an online
+model service such as OpenRouter (not Ollama).
 
-Your data stays in the codespace while it exists, also when it stops and restarts. But GitHub
-deletes codespaces that go unused for a while (30 days by default), and `data/` is not part of the
-repository. So use **Settings → Download backup** to keep a copy, and **Restore backup** to continue
-in a new codespace (see [Backups](#backups)).
+1. **Optional, but recommended: store your API key as a secret**, so you never have to paste it
+   into HistFig. On GitHub, open your **Settings → Codespaces → New secret**. Name it
+   `OPENROUTER_API_KEY`, paste your key as the value, and under **Repository access** choose this
+   repository (`mcjkurz/histfig`, or your fork of it).
+2. **Create the codespace.** On the repository page, click the green **Code** button → the
+   **Codespaces** tab → **Create codespace on main**. An editor opens in your browser. Wait until the
+   setup in the terminal at the bottom has finished (it installs everything; the first time takes a
+   few minutes).
+3. **Start HistFig.** In the terminal, type:
+
+   ```bash
+   uv run histfig
+   ```
+
+4. **Open it.** A message appears: *Your application running on port 8000 is available*. Click
+   **Open in Browser**. (Missed it? Open the **Ports** tab next to the terminal and click the globe
+   icon next to port 8000.) HistFig opens on its **Settings** page.
+5. **Choose the models.** Pick **OpenRouter** for the chat model and for the embedding model, and
+   choose the models with **Browse models…**. For the key: if you made the secret in step 1, open
+   **Advanced** and type `OPENROUTER_API_KEY` under **Key from environment variable**; otherwise
+   paste the key itself. Click **Save changes** at the bottom, then **Test connections**.
+6. **Start working:** create a figure, upload texts, chat.
+
+**Stopping and coming back.** Press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the terminal to stop HistFig.
+The codespace itself stops after about 30 minutes without use. To continue later, open
+[github.com/codespaces](https://github.com/codespaces), click your codespace, and run
+`uv run histfig` again (steps 3–4). Everything you made is still there.
+
+**Keep a backup.** GitHub deletes codespaces that stay unused for a while (30 days by default), and
+your data is not saved in the repository. So use **Settings → Download backup** now and then. In a
+new codespace, **Restore backup** brings everything back (see [Backups](#backups)).
+
+The address of a codespace only works for you (you are signed in to GitHub). To let students use
+your figures, see [Sharing a read-only server](#sharing-a-read-only-server).
 
 ### Without uv
 

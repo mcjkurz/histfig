@@ -275,6 +275,13 @@ label.check input { width: auto; margin: 3px 0 0; accent-color: var(--accent); }
 
 /* Settings page */
 .settings-card { margin-top: 16px; }
+.settings-card.unsaved { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+/* One Save for the whole Settings page, at the bottom of the window while there are changes */
+.save-bar {
+  position: sticky; bottom: 12px; z-index: 5; display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: 16px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--accent);
+  border-radius: 10px; box-shadow: 0 6px 24px rgba(0, 0, 0, .14); font-size: .9rem;
+}
 .settings-card:first-of-type { margin-top: 0; }
 .settings-card h2 { margin: 0 0 12px; }
 .card-head { margin-bottom: 12px; }

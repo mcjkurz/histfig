@@ -20,7 +20,8 @@ from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 from histfig import agent, backup, export, prompts
-from histfig.config import OLLAMA_URL, OPENROUTER_URL, config_path, save_config, suggested_prefixes, updated
+from histfig.config import (OLLAMA_URL, OPENROUTER_URL, Config, config_path, save_config, suggested_prefixes,
+                            updated)
 from histfig.db import now
 from histfig.fields import clean_line, clean_text, parse_year
 from histfig.ingest.extract import SUPPORTED, file_type
@@ -710,67 +711,86 @@ def get_settings(s: AppState = Depends(S)):
 
 
 class SettingsIn(BaseModel):
-    """Partial update: only the sections (and fields) sent are changed.
+    """What the Settings page changed: only the sections (and fields) sent are changed.
     In chat/embedding, a missing api_key means "keep the saved key"."""
 
     chat: dict | None = None
     embedding: dict | None = None
     chunking: dict | None = None
     retrieval: dict | None = None
-    same_key_as_chat: bool = False  # embedding uses the chat model's key
+    same_key_as_chat: bool = False  # the embedding model has no key of its own: it uses the chat model's
+
+    def changes(self) -> dict:
+        return self.model_dump(exclude_none=True, exclude={"same_key_as_chat"})
+
+    def sections(self) -> set[str]:
+        return set(self.changes()) | ({"embedding"} if self.same_key_as_chat else set())
 
 
 @router.put("/settings", dependencies=EDIT)
 async def save_settings(body: SettingsIn, s: AppState = Depends(S)):
-    changes = body.model_dump(exclude_none=True, exclude={"same_key_as_chat"})
-    try:
-        new = updated(s.cfg, changes)
-    except (TypeError, ValueError) as e:
-        raise HTTPException(400, f"Invalid value: {e}") from e
+    """Save the Settings page, in four steps: apply the changes to a copy of the settings,
+    check the values, check the model names with their services, then write config.toml and
+    use it at once. If any check fails, nothing is written (the page saves everything in
+    one request, so it is all or nothing)."""
     old = s.cfg
-    if body.same_key_as_chat:
-        # No key of its own, so the embedding model always uses the chat model's current key
-        new.embedding.api_key, new.embedding.api_key_env = "", ""
-    if new.embedding.model != old.embedding.model and \
-            (new.embedding.query_prefix, new.embedding.document_prefix) == (old.embedding.query_prefix, old.embedding.document_prefix):
-        new.embedding.query_prefix, new.embedding.document_prefix = suggested_prefixes(new.embedding.model)
-
-    sent = set(changes) | ({"embedding"} if body.same_key_as_chat else set())
-    problems = [p for p in new.validate() if p.split(".")[0] in sent]
+    new = _with_changes(old, body)
+    problems = [p for p in new.validate() if p.split(".")[0] in body.sections()]
     if problems:
         raise HTTPException(400, "; ".join(problems))
-
-    warnings = []
-    for section, label, is_embedding in (("chat", "chat model", False), ("embedding", "embedding model", True)):
-        c, o = getattr(new, section), getattr(old, section)
-        if section not in sent or not c.model or c.provider == "sentence_transformers":
-            continue
-        extra = c.allowed_models if section == "chat" else []
-        key = new.embedding_key() if is_embedding else c.resolved_key()
-        old_key = old.embedding_key() if is_embedding else o.resolved_key()
-        if (c.provider, c.base_url, c.model, key, extra) == \
-                (o.provider, o.base_url, o.model, old_key, o.allowed_models if section == "chat" else []):
-            continue  # nothing that affects availability changed
-        try:
-            models = await available_models(c.base_url, key, is_embedding)
-        except Exception as e:
-            warnings.append(f"Could not check the {label} list ({e}); saved without checking.")
-            continue
-        for name in [c.model, *extra]:
-            if models and not model_available(name, models):
-                close = similar(name, models)
-                raise HTTPException(400, f"The {label} '{name}' is not available at {c.base_url}."
-                                         + (f" Did you mean: {', '.join(close)}?" if close else ""))
-
-    # (A changed embedding model needs no warning: the Settings page then offers to rebuild.)
-    embedded = s.db.one("SELECT COUNT(*) AS n FROM figures WHERE embed_model IS NOT NULL")["n"]
-    if new.chunking != old.chunking and embedded:
+    warnings = await _check_model_names(new, old, body.sections())
+    if new.chunking != old.chunking and s.db.one("SELECT 1 FROM figures WHERE embed_model IS NOT NULL"):
         warnings.append("New passage sizes apply to new uploads. To apply them to existing documents, "
                         "use “Rebuild all figures” below.")
-
     save_config(new, s.data_dir)
     s.apply_config(new)
     return {**get_settings(s), "warnings": warnings}
+
+
+def _with_changes(old: Config, body: SettingsIn) -> Config:
+    """A copy of the settings with the page's changes, and what follows from them."""
+    try:
+        new = updated(old, body.changes())
+    except (TypeError, ValueError) as e:
+        raise HTTPException(400, f"Invalid value: {e}") from e
+    if body.same_key_as_chat:  # resolved when used (Config.embedding_key), so it never goes stale
+        new.embedding.api_key, new.embedding.api_key_env = "", ""
+    old_prefixes = (old.embedding.query_prefix, old.embedding.document_prefix)
+    if new.embedding.model != old.embedding.model and \
+            (new.embedding.query_prefix, new.embedding.document_prefix) == old_prefixes:
+        # a new model whose prefixes weren't edited by hand: the ones it is known to need
+        new.embedding.query_prefix, new.embedding.document_prefix = suggested_prefixes(new.embedding.model)
+    return new
+
+
+async def _check_model_names(new: Config, old: Config, sections: set[str]) -> list[str]:
+    """Every model name must be one its service offers. Checked only for a section that was
+    sent and whose service, key or models changed. Raises 400 for a name that isn't offered;
+    returns warnings when a service can't be asked (then it is saved without checking)."""
+
+    def what(cfg: Config) -> dict:  # section: (provider, base_url, key, model names)
+        return {"chat": (cfg.chat.provider, cfg.chat.base_url, cfg.chat.resolved_key(),
+                         [cfg.chat.model, *cfg.chat.allowed_models]),
+                "embedding": (cfg.embedding.provider, cfg.embedding.base_url, cfg.embedding_key(),
+                              [cfg.embedding.model])}
+
+    now_, before, warnings = what(new), what(old), []
+    for section in ("chat", "embedding"):
+        provider, base_url, key, names = now_[section]
+        if section not in sections or now_[section] == before[section] or not names[0] \
+                or provider == "sentence_transformers":  # (no list to check against)
+            continue
+        try:
+            offered = await available_models(base_url, key, embedding=section == "embedding")
+        except Exception as e:
+            warnings.append(f"Could not check the {section} model list ({e}); saved without checking.")
+            continue
+        for name in names:
+            if offered and not model_available(name, offered):
+                close = similar(name, offered)
+                raise HTTPException(400, f"The {section} model '{name}' is not available at {base_url}."
+                                         + (f" Did you mean: {', '.join(close)}?" if close else ""))
+    return warnings
 
 
 @router.get("/settings/embedding-models", dependencies=EDIT)
