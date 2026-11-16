@@ -1,7 +1,7 @@
-"""Embedding backends behind one interface: ``await embedder.embed(texts) -> ndarray``.
+"""Embedding backends behind one interface: ``embed_documents(texts)`` and ``embed_query(text)``.
 
-All vectors are returned as float32 and L2-normalised, so cosine similarity is
-a plain dot product.
+A backend implements ``_embed(texts) -> (vectors, usage)``. All vectors are returned
+as float32 and L2-normalised, so cosine similarity is a plain dot product.
 """
 
 from __future__ import annotations
@@ -41,23 +41,22 @@ class Embedder:
     def model_id(self) -> str:
         return self.cfg.model_id
 
-    async def _embed_raw(self, texts: list[str]) -> np.ndarray:
+    async def _embed(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
+        """Raw vectors for texts (one row each) and the usage the provider reported."""
         raise NotImplementedError
 
-    async def _embed_raw_usage(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
-        return await self._embed_raw(texts), Usage()
-
-    async def embed_documents_with_usage(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
-        vectors, usage = await self._embed_raw_usage([self.cfg.document_prefix + t for t in texts])
+    async def embed_documents(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
+        vectors, usage = await self._embed([self.cfg.document_prefix + t for t in texts])
         return normalise(vectors), usage
 
-    async def embed(self, texts: list[str]) -> np.ndarray:
-        if not texts:
-            return np.zeros((0, 0), dtype=np.float32)
-        return normalise(await self._embed_raw(texts))
-
     async def embed_query(self, text: str) -> np.ndarray:
-        return (await self.embed([self.cfg.query_prefix + text]))[0]
+        vectors, _ = await self._embed([self.cfg.query_prefix + text])
+        return normalise(vectors)[0]
+
+
+async def check_embedder(embedder: Embedder) -> str:
+    """One tiny request (Settings' Test button, `histfig doctor`); raises on failure."""
+    return f"{len(await embedder.embed_query('test'))}-dimensional vectors"
 
 
 class HTTPEmbedder(Embedder):
@@ -65,10 +64,7 @@ class HTTPEmbedder(Embedder):
 
     retries = 4
 
-    async def _embed_raw(self, texts: list[str]) -> np.ndarray:
-        return (await self._embed_raw_usage(texts))[0]
-
-    async def _embed_raw_usage(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
+    async def _embed(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
         url = self.cfg.base_url.rstrip("/") + "/embeddings"
         payload = {"model": self.cfg.model, "input": texts}
         headers = _headers(self.key())
@@ -124,12 +120,12 @@ class SentenceTransformerEmbedder(Embedder):
             self._model = SentenceTransformer(self.cfg.model)
         return self._model
 
-    async def _embed_raw(self, texts: list[str]) -> np.ndarray:
+    async def _embed(self, texts: list[str]) -> tuple[np.ndarray, Usage]:
         def run():
             model = self._load()
             return model.encode(texts, batch_size=len(texts), convert_to_numpy=True)
 
-        return await asyncio.to_thread(run)
+        return await asyncio.to_thread(run), Usage()
 
 
 def make_embedder(cfg: EmbeddingConfig, key: Callable[[], str] | None = None) -> Embedder:

@@ -11,31 +11,29 @@ import threading
 import webbrowser
 from pathlib import Path
 
+from histfig import running
 from histfig.config import Config, config_path, default_data_dir, load_config, save_config
 
 
 async def check_models(cfg) -> bool:
     """Send one tiny request to each configured model and print the outcome."""
-    from histfig.providers.chat import ChatProvider
-    from histfig.providers.embed import make_embedder
+    from histfig.providers.chat import ChatProvider, check_chat
+    from histfig.providers.embed import check_embedder, make_embedder
 
+    checks = [
+        (f"Chat:      {cfg.chat.provider} {cfg.chat.model} @ {cfg.chat.base_url}",
+         lambda: check_chat(ChatProvider(cfg.chat))),
+        (f"Embedding: {cfg.embedding.provider} {cfg.embedding.model}",
+         lambda: check_embedder(make_embedder(cfg.embedding, key=cfg.embedding_key))),
+    ]
     ok = True
-    print(f"Chat:      {cfg.chat.provider} {cfg.chat.model} @ {cfg.chat.base_url}")
-    try:
-        reply = await ChatProvider(cfg.chat).complete(
-            [{"role": "user", "content": "Reply with the single word: OK"}]
-        )
-        print(f"  OK — replied {reply.strip()[:60]!r}")
-    except Exception as e:
-        ok = False
-        print(f"  FAILED — {e}")
-    print(f"Embedding: {cfg.embedding.provider} {cfg.embedding.model}")
-    try:
-        vec = await make_embedder(cfg.embedding, key=cfg.embedding_key).embed_query("test")
-        print(f"  OK — {len(vec)}-dimensional vectors")
-    except Exception as e:
-        ok = False
-        print(f"  FAILED — {e}")
+    for title, check in checks:
+        print(title)
+        try:
+            print(f"  OK — {await check()}")
+        except Exception as e:
+            ok = False
+            print(f"  FAILED — {e}")
     return ok
 
 
@@ -79,8 +77,6 @@ def cmd_doctor(args) -> None:
 
 def _free_port_or_exit(data_dir: Path, host: str, port: int, url: str) -> None:
     """Make sure the port is free; offer to stop an earlier HistFig that holds it."""
-    from histfig import running
-
     if running.port_free(host, port):
         return
     pid = running.previous_server(data_dir, port)
@@ -134,8 +130,6 @@ def cmd_serve(args) -> None:
     print("  To stop it: press Ctrl+C here (or close this terminal window).\n")
     if not args.no_browser and not os.environ.get("CODESPACES"):
         threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()
-    from histfig import running
-
     running.write_pid(args.data_dir, port)
     try:
         uvicorn.run(app, host=host, port=port, log_level="warning")
@@ -152,6 +146,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="where config, database and uploads live (default: ./data or $HISTFIG_DATA)")
     sub = parser.add_subparsers(dest="command")
+    # Plain `histfig` means `histfig serve` with its defaults (set after add_subparsers, which resets it)
+    parser.set_defaults(command="serve", host=None, port=None, no_browser=False, public=False)
 
     serve = sub.add_parser("serve", help="start the web app (default)")
     serve.add_argument("--host", default=None)
@@ -164,6 +160,4 @@ def main(argv: list[str] | None = None) -> None:
 
     args = parser.parse_args(argv)
     args.data_dir = (args.data_dir or default_data_dir()).resolve()
-    if args.command is None:
-        args.command, args.host, args.port, args.no_browser, args.public = "serve", None, None, False, False
     {"serve": cmd_serve, "setup": cmd_setup, "doctor": cmd_doctor}[args.command](args)

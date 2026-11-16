@@ -7,22 +7,24 @@ import json
 import logging
 import re
 import shutil
-from urllib.parse import quote
 from dataclasses import asdict
 from pathlib import Path
+from typing import Literal
+from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
-from typing import Literal
+from fastapi.responses import FileResponse, Response, StreamingResponse
+from pydantic import BaseModel, Field, field_validator, model_validator
 
-from pydantic import BaseModel, Field, field_validator
-
-from histfig import agent, prompts
+from histfig import agent, export, prompts
 from histfig.config import OLLAMA_URL, OPENROUTER_URL, config_path, save_config, suggested_prefixes, updated
 from histfig.db import now
+from histfig.fields import clean_line, clean_text, parse_year
 from histfig.ingest.extract import SUPPORTED, file_type
-from histfig.providers.chat import ProviderError, available_models, similar
+from histfig.providers.chat import (ProviderError, available_models, check_chat, model_available, similar,
+                                    strip_thinking)
+from histfig.providers.embed import check_embedder
 from histfig.server.app import AppState
 from histfig.server.public import current_visitor, editable
 
@@ -77,22 +79,40 @@ def _figure_view(s: AppState, fig: dict) -> dict:
 
 
 class FigureIn(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    description: str = Field("", max_length=2000)
-    persona: str = Field("", max_length=4000)
-    birth_year: str = Field("", max_length=20)
-    death_year: str = Field("", max_length=20)
+    """Only the name is required; everything is cleaned (see histfig.fields)."""
+
+    name: str
+    description: str = ""
+    persona: str = ""
+    birth_year: str = ""  # stored as a whole number in text, negative = BC; "" = unknown
+    death_year: str = ""
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _name(cls, v):
+        return clean_line(v, 200, "Name", required=True)
+
+    @field_validator("description", mode="before")
+    @classmethod
+    def _description(cls, v):
+        return clean_text(v, 2000, "The description")
+
+    @field_validator("persona", mode="before")
+    @classmethod
+    def _persona(cls, v):
+        return clean_text(v, 10000, "The persona")
 
     @field_validator("birth_year", "death_year", mode="before")
     @classmethod
-    def whole_year(cls, v):
-        """Empty (unknown) or a whole number; negative = BC."""
-        text = "" if v is None else str(v).strip()
-        if not text:
-            return ""
-        if not re.fullmatch(r"[+-]?\d{1,5}", text):
-            raise ValueError("Years must be whole numbers, e.g. 1881, or -551 for 551 BC")
-        return str(int(text))
+    def _year(cls, v):
+        return parse_year(v)
+
+    @model_validator(mode="after")
+    def _death_after_birth(self):
+        if self.birth_year and self.death_year and int(self.death_year) < int(self.birth_year):
+            raise ValueError("The year of death is before the year of birth. "
+                             "For years BC, write e.g. 551 BC or -551.")
+        return self
 
 
 @router.get("/figures")
@@ -105,7 +125,7 @@ def create_figure(body: FigureIn, s: AppState = Depends(S)):
     fid = s.db.execute(
         "INSERT INTO figures (name, description, persona, birth_year, death_year, created_at) "
         "VALUES (?, ?, ?, ?, ?, ?)",
-        (body.name.strip(), body.description, body.persona, body.birth_year, body.death_year, now()),
+        (body.name, body.description, body.persona, body.birth_year, body.death_year, now()),
     )
     return _figure_view(s, _figure_or_404(s, fid))
 
@@ -120,7 +140,7 @@ def update_figure(figure_id: int, body: FigureIn, s: AppState = Depends(S)):
     _figure_or_404(s, figure_id)
     s.db.execute(
         "UPDATE figures SET name=?, description=?, persona=?, birth_year=?, death_year=? WHERE id=?",
-        (body.name.strip(), body.description, body.persona, body.birth_year, body.death_year, figure_id),
+        (body.name, body.description, body.persona, body.birth_year, body.death_year, figure_id),
     )
     return _figure_view(s, _figure_or_404(s, figure_id))
 
@@ -252,7 +272,7 @@ async def upload_documents(figure_id: int, files: list[UploadFile], s: AppState 
         if kind is None:
             skipped.append({"filename": name, "reason": f"unsupported type (use {', '.join(SUPPORTED)})"})
             continue
-        data = await f.read()
+        data = await f.read(MAX_UPLOAD_BYTES + 1)  # never more than needed to see it's too large
         if not data:
             skipped.append({"filename": name, "reason": "empty file"})
             continue
@@ -302,6 +322,14 @@ async def rebuild_figure(figure_id: int, s: AppState = Depends(S)):
     return {"queued": s.worker.rebuild_figure(figure_id)}
 
 
+@router.post("/figures/rebuild-all", dependencies=EDIT)
+async def rebuild_all_figures(s: AppState = Depends(S)):
+    """Rebuild the index of every figure that has documents (after changing the embedding
+    model or the passage sizes)."""
+    ids = [r["figure_id"] for r in s.db.all("SELECT DISTINCT figure_id FROM documents")]
+    return {"figures": len(ids), "queued": sum(s.worker.rebuild_figure(fid) for fid in ids)}
+
+
 # Retrieval -----------------------------------------------------------------
 
 
@@ -311,12 +339,19 @@ async def retrieve(s: AppState, fig: dict, query: str, top_k: int | None = None)
     qvec = None
     if fig["embed_model"] and fig["embed_model"] != s.embedder.model_id:
         warning = (f"Documents were embedded with {fig['embed_model']} but the configured model "
-                   f"is {s.embedder.model_id}; using keyword search only. Rebuild the figure to fix.")
+                   f"is {s.embedder.model_id}; using keyword search only. "
+                   "Use “Rebuild index” on the figure's page to fix this.")
     elif fig["embed_model"]:
         try:
             qvec = await s.embedder.embed_query(query)
         except Exception as e:
             warning = f"Embedding the query failed ({e}); using keyword search only."
+        else:
+            if fig["embed_dim"] and len(qvec) != fig["embed_dim"]:
+                warning = (f"The embedding model now makes {len(qvec)}-dimensional vectors, but the "
+                           f"documents have {fig['embed_dim']}; using keyword search only. "
+                           "Use “Rebuild index” on the figure's page to fix this.")
+                qvec = None
     hits = s.index.search(fig["id"], query, qvec, s.cfg.retrieval, top_k)
     return [h.to_dict() for h in hits], warning
 
@@ -328,6 +363,11 @@ class ConversationIn(BaseModel):
     title: str | None = None
     model: str | None = None
     prompt_id: int | None = None  # 0 = use the figure's default prompt
+
+    @field_validator("title", mode="before")
+    @classmethod
+    def _title(cls, v):
+        return None if v is None else clean_line(v, 200, "Title")
 
 
 class MessageIn(BaseModel):
@@ -398,13 +438,6 @@ def delete_conversation(conv_id: int, s: AppState = Depends(S), visitor=Depends(
     return {"ok": True}
 
 
-THINK_RE = re.compile(r"<think>.*?(</think>\s*|$)", re.DOTALL)
-
-
-def strip_thinking(text: str) -> str:
-    return THINK_RE.sub("", text).strip()
-
-
 def _sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
@@ -430,7 +463,7 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
     if s.limiter and visitor:
         s.limiter.check(visitor)
     fig = _figure_or_404(s, conv["figure_id"])
-    limit = max(0, s.cfg.retrieval.history_messages)
+    limit = max(0, s.cfg.chat.history_messages)
     history = s.db.all(
         "SELECT role, content FROM (SELECT * FROM messages WHERE conversation_id=? "
         "ORDER BY id DESC LIMIT ?) ORDER BY id",
@@ -456,7 +489,8 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
                 try:
                     found = agent.research(
                         s.chat, s.db, fig, body.content, [{"role": m["role"], "content": m["content"]} for m in history],
-                        model, body.top_k or s.cfg.retrieval.top_k, lambda q, k: retrieve(s, fig, q, k))
+                        model, body.top_k or s.cfg.retrieval.top_k, lambda q, k: retrieve(s, fig, q, k),
+                        max_steps=s.cfg.retrieval.agent_steps)
                     async for kind, value in found:
                         if kind == "step":
                             steps.append(value)
@@ -508,48 +542,44 @@ async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
     )
 
 
-def _quote(text: str) -> str:
-    """Markdown blockquote, keeping the passage's own line breaks."""
-    return "\n".join(f"> {line}" if line.strip() else ">" for line in text.strip().splitlines())
-
-
 @router.get("/conversations/{conv_id}/export")
-def export_conversation(conv_id: int, s: AppState = Depends(S), visitor=Depends(current_visitor)):
-    """The conversation as Markdown, with the full text of the passages behind each answer."""
+def export_conversation(conv_id: int, format: str = "md", s: AppState = Depends(S),
+                        visitor=Depends(current_visitor)):
+    """The conversation as Markdown, plain text or a web page, with the full text of the
+    passages behind each answer."""
+    if format not in export.FORMATS:
+        raise HTTPException(400, f"Unknown format (use {', '.join(export.FORMATS)})")
     conv = _conversation_or_404(s, conv_id, visitor)
     fig = _figure_or_404(s, conv["figure_id"])
-    msgs = s.db.all("SELECT * FROM messages WHERE conversation_id=? ORDER BY id", (conv_id,))
+    c = export.gather(s.db, conv, fig, now()[:10])
+    ext, media_type = export.FORMATS[format]
     title = conv["title"] or "Conversation"
-    lines = [f"# {title} — {fig['name']}", "", f"*Exported from HistFig on {now()[:10]}*", ""]
-    for m in msgs:
-        if m["role"] == "user":
-            lines += ["---", "", f"**You:** {m['content'].strip()}", ""]
-            continue
-        lines += [f"**{fig['name']}:** {m['content'].strip()}", ""]
-        steps = json.loads(m["steps"]) if m["steps"] else []
-        if steps:
-            lines += ["*Research: " + "; ".join(steps) + "*", ""]
-        sources = json.loads(m["sources"]) if m["sources"] else []
-        if sources:
-            lines += ["#### Sources", ""]
-            for i, h in enumerate(sources, start=1):  # numbered as the model saw them
-                lines += [f"**[{i}] {h['filename']} · part {h['chunk'] + 1}**", "", _quote(h["text"]), ""]
-    name = re.sub(r'[\\/:*?"<>|\n\r\t]+', " ", f"{fig['name']} - {title}").strip()[:80] or "conversation"
-    return PlainTextResponse(
-        "\n".join(lines),
-        media_type="text/markdown; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="conversation-{conv_id}.md"; '
-                                        f"filename*=UTF-8''{quote(name)}.md"},
-    )
+    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]+', " ", f"{fig['name']} - {title}").strip()[:80] or "conversation"
+    return Response(export.render(c, format), media_type=media_type, headers={
+        "Content-Disposition": f'attachment; filename="conversation-{conv_id}.{ext}"; '
+                               f"filename*=UTF-8''{quote(name)}.{ext}"})
 
 
 # Prompts -------------------------------------------------------------------
 
 
 class PromptIn(BaseModel):
-    name: str = Field(min_length=1, max_length=100)
-    text: str = Field(min_length=1, max_length=20000)
+    name: str
+    text: str
     figure_id: int | None = None  # only used when creating; None = general prompt
+
+    @field_validator("name", mode="before")
+    @classmethod
+    def _name(cls, v):
+        return clean_line(v, 100, "Prompt name", required=True)
+
+    @field_validator("text", mode="before")
+    @classmethod
+    def _text(cls, v):
+        text = clean_text(v, 20000, "The prompt")
+        if not text:
+            raise ValueError("The prompt text is empty.")
+        return text
 
 
 class DefaultPromptIn(BaseModel):
@@ -606,7 +636,7 @@ def create_prompt(body: PromptIn, s: AppState = Depends(S)):
     ts = now()
     pid = s.db.execute(
         "INSERT INTO prompts (figure_id, name, text, created_at, updated_at) VALUES (?,?,?,?,?)",
-        (body.figure_id, body.name.strip(), body.text, ts, ts),
+        (body.figure_id, body.name, body.text, ts, ts),
     )
     return _prompt_or_404(s, pid)
 
@@ -615,7 +645,7 @@ def create_prompt(body: PromptIn, s: AppState = Depends(S)):
 def update_prompt(prompt_id: int, body: PromptIn, s: AppState = Depends(S)):
     _prompt_or_404(s, prompt_id)
     s.db.execute("UPDATE prompts SET name=?, text=?, updated_at=? WHERE id=?",
-                 (body.name.strip(), body.text, now(), prompt_id))
+                 (body.name, body.text, now(), prompt_id))
     return _prompt_or_404(s, prompt_id)
 
 
@@ -660,12 +690,15 @@ def get_settings(s: AppState = Depends(S)):
         cfg[section]["key_available"] = bool(s.cfg.chat.resolved_key() if section == "chat" else s.cfg.embedding_key())
     usage = s.db.one("SELECT COALESCE(SUM(embed_tokens_total), 0) AS tokens, "
                      "COALESCE(SUM(embed_cost_total), 0) AS cost FROM figures")
-    chat, emb = s.cfg.chat, s.cfg.embedding
+    emb = s.cfg.embedding
+    figures = s.db.one(
+        "SELECT COUNT(*) AS with_documents, COALESCE(SUM(embed_model IS NOT NULL AND embed_model != ?), 0) "
+        "AS outdated FROM figures WHERE id IN (SELECT figure_id FROM documents)", (emb.model_id,))
     return {"config": cfg, "config_path": str(config_path(s.data_dir)), "data_dir": str(s.data_dir),
             "embedding_usage": usage, "problems": s.cfg.validate(),
             # Ticked = the embedding model has no key of its own and uses the chat model's key
-            "same_key": not (emb.api_key or emb.api_key_env)
-                        or (chat.api_key, chat.api_key_env) == (emb.api_key, emb.api_key_env),
+            "same_key": not (emb.api_key or emb.api_key_env),
+            "figures": figures,  # with documents; outdated = embedded with another model
             "urls": {"openrouter": OPENROUTER_URL, "ollama": OLLAMA_URL}}
 
 
@@ -688,10 +721,8 @@ async def save_settings(body: SettingsIn, s: AppState = Depends(S)):
     except (TypeError, ValueError) as e:
         raise HTTPException(400, f"Invalid value: {e}") from e
     old = s.cfg
-    copy_of_chat_key = (old.embedding.api_key, old.embedding.api_key_env) == (old.chat.api_key, old.chat.api_key_env)
-    if body.same_key_as_chat or ("embedding" not in changes and copy_of_chat_key):
-        # "Same key": no key of its own, so the embedding model always uses the chat key
-        # (an older identical copy is turned into this, so it can't go stale)
+    if body.same_key_as_chat:
+        # No key of its own, so the embedding model always uses the chat model's current key
         new.embedding.api_key, new.embedding.api_key_env = "", ""
     if new.embedding.model != old.embedding.model and \
             (new.embedding.query_prefix, new.embedding.document_prefix) == (old.embedding.query_prefix, old.embedding.document_prefix):
@@ -719,16 +750,16 @@ async def save_settings(body: SettingsIn, s: AppState = Depends(S)):
             warnings.append(f"Could not check the {label} list ({e}); saved without checking.")
             continue
         for name in [c.model, *extra]:
-            if models and name not in models and f"{name}:latest" not in models:
+            if models and not model_available(name, models):
                 close = similar(name, models)
                 raise HTTPException(400, f"The {label} '{name}' is not available at {c.base_url}."
                                          + (f" Did you mean: {', '.join(close)}?" if close else ""))
 
+    # (A changed embedding model needs no warning: the Settings page then offers to rebuild.)
     embedded = s.db.one("SELECT COUNT(*) AS n FROM figures WHERE embed_model IS NOT NULL")["n"]
-    if new.embedding.model_id != old.embedding.model_id and embedded:
-        warnings.append("The embedding model changed: open each figure and click “Rebuild index”.")
     if new.chunking != old.chunking and embedded:
-        warnings.append("New passage sizes apply to new uploads; use “Rebuild index” on a figure to apply them there.")
+        warnings.append("New passage sizes apply to new uploads. To apply them to existing documents, "
+                        "use “Rebuild all figures” below.")
 
     save_config(new, s.data_dir)
     s.apply_config(new)
@@ -760,19 +791,16 @@ async def get_models(s: AppState = Depends(S)):
         models, error = [], str(e)
     return {"models": [] if s.public else models,  # the full list is only for the owner's Settings page
             "allowed": s.cfg.chat.allowed_models, "default": s.cfg.chat.model,
-            "temperature": s.cfg.chat.temperature, "error": error}
+            "temperature": s.cfg.chat.temperature, "top_k": s.cfg.retrieval.top_k, "error": error}
 
 
 @router.post("/settings/test/{which}", dependencies=EDIT)
 async def test_settings(which: str, s: AppState = Depends(S)):
     """Send one tiny request to the chat or the embedding model."""
+    checks = {"chat": lambda: check_chat(s.chat), "embedding": lambda: check_embedder(s.embedder)}
+    if which not in checks:
+        raise HTTPException(404, "Unknown test (use chat or embedding)")
     try:
-        if which == "chat":
-            reply = await s.chat.complete([{"role": "user", "content": "Reply with the single word: OK"}])
-            return {"ok": True, "detail": f"replied {strip_thinking(reply)[:60].strip()!r}" if reply else "empty reply"}
-        if which == "embedding":
-            vec = await s.embedder.embed_query("test")
-            return {"ok": True, "detail": f"{len(vec)}-dimensional vectors"}
+        return {"ok": True, "detail": await checks[which]()}
     except Exception as e:
         return {"ok": False, "detail": str(e)}
-    raise HTTPException(404, "Unknown test (use chat or embedding)")

@@ -11,10 +11,10 @@ import threading
 from dataclasses import dataclass
 
 import numpy as np
-from histfig.retrieval.bm25 import BM25
 
 from histfig.config import RetrievalConfig
 from histfig.db import Database
+from histfig.retrieval.bm25 import BM25
 from histfig.retrieval.tokenize import tokenize
 
 
@@ -35,6 +35,13 @@ class Hit:
     similarity: float | None
     bm25: float | None
     score: float
+
+    @classmethod
+    def from_row(cls, row, similarity: float | None = None, bm25: float | None = None,
+                 score: float = 0.0) -> "Hit":
+        """From a row with id, document_id, idx, text and filename."""
+        return cls(row["id"], row["document_id"], row["filename"], row["idx"], row["text"],
+                   similarity, bm25, score)
 
     def to_dict(self) -> dict:
         return {
@@ -149,16 +156,10 @@ class SearchIndex:
             row = by_id.get(int(index.chunk_ids[i]))
             if row is None:  # deleted meanwhile
                 continue
-            hits.append(
-                Hit(
-                    chunk_id=row["id"],
-                    document_id=row["document_id"],
-                    filename=row["filename"],
-                    idx=row["idx"],
-                    text=row["text"],
-                    similarity=None if sims is None else float(sims[i]),
-                    bm25=None if bm25_scores is None else float(bm25_scores[i]),
-                    score=fused[i],
-                )
-            )
+            hits.append(Hit.from_row(
+                row,
+                similarity=None if sims is None else float(sims[i]),
+                bm25=None if bm25_scores is None else float(bm25_scores[i]),
+                score=fused[i],
+            ))
         return hits

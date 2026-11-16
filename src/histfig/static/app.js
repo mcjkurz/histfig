@@ -14,6 +14,17 @@ let PUBLIC = false; // read-only server (`histfig serve --public`): visitors can
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+/* Why a request failed: the server's "detail" (a message, or a list of validation errors). */
+async function errorMessage(res) {
+  try {
+    const { detail } = await res.json();
+    if (typeof detail === "string") return detail;
+    // Validation errors: our own messages are complete sentences; drop pydantic's "Value error, " prefix
+    if (Array.isArray(detail)) return detail.map((d) => String(d.msg).replace(/^Value error, /, "")).join(" ");
+  } catch (_) {}
+  return res.statusText || `HTTP ${res.status}`;
+}
+
 async function api(path, opts = {}) {
   const init = { ...opts, headers: { ...(opts.headers || {}) } };
   if (opts.json !== undefined) {
@@ -21,15 +32,7 @@ async function api(path, opts = {}) {
     init.headers["Content-Type"] = "application/json";
   }
   const res = await fetch("/api" + path, init);
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const body = await res.json();
-      msg = typeof body.detail === "string" ? body.detail
-        : Array.isArray(body.detail) ? body.detail.map((d) => d.msg).join("; ") : msg;
-    } catch (_) {}
-    throw new Error(msg);
-  }
+  if (!res.ok) throw new Error(await errorMessage(res));
   const type = res.headers.get("content-type") || "";
   return type.includes("json") ? res.json() : res.text();
 }
@@ -58,6 +61,23 @@ function avatar(fig, size = "") {
 /* A "?" that shows an explanation in a bubble on hover, focus or tap. */
 function help(text) {
   return `<button type="button" class="help" aria-label="${esc(text)}" data-help="${esc(text)}">?</button>`;
+}
+
+/* What someone typed as a year → a number (negative = BC), null if unknown/empty, or NaN if it
+   isn't a year. Mirrors histfig/fields.py parse_year(), which decides when saving. */
+const YEAR_RE = new RegExp("^(?:c\\.?|ca\\.?|circa|about|approx\\.?|大约|大約|约|約)?\\s*" +
+  "(公元前|紀元前|纪元前|前|公元|西元|ad|a\\.d\\.)?\\s*([+-])?\\s*([0-9]{1,4})\\s*年?\\s*" +
+  "(bce|b\\.c\\.e\\.|bc|b\\.c\\.|ce|c\\.e\\.|ad|a\\.d\\.)?\\s*\\??$");
+function parseYear(value) {
+  const text = String(value ?? "").normalize("NFKC")
+    .replace(/[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u2064\ufeff]/g, "")
+    .trim().toLowerCase().replace(/[−–]/g, "-");
+  if (["", "?", "unknown", "n/a", "na", "-", "不详", "不詳", "未知"].includes(text) || /^\?+$/.test(text)) return null;
+  const m = text.match(YEAR_RE);
+  if (!m) return NaN;
+  const n = parseInt(m[3], 10);
+  const bc = m[2] === "-" || ["公元前", "紀元前", "纪元前", "前"].includes(m[1]) || ["bce", "b.c.e.", "bc", "b.c."].includes(m[4]);
+  return bc && n ? -n : n;
 }
 
 /* Years are whole numbers; negative = BC. Mirrors prompts.years() on the server. */
@@ -109,6 +129,7 @@ function modal(html, onMount) {
   bg.innerHTML = `<div class="modal card">${html}</div>`;
   const close = () => bg.remove();
   bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+  bg.addEventListener("keydown", (e) => { if (e.key === "Escape") close(); });
   document.body.appendChild(bg);
   onMount(bg.querySelector(".modal"), close);
   return close;
@@ -119,16 +140,16 @@ function figureForm(fig = {}) {
     <label>Name</label><input name="name" required maxlength="200" value="${esc(fig.name)}">
     <div class="row years-row">
       <div style="flex:1"><div class="label-row"><label>Born</label>${help(
-        "Whole years. Leave empty if unknown. Use a minus sign for years BC: -551 means 551 BC.")}</div>
-        <input name="birth_year" type="number" step="1" min="-99999" max="99999" value="${esc(fig.birth_year)}" placeholder="e.g. 1881 or -551"></div>
+        "Optional: leave empty if unknown. Write a year like 1881, 551 BC, -551 or 公元前551; “c. 1881” is fine too.")}</div>
+        <input name="birth_year" type="text" maxlength="30" autocomplete="off" value="${esc(fig.birth_year)}" placeholder="e.g. 1881 or 551 BC"></div>
       <div style="flex:1"><div class="label-row"><label>Died</label></div>
-        <input name="death_year" type="number" step="1" min="-99999" max="99999" value="${esc(fig.death_year)}" placeholder="e.g. 1936 or -479"></div>
+        <input name="death_year" type="text" maxlength="30" autocomplete="off" value="${esc(fig.death_year)}" placeholder="e.g. 1936 or 479 BC"></div>
     </div>
     <div class="hint years-preview"></div>
-    <label>Short description</label>
+    <label>Short description <span class="muted">(optional)</span></label>
     <textarea name="description" rows="3" maxlength="2000">${esc(fig.description)}</textarea>
     <label>Persona instructions <span class="muted">(optional — how the figure should speak and behave)</span></label>
-    <textarea name="persona" rows="5" maxlength="4000" placeholder="You are Liang Qichao, a reformist scholar…">${esc(fig.persona)}</textarea>`;
+    <textarea name="persona" rows="5" maxlength="10000" placeholder="You are Liang Qichao, a reformist scholar…">${esc(fig.persona)}</textarea>`;
 }
 
 /* "12,345 tokens · $0.0012" — whatever the provider reported. */
@@ -223,8 +244,17 @@ async function editPrompt({ list, prompt = null, figureId = null, onDone }) {
 function wireYears(form) {
   const preview = form.querySelector(".years-preview");
   const update = () => {
-    const shown = years({ birth_year: form.birth_year.value, death_year: form.death_year.value });
-    preview.textContent = shown ? `Shown as ${shown}` : "";
+    const b = parseYear(form.birth_year.value), d = parseYear(form.death_year.value);
+    let text = "", problem = true;
+    if (Number.isNaN(b) || Number.isNaN(d)) text = "Not a year: write e.g. 1881, 551 BC or 公元前551, or leave it empty.";
+    else if (b !== null && d !== null && d < b) text = "The year of death is before the year of birth (for BC, write e.g. 551 BC).";
+    else {
+      problem = false;
+      const shown = years({ birth_year: b ?? "", death_year: d ?? "" });
+      text = shown ? `Shown as ${shown}` : "";
+    }
+    preview.textContent = text;
+    preview.classList.toggle("error", problem);
   };
   form.birth_year.addEventListener("input", update);
   form.death_year.addEventListener("input", update);
@@ -244,6 +274,29 @@ async function setPortrait(id, file, url) {
   }
   if (url && url.trim()) return api(`/figures/${id}/image-url`, { method: "POST", json: { url: url.trim() } });
   return null;
+}
+
+// ---------------------------------------------------------------- day / night
+
+/* The button cycles Auto → Day → Night; applyTheme() (index.html) sets the colours. */
+const THEMES = {
+  auto: { label: "◐ Auto", title: "Colours follow your system's day/night setting", next: "light" },
+  light: { label: "☀ Day", title: "Day colours", next: "dark" },
+  dark: { label: "☾ Night", title: "Night colours", next: "auto" },
+};
+function showTheme() {
+  const theme = THEMES[window.applyTheme()] || THEMES.auto, button = document.getElementById("theme-toggle");
+  button.textContent = theme.label;
+  button.title = `${theme.title} — click to change`;
+}
+function wireTheme() {
+  document.getElementById("theme-toggle").onclick = () => {
+    prefs.set("theme", (THEMES[prefs.get("theme", "auto")] || THEMES.auto).next);
+    showTheme();
+  };
+  // In Auto, follow the system when it switches (e.g. at sunset)
+  matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change", showTheme);
+  showTheme();
 }
 
 // ---------------------------------------------------------------- router
@@ -275,6 +328,7 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 window.addEventListener("DOMContentLoaded", async () => {
+  wireTheme();
   PUBLIC = (await api("/info").catch(() => ({}))).public === true;
   document.body.classList.toggle("public", PUBLIC); // hides everything marked .admin-only
   route();
@@ -414,7 +468,9 @@ async function pageFigure(id) {
       return `<li>
         <span class="name">${esc(d.filename)}</span>
         <span class="row"><span class="badge ${d.status}">${d.status === "processing" ? `embedding ${pct}%` : d.status}</span>
-          ${d.status === "error" ? `<button class="link" data-retry="${d.id}">retry</button>` : ""}
+          ${d.status !== "error" ? "" : fig.needs_rebuild // retrying can't help: the index needs rebuilding
+            ? `<button class="link" data-rebuild-doc>rebuild index</button>`
+            : `<button class="link" data-retry="${d.id}">retry</button>`}
           <button class="link danger" data-del="${d.id}" title="Delete">✕</button></span>
         <span class="muted small">${d.chunk_count ? `${d.chunk_count} passages · ${d.char_count.toLocaleString()} characters` : ""}${d.embed_tokens ? ` · ${usageText(d.embed_tokens, d.embed_cost)}` : ""}
           ${d.error ? `<span class="error">${esc(d.error)}</span>` : ""}</span>
@@ -432,6 +488,7 @@ async function pageFigure(id) {
 
   document.getElementById("docs").onclick = async (e) => {
     const del = e.target.closest("[data-del]"), retry = e.target.closest("[data-retry]");
+    if (e.target.closest("[data-rebuild-doc]")) return document.getElementById("rebuild").click();
     try {
       if (del && confirm("Delete this document and its passages?")) {
         await api(`/documents/${del.dataset.del}`, { method: "DELETE" });
@@ -471,17 +528,32 @@ async function pageFigure(id) {
   };
 
   // Portrait
-  const changePortrait = async (file, url) => {
+  const changePortrait = async (file, url) => { // true when the portrait was changed
     try {
       const updated = await setPortrait(id, file, url);
       if (updated) { fig = updated; document.getElementById("portrait").innerHTML = avatar(fig, "lg"); }
-    } catch (err) { fail(err); }
+      return !!updated;
+    } catch (err) { fail(err); return false; }
   };
   document.getElementById("image-input").onchange = (e) => changePortrait(e.target.files[0]);
-  document.getElementById("image-url-btn").onclick = () => {
-    const url = prompt("Link to an image (PNG, JPEG, GIF or WebP):");
-    if (url) changePortrait(null, url);
-  };
+  document.getElementById("image-url-btn").onclick = () => modal(`
+      <h2>Portrait from a link</h2><form>
+      <label>Link to an image <span class="muted">(PNG, JPEG, GIF or WebP)</span></label>
+      <input type="url" name="url" required maxlength="2000" placeholder="https://…">
+      <div class="hint">The image is downloaded once and kept with the figure.</div>
+      <div class="row" style="margin-top:16px"><span class="spacer"></span>
+        <button type="button" data-close>Cancel</button><button class="primary">Use this image</button></div></form>`,
+    (el, close) => {
+      const form = el.querySelector("form"), submit = form.querySelector("button.primary");
+      el.querySelector("[data-close]").onclick = close;
+      form.url.focus();
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        submit.disabled = true; submit.textContent = "Downloading…";
+        if (await changePortrait(null, form.url.value)) close();
+        else { submit.disabled = false; submit.textContent = "Use this image"; }
+      };
+    });
 
   // Metadata
   wireYears(document.getElementById("fig-form"));
@@ -496,7 +568,7 @@ async function pageFigure(id) {
     if (!confirm(`Delete ${fig.name}, all documents and all conversations? This cannot be undone.`)) return;
     try {
       await api(`/figures/${id}`, { method: "DELETE" });
-      if (prefs.get("lastChat", null)?.figureId === id) prefs.set("lastChat", null);
+      if (session.get("lastChat", null)?.figureId === id) session.set("lastChat", null);
       location.hash = "#/";
     } catch (err) { fail(err); }
   };
@@ -544,20 +616,37 @@ async function pageFigure(id) {
   };
 }
 
+/* One passage in the Sources panel: a card with its number (as cited in the answer), where it
+   comes from, how it was found, and the text (shortened until opened). */
 function hitHtml(h, i) {
   const n = i + 1;
-  const sim = h.similarity == null ? "" : ` · similarity ${h.similarity.toFixed(2)}`;
-  const kw = h.bm25 ? ` · keywords ${h.bm25.toFixed(1)}` : "";
-  return `<div class="source" data-n="${n}"><div class="meta">[${n}] ${esc(h.filename)}, part ${h.chunk + 1}${sim}${kw}</div>
-    <div class="text" onclick="this.classList.toggle('open')">${esc(h.text)}</div></div>`;
+  const scores = [h.similarity == null ? "" : `similarity ${h.similarity.toFixed(2)}`,
+    h.bm25 ? `keywords ${h.bm25.toFixed(1)}` : ""].filter(Boolean).join(" · ");
+  return `<div class="source" data-n="${n}">
+    <div class="source-head"><span class="source-n">${n}</span>
+      <span class="source-where"><b>${esc(h.filename)}</b> · part ${h.chunk + 1}</span></div>
+    ${scores ? `<div class="meta">${scores}</div>` : ""}
+    <div class="text">${esc(h.text)}</div>
+    <button type="button" class="link small more hidden">Show all</button></div>`;
+}
+
+/* Open or shorten a passage card. */
+function toggleSource(el, open = !el.classList.contains("open")) {
+  el.classList.toggle("open", open);
+  el.querySelector(".more").textContent = open ? "Show less" : "Show all";
 }
 
 // ---------------------------------------------------------------- chat
 
-const prefs = {
-  get(key, fallback) { try { const v = localStorage.getItem("histfig." + key); return v === null ? fallback : JSON.parse(v); } catch (_) { return fallback; } },
-  set(key, value) { try { localStorage.setItem("histfig." + key, JSON.stringify(value)); } catch (_) {} },
-};
+/* Small JSON stores that never throw (storage can be blocked, e.g. in private windows).
+   prefs: settings kept in this browser. session: where you are chatting, kept only while this
+   tab is open, so a fresh start opens a new conversation instead of an old one. */
+const store = (storage) => ({
+  get(key, fallback) { try { const v = storage().getItem("histfig." + key); return v === null ? fallback : JSON.parse(v); } catch (_) { return fallback; } },
+  set(key, value) { try { storage().setItem("histfig." + key, JSON.stringify(value)); } catch (_) {} },
+});
+const prefs = store(() => localStorage);
+const session = store(() => sessionStorage);
 
 async function pageChat(figureId, convId) {
   let fig, convs, conv;
@@ -567,19 +656,19 @@ async function pageChat(figureId, convId) {
       convId ? api(`/conversations/${convId}`).catch(() => null) : null,
     ]);
   } catch (err) { // figure deleted: forget it and go back to the list
-    if (prefs.get("lastChat", null)?.figureId === figureId) prefs.set("lastChat", null);
+    if (session.get("lastChat", null)?.figureId === figureId) session.set("lastChat", null);
     location.replace("#/");
     throw err;
   }
   if (convId && !conv) convId = undefined; // conversation deleted meanwhile
-  if (!convId && convs.length) {
-    const remembered = prefs.get("lastConv", {})[figureId];
-    const target = convs.some((c) => c.id === remembered) ? remembered : convs[0].id;
-    location.replace(`#/chat/${figureId}/${target}`);
-    return;
+  if (!convId) { // back to the conversation you were in during this session; otherwise a new one
+    const remembered = session.get("lastConv", {})[figureId];
+    if (convs.some((c) => c.id === remembered)) {
+      location.replace(`#/chat/${figureId}/${remembered}`);
+      return;
+    }
   }
   rememberChat(figureId, convId);
-  let models = { models: [], default: "" }; // filled in by getModels() below
 
   app.innerHTML = `
     <div class="chat" id="chat">
@@ -603,8 +692,7 @@ async function pageChat(figureId, convId) {
               : `<h2>New conversation</h2>`}
           </div>
           <div class="head-actions">
-            ${conv ? `<a class="btn small" href="/api/conversations/${conv.id}/export" title="Download as Markdown">Export</a>` : ""}
-            <button class="btn small" id="toggle-sources">Sources</button>
+            ${conv ? exportMenu(conv.id) : ""}
             <button class="btn small" id="toggle-settings" title="Options for this conversation">⚙ Options</button>
           </div>
         </div>
@@ -621,6 +709,7 @@ async function pageChat(figureId, convId) {
           <button class="link icon" id="close-side" title="Close">✕</button></div>
         <div id="side-sources" class="small muted">Sources for an answer appear here.</div>
         <div id="side-settings" class="hidden">
+          <h4 class="side-section">This conversation</h4>
           <div class="setting hidden" id="model-setting">
             <div class="label-row"><label for="model">Model</label>${help(
               "The chat models chosen in Settings. The default is used unless you pick another one here.")}</div>
@@ -632,6 +721,7 @@ async function pageChat(figureId, convId) {
               <span class="spacer"></span><a class="small admin-only" href="#/figure/${figureId}">Edit prompts</a></div>
             <select id="prompt"></select>
           </div>
+          <h4 class="side-section">All chats in this browser</h4>
           <div class="setting">
             <div class="label-row"><label for="temperature">Temperature</label>${help(
               "Lower = more focused and consistent answers, higher = more varied and creative ones.")}
@@ -641,20 +731,21 @@ async function pageChat(figureId, convId) {
           </div>
           <div class="setting">
             <div class="label-row"><label for="documents">Documents</label>${help(
-              "Simple search: the passages that best match each question are given to the model. " +
-              "Agent search: the model looks things up itself first (several searches, exact words, " +
-              "neighbouring passages) and picks what fits; slower, and a few more model calls per question. " +
-              "Don't use: chat without looking anything up.")}</div>
+              "How passages from the figure's writings are found for each question. Agent search " +
+              "runs several searches, looks for exact words and reads neighbouring passages, then picks what fits.")}</div>
             <select id="documents">
               <option value="simple">Simple search</option>
               <option value="agent">Agent search</option>
               <option value="off">Don't use</option>
             </select>
+            <div class="hint" id="documents-hint"></div>
           </div>
           <div class="setting">
             <div class="label-row"><label for="top-k">Passages per question</label>${help(
-              "How many passages from the documents are given to the model with each question.")}</div>
+              "How many passages from the documents are given to the model with each question.")}
+              <span class="spacer"></span><b id="top-k-value"></b></div>
             <input type="number" id="top-k" min="1" max="30">
+            <button type="button" class="link small hidden" id="top-k-reset"></button>
           </div>
           <div class="setting label-row">
             <label class="check"><input type="checkbox" id="immersive">Immersive</label>${help(
@@ -671,8 +762,15 @@ async function pageChat(figureId, convId) {
   const $ = (sel) => document.getElementById(sel);
   const inner = $("messages-inner"), scroller = $("messages"), input = $("input");
   const documents = $("documents"), topK = $("top-k"), showThinking = $("show-thinking"), modelInput = $("model");
-  documents.value = prefs.get("documents", prefs.get("useRag", true) ? "simple" : "off");
-  topK.value = prefs.get("topK", 5);
+  const DOCUMENT_MODES = {
+    simple: "The passages that best match each question are given to the model.",
+    agent: "The model looks things up itself before answering. Slower, with a few more model calls.",
+    off: "Chat without looking anything up in the documents.",
+  };
+  const showDocumentsMode = () => { $("documents-hint").textContent = DOCUMENT_MODES[documents.value] || ""; };
+  documents.value = prefs.get("documents", "simple");
+  if (!DOCUMENT_MODES[documents.value]) documents.value = "simple";
+  showDocumentsMode();
   showThinking.checked = prefs.get("showThinking", false);
   const immersive = $("immersive");
   const setImmersive = (on) => {
@@ -681,7 +779,7 @@ async function pageChat(figureId, convId) {
   };
   immersive.checked = prefs.get("immersive", false);
   immersive.onchange = () => { prefs.set("immersive", immersive.checked); setImmersive(immersive.checked); };
-  documents.onchange = () => prefs.set("documents", documents.value);
+  documents.onchange = () => { prefs.set("documents", documents.value); showDocumentsMode(); };
 
   // Temperature: null = the configured default (known once the model info arrives)
   const temp = $("temperature");
@@ -701,7 +799,24 @@ async function pageChat(figureId, convId) {
   };
   $("temperature-reset").onclick = () => { prefs.set("temperature", null); showTemp(); };
   showTemp();
-  topK.onchange = () => prefs.set("topK", Number(topK.value) || 5);
+
+  // Passages per question: null = the configured default (from Settings)
+  let defaultTopK = 5;
+  const showTopK = () => {
+    const custom = prefs.get("topK", null);
+    topK.value = custom ?? defaultTopK;
+    $("top-k-value").textContent = custom === null ? "default" : "";
+    const reset = $("top-k-reset");
+    reset.textContent = `Reset to default (${defaultTopK})`;
+    reset.classList.toggle("hidden", custom === null);
+  };
+  topK.onchange = () => {
+    const v = Math.round(Number(topK.value));
+    if (v >= 1 && v <= 30) prefs.set("topK", v === defaultTopK ? null : v);
+    showTopK();
+  };
+  $("top-k-reset").onclick = () => { prefs.set("topK", null); showTopK(); };
+  showTopK();
   showThinking.onchange = () => {
     prefs.set("showThinking", showThinking.checked);
     document.querySelectorAll(".thinking").forEach((d) => d.classList.toggle("hidden", !showThinking.checked || !d.textContent.trim()));
@@ -729,8 +844,8 @@ async function pageChat(figureId, convId) {
 
   getModels().then((m) => {
     if (!document.body.contains(modelInput)) return; // left the page meanwhile
-    models = m;
     if (typeof m.temperature === "number") { defaultTemp = m.temperature; showTemp(); }
+    if (typeof m.top_k === "number") { defaultTopK = m.top_k; showTopK(); }
     const choices = (m.allowed || []).filter((name) => name !== m.default);
     const current = choices.includes(conv?.model) ? conv.model : "";
     modelInput.innerHTML = `<option value="">${esc(m.default)} (default)</option>` +
@@ -740,39 +855,58 @@ async function pageChat(figureId, convId) {
 
   // Right-hand panel: Sources or Settings
   const side = $("side"), chatEl = $("chat");
-  let sideView = null, lastSources = [];
+  let sideView = null;
+  let sourcesOf = null; // the answer whose sources the panel shows (it is outlined)
+  const unmarkSources = () => { sourcesOf?.wrap.classList.remove("showing-sources"); sourcesOf = null; };
   const openSide = (view) => {
+    if (view !== "sources") unmarkSources();
     sideView = view;
     $("side-title").textContent = view === "sources" ? "Sources" : "Conversation options";
     $("side-sources").classList.toggle("hidden", view !== "sources");
     $("side-settings").classList.toggle("hidden", view !== "settings");
     side.classList.remove("hidden");
     chatEl.classList.add("with-side");
-    $("toggle-sources").classList.toggle("active", view === "sources");
     $("toggle-settings").classList.toggle("active", view === "settings");
-    prefs.set("sidePanel", view);
+    prefs.set("sidePanel", view === "settings" ? view : null); // sources belong to one answer: not reopened later
   };
   const closeSide = () => {
     sideView = null;
+    unmarkSources();
     side.classList.add("hidden");
     chatEl.classList.remove("with-side");
-    $("toggle-sources").classList.remove("active");
     $("toggle-settings").classList.remove("active");
     prefs.set("sidePanel", null);
   };
-  const showSources = (hits, focus = null) => {
-    $("side-sources").innerHTML = hits?.length ? hits.map(hitHtml).join("")
-      : `<p class="muted">No passages were used for this answer.</p>`;
+  // The sources of one answer (view), with the question it answered; focus = a cited passage number
+  const showSources = (view, focus = null) => {
+    unmarkSources();
+    sourcesOf = view;
+    view.wrap.classList.add("showing-sources");
+    const q = view.question.trim();
+    $("side-sources").innerHTML =
+      (q ? `<p class="side-question">Passages for the answer to “${esc(q.length > 140 ? q.slice(0, 140) + "…" : q)}”</p>` : "") +
+      (view.sources.length ? view.sources.map(hitHtml).join("")
+        : `<p class="muted">No passages were used for this answer.</p>`);
     openSide("sources");
+    // Long passages are shortened: mark them (fade + "Show all"); measured now that the panel is visible
+    $("side-sources").querySelectorAll(".source").forEach((el) => {
+      const text = el.querySelector(".text");
+      const clipped = text.scrollHeight > text.clientHeight + 1;
+      el.classList.toggle("clipped", clipped);
+      el.querySelector(".more").classList.toggle("hidden", !clipped);
+    });
     const el = focus && $("side-sources").querySelector(`.source[data-n="${focus}"]`);
     if (el) { // a clicked citation: show that passage in full
       el.classList.add("focus");
-      el.querySelector(".text").classList.add("open");
+      toggleSource(el, true);
       el.scrollIntoView({ block: "start" });
     }
   };
+  $("side-sources").onclick = (e) => {
+    const el = e.target.closest(".source.clipped");
+    if (el && (e.target.closest(".more") || e.target.closest(".text"))) toggleSource(el);
+  };
   $("close-side").onclick = closeSide;
-  $("toggle-sources").onclick = () => (sideView === "sources" ? closeSide() : showSources(lastSources));
   $("toggle-settings").onclick = () => (sideView === "settings" ? closeSide() : openSide("settings"));
   $("toggle-sidebar").onclick = () => $("sidebar").classList.toggle("open");
 
@@ -781,7 +915,7 @@ async function pageChat(figureId, convId) {
   const addUser = (text) => {
     inner.insertAdjacentHTML("beforeend", `<div class="msg user"><div class="bubble">${esc(text)}</div></div>`);
   };
-  const addAssistant = (text = "", sources = [], steps = []) => {
+  const addAssistant = (question, text = "", sources = [], steps = []) => {
     const wrap = document.createElement("div");
     wrap.className = "msg assistant";
     wrap.innerHTML = `${avatar(fig, "sm")}<div class="bubble">
@@ -790,7 +924,7 @@ async function pageChat(figureId, convId) {
       <div class="answer"></div><div class="tools"></div></div>`;
     inner.appendChild(wrap);
     const view = {
-      raw: text, thinking: "", sources, steps: [...steps],
+      wrap, question, raw: text, thinking: "", sources, steps: [...steps],
       render(streaming = false) {
         const res = wrap.querySelector(".research"), researching = streaming && !this.raw;
         res.classList.toggle("hidden", !this.steps.length);
@@ -805,16 +939,16 @@ async function pageChat(figureId, convId) {
         det.querySelector("div").textContent = t;
         const ans = wrap.querySelector(".answer");
         ans.innerHTML = linkCitations(renderText(answer), this.sources) || (streaming ? "<p></p>" : "");
-        ans.classList.toggle("cursor", streaming);
+        ans.classList.toggle("working", streaming);
       },
       setSources(hits) {
         this.sources = hits;
         wrap.querySelector(".tools").innerHTML = hits.length
           ? `<button class="link small">${hits.length} source${hits.length === 1 ? "" : "s"}</button>` : "";
         const b = wrap.querySelector(".tools button");
-        if (b) b.onclick = () => showSources(this.sources);
+        if (b) b.onclick = () => (sourcesOf === this ? closeSide() : showSources(this));
       },
-      showSource(n) { lastSources = this.sources; showSources(this.sources, n); },
+      showSource(n) { showSources(this, n); },
       error(msg) { wrap.querySelector(".answer").insertAdjacentHTML("beforeend", `<p class="error">${esc(msg)}</p>`); },
     };
     wrap.querySelector(".answer").addEventListener("click", (e) => {
@@ -827,9 +961,10 @@ async function pageChat(figureId, convId) {
   };
 
   if (conv && conv.messages.length) {
+    let question = "";
     for (const m of conv.messages) {
-      if (m.role === "user") addUser(m.content);
-      else { addAssistant(m.content, m.sources, m.steps); lastSources = m.sources; }
+      if (m.role === "user") { addUser(m.content); question = m.content; }
+      else addAssistant(question, m.content, m.sources, m.steps);
     }
   } else {
     inner.innerHTML = `<div class="empty-chat">${avatar(fig, "lg")}<h2>${esc(fig.name)}</h2>
@@ -839,8 +974,9 @@ async function pageChat(figureId, convId) {
   }
   setImmersive(immersive.checked);
   if (prefs.get("sidePanel", null) === "settings") openSide("settings");
-  else if (prefs.get("sidePanel", null) === "sources") showSources(lastSources);
   scrollDown();
+
+  if (conv) wireMenu($("export-btn"), $("export-menu"));
 
   // Renaming in place (sidebar entry or the title above the chat)
   const setTitle = (id, title) => {
@@ -942,20 +1078,20 @@ async function pageChat(figureId, convId) {
     if (!conv) inner.innerHTML = "";
     input.value = ""; input.oninput();
     addUser(text);
-    const view = addAssistant();
+    const view = addAssistant(text);
     view.render(true);
     scrollDown();
     $("send").classList.add("hidden"); $("stop").classList.remove("hidden");
     controller = new AbortController();
     try {
       await streamChat(target.id, {
-        content: text, documents: documents.value, top_k: Number(topK.value) || undefined,
+        content: text, documents: documents.value, top_k: prefs.get("topK", null) ?? undefined,
         temperature: prefs.get("temperature", null) ?? undefined,
       }, controller.signal, (ev) => {
         const nearBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 80;
         if (ev.type === "sources") {
-          view.setSources(ev.sources); lastSources = ev.sources;
-          if (sideView === "sources") showSources(lastSources);
+          view.setSources(ev.sources);
+          if (sideView === "sources") showSources(view); // the panel follows the newest answer
         }
         else if (ev.type === "step") { view.steps.push(ev.text); view.render(true); }
         else if (ev.type === "content") { view.raw += ev.text; view.render(true); }
@@ -977,21 +1113,47 @@ async function pageChat(figureId, convId) {
   input.focus();
 }
 
-/* Remember where the user was chatting, for the "Chat" tab and for reopening a figure. */
+/* "Export ▾": download the conversation, with the passages behind each answer, as a file. */
+function exportMenu(convId) {
+  const url = (format) => `/api/conversations/${convId}/export?format=${format}`;
+  const item = (format, label, ext) =>
+    `<a role="menuitem" href="${url(format)}" download>${label}<span class="muted small">${ext}</span></a>`;
+  return `<div class="menu-wrap">
+    <button type="button" class="btn small" id="export-btn" aria-haspopup="menu" aria-expanded="false"
+      title="Save this conversation, with its sources">Export ▾</button>
+    <div class="menu hidden" id="export-menu" role="menu">
+      ${item("md", "Markdown", ".md")}${item("txt", "Plain text", ".txt")}${item("html", "Web page", ".html")}
+    </div></div>`;
+}
+
+/* A dropdown: the button opens/closes it; choosing an item, clicking elsewhere or Escape closes it. */
+function wireMenu(button, menu) {
+  const show = (open) => { menu.classList.toggle("hidden", !open); button.setAttribute("aria-expanded", open); };
+  button.onclick = () => show(menu.classList.contains("hidden"));
+  menu.onclick = (e) => { if (e.target.closest("[role=menuitem]")) show(false); };
+  const outside = (e) => { if (!menu.contains(e.target) && !button.contains(e.target)) show(false); };
+  const escape = (e) => { if (e.key === "Escape") show(false); };
+  document.addEventListener("click", outside);
+  document.addEventListener("keydown", escape);
+  cleanup.push(() => { document.removeEventListener("click", outside); document.removeEventListener("keydown", escape); });
+}
+
+/* Remember where the user is chatting (in this session), for the "Chat" tab and for reopening a
+   figure. convId empty = on a new conversation, so coming back shows a new one again. */
 function rememberChat(figureId, convId) {
-  prefs.set("lastChat", { figureId, convId: convId || null });
-  if (convId) prefs.set("lastConv", { ...prefs.get("lastConv", {}), [figureId]: convId });
+  session.set("lastChat", { figureId, convId: convId || null });
+  session.set("lastConv", { ...session.get("lastConv", {}), [figureId]: convId || null });
   updateChatNav();
 }
 
 function updateChatNav() {
-  const last = prefs.get("lastChat", null);
+  const last = session.get("lastChat", null);
   const link = document.querySelector('[data-nav="chat"]');
   if (link) link.hidden = !last;
 }
 
 async function pageLastChat() {
-  const last = prefs.get("lastChat", null);
+  const last = session.get("lastChat", null);
   location.replace(last ? `#/chat/${last.figureId}${last.convId ? "/" + last.convId : ""}` : "#/");
 }
 
@@ -999,11 +1161,7 @@ async function streamChat(convId, body, signal, onEvent) {
   const res = await fetch(`/api/conversations/${convId}/messages`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal,
   });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try { msg = (await res.json()).detail || msg; } catch (_) {}
-    throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
-  }
+  if (!res.ok) throw new Error(await errorMessage(res));
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
@@ -1029,14 +1187,12 @@ async function streamChat(convId, body, signal, onEvent) {
 async function pageSettings(notes = []) {
   const s = await api("/settings");
   const c = s.config;
-  const SERVICES = {
-    chat: [["openrouter", "OpenRouter"], ["ollama", "Ollama (runs on this computer)"], ["other", "Other OpenAI-compatible API"]],
-    embedding: [["openrouter", "OpenRouter"], ["ollama", "Ollama (runs on this computer)"], ["other", "Other OpenAI-compatible API"],
-      ["local", "sentence-transformers (inside HistFig)"]],
-  };
+  const CHAT_SERVICES = [["openrouter", "OpenRouter"], ["ollama", "Ollama (runs on this computer)"],
+    ["other", "Other OpenAI-compatible API"]];
+  const SERVICES = { chat: CHAT_SERVICES, embedding: [...CHAT_SERVICES, ["local", "sentence-transformers (inside HistFig)"]] };
+  const OLLAMA_HINT = "Browse shows the models installed in Ollama; “ollama pull <name>” adds more.";
   const MODEL_HINT = { // only where "Browse models…" needs a word of explanation
-    ollama: { chat: "Browse shows the models installed in Ollama; “ollama pull <name>” adds more.",
-      embedding: "Browse shows the models installed in Ollama; “ollama pull <name>” adds more." },
+    ollama: { chat: OLLAMA_HINT, embedding: OLLAMA_HINT },
     local: { embedding: "Type a Hugging Face model name, e.g. owner/model-name. Needs “uv sync --extra local”." },
   };
   const serviceOf = (sec) => sec.provider === "ollama" ? "ollama" : sec.provider === "sentence_transformers" ? "local"
@@ -1088,6 +1244,9 @@ async function pageSettings(notes = []) {
       ${s.problems.length ? `<div class="banner"><b>Welcome to HistFig!</b> Choose a chat model and an embedding
         model below and click Save. OpenRouter needs one API key for both; Ollama runs free models on your own computer.</div>` : ""}
       ${notes.map((n) => `<div class="banner">${esc(n)}</div>`).join("")}
+      ${s.figures.outdated ? `<div class="banner">${s.figures.outdated === 1 ? "One figure was" : `${s.figures.outdated} figures were`}
+        embedded with a different model than the one configured now, so search falls back to keywords
+        until the index is rebuilt. <button type="button" class="btn small" data-rebuild-all>Rebuild all figures</button></div>` : ""}
       ${modelForm("chat", "Chat model", c.chat,
         frow("models", "Models", `<div class="tags" id="chat-models"></div>
           <button type="button" class="btn small" data-browse>Browse models…</button>
@@ -1097,7 +1256,9 @@ async function pageSettings(notes = []) {
           </div>
           <div class="hint" data-hint></div>`, "The chat models you use. The default answers unless a conversation picks another one under ⚙ Options (visitors of a public server can pick too).") +
         frow("temperature", "Temperature", `<input name="temperature" type="number" min="0" max="2" step="0.1" value="${c.chat.temperature}">`,
-          "Default for new messages. Lower = more focused, higher = more creative. Can be changed per conversation."))}
+          "Default for new messages. Lower = more focused, higher = more creative. Can be changed in a chat's ⚙ Options.") +
+        frow("history_messages", "Chat history sent", `<input name="history_messages" type="number" min="0" max="200" value="${c.chat.history_messages}"> <span class="unit">messages</span>`,
+          "How many earlier messages the model sees, so it remembers the conversation."))}
       ${modelForm("embedding", "Embedding model", c.embedding,
         frow("usage", "Used so far", `<span class="${usage ? "" : "muted"}">${usage || "nothing recorded yet"}</span>`,
           "Embedding usage for all figures, as reported by the provider."),
@@ -1116,20 +1277,24 @@ async function pageSettings(notes = []) {
       <form class="card settings-card" data-section="passages" autocomplete="off">
         <h2>Passages &amp; retrieval</h2>
         <div class="form-grid">
-          ${frow("chunk_size", "Passage size", `<input name="chunk_size" type="number" min="100" step="50" value="${ch.chunk_size}"> <span class="unit">characters</span>`,
-            "Counted in Chinese characters; about three English letters count as one, so 1000 is ~1000 Chinese characters or ~500 English words. Applies to new uploads; “Rebuild index” applies it to existing ones.")}
+          ${frow("chunk_size", "Passage size", `<input name="chunk_size" type="number" min="100" step="50" value="${ch.chunk_size}"> <span class="unit">characters</span>
+            <div class="hint">Chinese characters; about three letters of other scripts count as one (1000 ≈ 500 English words).</div>`,
+            "Applies to new uploads; “Rebuild all figures” below applies it to existing documents.")}
           ${frow("overlap", "Overlap", `<input name="overlap" type="number" min="0" step="10" value="${ch.overlap}"> <span class="unit">characters</span>`,
             "How much consecutive passages share, so sentences at the edges aren't lost. Counted like the passage size, and less than half of it.")}
           ${frow("top_k", "Passages per question", `<input name="top_k" type="number" min="1" max="30" value="${r.top_k}">`,
-            "Default number of passages given to the model. Can be changed per conversation.")}
+            "Default number of passages given to the model with each question. Can be changed in a chat's ⚙ Options.")}
           ${frow("candidates", "Candidates searched", `<input name="candidates" type="number" min="1" max="200" value="${r.candidates}">`,
             "How many passages each search method (meaning and keywords) proposes before they are combined.")}
           ${frow("min_similarity", "Minimum similarity", `<input name="min_similarity" type="number" min="0" max="1" step="0.05" value="${r.min_similarity}">`,
             "Passages less similar than this (0–1) are left out, unless they also match keywords.")}
-          ${frow("history_messages", "Chat history sent", `<input name="history_messages" type="number" min="0" max="200" value="${r.history_messages}"> <span class="unit">messages</span>`,
-            "How many earlier messages the model sees, so it remembers the conversation.")}
+          ${frow("agent_steps", "Agent search steps", `<input name="agent_steps" type="number" min="1" max="20" value="${r.agent_steps}">`,
+            "With agent search, how many rounds of looking things up the model may do before it answers. More can find more, but is slower.")}
         </div>
-        <div class="form-actions"><span class="spacer"></span><button class="btn small primary" disabled>Save</button></div>
+        <div class="form-actions">
+          <button type="button" class="btn small" data-rebuild-all ${s.figures.with_documents ? "" : "disabled"}
+            title="Re-chunk and re-embed the documents of every figure with the saved settings">Rebuild all figures</button>
+          <span class="spacer"></span><button class="btn small primary" disabled>Save</button></div>
       </form>
       <div class="card settings-card">
         <h2>Files</h2>
@@ -1140,6 +1305,27 @@ async function pageSettings(notes = []) {
         </dl>
       </div>
     </div>`;
+
+  // ----- unsaved changes: Save becomes available; Test (which uses the saved settings) waits for it
+  let testing = false;
+  function updateTestButtons() {
+    const all = document.getElementById("test-all");
+    if (!all) return; // left the page
+    let anyUnsaved = false;
+    for (const which of ["chat", "embedding"]) {
+      const unsaved = !app.querySelector(`form[data-section="${which}"] button.primary`).disabled;
+      anyUnsaved ||= unsaved;
+      const b = app.querySelector(`[data-test="${which}"]`);
+      b.disabled = testing || unsaved;
+      b.title = unsaved ? "Save your changes first: the test uses the saved settings" : "Send one small request to this model";
+    }
+    all.disabled = testing || anyUnsaved;
+    all.title = anyUnsaved ? "Save your changes first: the tests use the saved settings" : "";
+  }
+  function markDirty(form) {
+    form.querySelector("button.primary").disabled = false;
+    updateTestButtons();
+  }
 
   // ----- "Browse models…": a searchable list of the provider's models (used by both model cards)
   //   load()   → the model names        state(m) → "default", "added ✓", … or null if pickable
@@ -1184,7 +1370,7 @@ async function pageSettings(notes = []) {
       const b = e.target.closest("[data-pick]");
       if (!b) return;
       pick(b.dataset.pick);
-      form.querySelector("button.primary").disabled = false;
+      markDirty(form);
       if (keepOpen) render(); else browser.classList.add("hidden");
     };
     // A click anywhere outside the list (or its button) closes it
@@ -1227,7 +1413,7 @@ async function pageSettings(notes = []) {
         if (defaultModel === drop.dataset.drop) defaultModel = chatModels[0] || "";
       }
       if (def) defaultModel = def.dataset.makeDefault;
-      if (drop || def) { renderTags(); browse.render(); form.querySelector("button.primary").disabled = false; }
+      if (drop || def) { renderTags(); browse.render(); markDirty(form); }
     };
     resetChatModels = () => { chatModels = []; defaultModel = ""; renderTags(); browse.reset(); };
     renderTags();
@@ -1278,7 +1464,7 @@ async function pageSettings(notes = []) {
     if (which === "chat") wireChatModels(form, initialService); else wireEmbeddingModel(form, initialService);
     form.oninput = form.onchange = (e) => {
       if (e.target.name === "same_key" || e.target.name === "base_url") sync();
-      form.querySelector("button.primary").disabled = false;
+      markDirty(form);
     };
     sync();
     form.onsubmit = async (e) => {
@@ -1299,6 +1485,7 @@ async function pageSettings(notes = []) {
       }
       if (which === "chat") {
         section.temperature = Number(form.temperature.value);
+        section.history_messages = Number(form.history_messages.value);
         section.allowed_models = chatModels.filter((m) => m !== defaultModel);
       }
       else {
@@ -1312,13 +1499,13 @@ async function pageSettings(notes = []) {
 
   // ----- passages & retrieval
   const pform = app.querySelector('form[data-section="passages"]');
-  pform.oninput = () => (pform.querySelector("button.primary").disabled = false);
+  pform.oninput = () => markDirty(pform);
   pform.onsubmit = async (e) => {
     e.preventDefault();
     const n = (name) => Number(pform[name].value);
     await save({
       chunking: { chunk_size: n("chunk_size"), overlap: n("overlap") },
-      retrieval: { top_k: n("top_k"), candidates: n("candidates"), min_similarity: n("min_similarity"), history_messages: n("history_messages") },
+      retrieval: { top_k: n("top_k"), candidates: n("candidates"), min_similarity: n("min_similarity"), agent_steps: n("agent_steps") },
     }, pform);
   };
 
@@ -1335,6 +1522,17 @@ async function pageSettings(notes = []) {
       button.disabled = false; button.textContent = "Save";
     }
   }
+
+  // ----- rebuilding every figure (after changing the embedding model or passage sizes)
+  app.querySelectorAll("[data-rebuild-all]").forEach((b) => (b.onclick = async () => {
+    if (!confirm("Re-chunk and re-embed the documents of all figures with the saved settings? " +
+                 "This may take a while, and uses the embedding model for every passage again.")) return;
+    try {
+      const r = await api("/figures/rebuild-all", { method: "POST" });
+      toast(`Rebuilding ${r.figures} figure${r.figures === 1 ? "" : "s"} in the background.`);
+      await pageSettings();
+    } catch (err) { fail(err); }
+  }));
 
   // ----- prompts
   let general = [];
@@ -1372,12 +1570,9 @@ async function pageSettings(notes = []) {
       pill.className = "status-pill bad"; pill.textContent = "✗ Failed"; detail.textContent = err.message;
     }
   };
-  const buttons = () => document.querySelectorAll("#test-all, [data-test]");
   const locked = async (fn) => {
-    const unsaved = [...app.querySelectorAll("form[data-section] button.primary")].some((b) => !b.disabled);
-    if (unsaved) toast("Tests use the saved settings — click Save first to test your changes.");
-    buttons().forEach((b) => (b.disabled = true));
-    try { await fn(); } finally { buttons().forEach((b) => (b.disabled = false)); }
+    testing = true; updateTestButtons();
+    try { await fn(); } finally { testing = false; updateTestButtons(); }
   };
   document.querySelectorAll("[data-test]").forEach((b) => (b.onclick = () => locked(() => runTest(b.dataset.test))));
   document.getElementById("test-all").onclick = () => locked(async () => {
@@ -1388,4 +1583,5 @@ async function pageSettings(notes = []) {
     await runTest("chat");
     await runTest("embedding");
   });
+  updateTestButtons();
 }

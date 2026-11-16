@@ -29,7 +29,7 @@ You can mix them, e.g. an API for chat and Ollama for embeddings.
 ## Quick start
 
 ```bash
-git clone <this repository> histfig
+git clone https://github.com/mcjkurz/histfig.git histfig
 cd histfig
 uv sync            # install dependencies
 uv run histfig     # starts HistFig and opens it in your browser
@@ -109,6 +109,7 @@ base_url = "https://openrouter.ai/api/v1"
 model = "vendor/model-name"
 api_key = ""                             # paste a key here, or…
 api_key_env = ""                         # …name an environment variable holding it
+history_messages = 20                    # earlier messages sent along as context
 
 [embedding]
 provider = "openai_compatible"           # or "ollama", "sentence_transformers"
@@ -125,13 +126,13 @@ overlap = 150
 [retrieval]
 top_k = 5                                # passages given to the model per question
 min_similarity = 0.2
-history_messages = 20                    # earlier messages sent along as context
+agent_steps = 5                          # agent search: rounds of looking things up
 ```
 
 **Changing the embedding model?** Vectors from different models can't be compared, so each figure
-remembers the model it was built with. After a change, the figure's page shows a notice and a
-**Rebuild index** button (the same button also applies new chunking settings). Until then, search
-falls back to keyword matching.
+remembers the model it was built with. After a change, the Settings page offers to
+**Rebuild all figures**, and each figure's page has its own **Rebuild index** button (both also apply
+new chunking settings). Until then, search falls back to keyword matching.
 
 ## Prompts
 
@@ -155,13 +156,17 @@ Under **⚙ Options → Documents** in the chat:
   look for exact words (names, titles, phrases), read the passages around a hit, and try again with
   other words. Then it picks the passages to answer from, or decides that no lookup is needed,
   e.g. for a greeting. The steps are shown above the answer and included in the export. It is
-  slower and makes a few more model calls per question (at most 5 rounds). The model must support
-  tool calling. If it doesn't, HistFig says so and uses simple search.
+  slower and makes a few more model calls per question (at most 5 rounds by default; see
+  **Agent search steps** in Settings). The model must support tool calling. If it doesn't,
+  HistFig says so and uses simple search.
 - **Don't use**: chat without the documents.
 
 Answers mark what comes from a passage with its number, like a footnote. Click it to see the
 passage. **Immersive** (also under ⚙ Options) hides the numbers, sources, research steps and
 thinking, so the chat reads like a plain conversation.
+
+**Export ▾** (above the chat) saves a conversation, with the full passages behind each answer, as
+Markdown, plain text or a web page.
 
 ## Sharing a read-only server
 

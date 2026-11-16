@@ -19,7 +19,7 @@ from histfig.config import (
     suggested_prefixes,
 )
 from histfig.providers.chat import available_models as fetch_models
-from histfig.providers.chat import similar
+from histfig.providers.chat import model_available, similar
 
 # (id, label, provider, base_url — None means "ask")
 CHAT_SERVICES = [
@@ -47,12 +47,15 @@ def ask(prompt: str, default: str = "", required: bool = False) -> str:
         print("  This one is required.")
 
 
-def ask_int(prompt: str, default: int, minimum: int) -> int:
+def ask_int(prompt: str, default: int, minimum: int, maximum: int | None = None) -> int:
+    if maximum is not None:
+        default = min(default, maximum)
     while True:
         answer = ask(prompt, str(default))
-        if answer.isdigit() and int(answer) >= minimum:
+        if answer.isdigit() and int(answer) >= minimum and (maximum is None or int(answer) <= maximum):
             return int(answer)
-        print(f"  Please enter a whole number ≥ {minimum}.")
+        print(f"  Please enter a whole number from {minimum} to {maximum}." if maximum is not None
+              else f"  Please enter a whole number ≥ {minimum}.")
 
 
 def yes(prompt: str) -> bool:
@@ -109,7 +112,7 @@ def ask_model(section, sid: str, default: str, embedding: bool) -> str:
     models = available_models(section, sid, embedding)
     while True:
         name = ask("Model name", default, required=True)
-        if models is None or name in models or f"{name}:latest" in models:
+        if models is None or model_available(name, models):
             return name
         print(f"  '{name}' is not available at {section.base_url}.")
         matches = similar(name, models)
@@ -141,9 +144,11 @@ def setup_service(section, services: list[tuple], shared=None, embedding: bool =
     elif provider == "openai_compatible":
         if switched:
             section.api_key, section.api_key_env = "", ""
-        same_as_chat = shared is not None and shared.base_url == section.base_url
+        same_as_chat = (shared is not None and shared.provider == section.provider
+                        and shared.base_url.rstrip("/") == section.base_url.rstrip("/"))
         if same_as_chat and yes("Use the same API key as the chat model?"):
-            section.api_key, section.api_key_env = shared.api_key, shared.api_key_env
+            # No key of its own: it then always uses the chat model's key (Config.embedding_key)
+            section.api_key, section.api_key_env = "", ""
         else:
             ask_key(section)
 
@@ -175,7 +180,8 @@ def run_wizard(data_dir: Path) -> Config:
 
     print("\n== 3/3  Passages (how texts are split up) ==")
     cfg.chunking.chunk_size = ask_int("Characters per passage", cfg.chunking.chunk_size, 100)
-    cfg.chunking.overlap = ask_int("Overlap between passages (characters)", cfg.chunking.overlap, 0)
+    cfg.chunking.overlap = ask_int("Overlap between passages (characters)", cfg.chunking.overlap, 0,
+                                   maximum=cfg.chunking.chunk_size // 2 - 1)
 
     for problem in cfg.validate():
         print(f"Warning: {problem}")

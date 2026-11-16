@@ -17,17 +17,14 @@ class FakeEmbedder(Embedder):
         super().__init__(EmbeddingConfig(provider="openai_compatible", model=model, batch_size=4))
         self.calls = 0
 
-    async def _embed_raw(self, texts):
+    async def _embed(self, texts):
         self.calls += 1
         out = np.zeros((len(texts), self.dim), dtype=np.float32)
         for i, t in enumerate(texts):
             for tok in tokenize(t) or ["empty"]:
                 h = int(hashlib.md5(tok.encode()).hexdigest(), 16)
                 out[i, h % self.dim] += 1.0
-        return out + 1e-3
-
-    async def _embed_raw_usage(self, texts):
-        return await self._embed_raw(texts), Usage(tokens=10 * len(texts), cost=0.001 * len(texts))
+        return out + 1e-3, Usage(tokens=10 * len(texts), cost=0.001 * len(texts))
 
 
 class FakeChat:

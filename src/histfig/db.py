@@ -6,7 +6,6 @@ light concurrency of a single-user app (web requests + one ingestion worker).
 
 from __future__ import annotations
 
-import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
@@ -14,18 +13,22 @@ from pathlib import Path
 
 from histfig.prompts import SYSTEM_PROMPT
 
-SCHEMA_V1 = """
+SCHEMA = """
 CREATE TABLE figures (
-    id            INTEGER PRIMARY KEY,
-    name          TEXT NOT NULL,
-    description   TEXT NOT NULL DEFAULT '',
-    persona       TEXT NOT NULL DEFAULT '',
-    birth_year    TEXT NOT NULL DEFAULT '',
-    death_year    TEXT NOT NULL DEFAULT '',
-    image         TEXT,
-    embed_model   TEXT,          -- "provider:model" the vectors were made with
-    embed_dim     INTEGER,
-    created_at    TEXT NOT NULL
+    id                 INTEGER PRIMARY KEY,
+    name               TEXT NOT NULL,
+    description        TEXT NOT NULL DEFAULT '',
+    persona            TEXT NOT NULL DEFAULT '',
+    birth_year         TEXT NOT NULL DEFAULT '',   -- whole number, negative = BC; '' = unknown
+    death_year         TEXT NOT NULL DEFAULT '',
+    image              TEXT,
+    embed_model        TEXT,          -- "provider:model" the vectors were made with
+    embed_dim          INTEGER,
+    created_at         TEXT NOT NULL,
+    -- embedding usage reported by the provider: running total, including rebuilds
+    embed_tokens_total INTEGER NOT NULL DEFAULT 0,
+    embed_cost_total   REAL NOT NULL DEFAULT 0,
+    default_prompt_id  INTEGER REFERENCES prompts(id) ON DELETE SET NULL
 );
 
 CREATE TABLE documents (
@@ -41,6 +44,8 @@ CREATE TABLE documents (
     status         TEXT NOT NULL DEFAULT 'pending',  -- pending | processing | ready | error
     error          TEXT,
     created_at     TEXT NOT NULL,
+    embed_tokens   INTEGER NOT NULL DEFAULT 0,       -- usage for the document's current vectors
+    embed_cost     REAL NOT NULL DEFAULT 0,          -- USD, when the provider reports it
     UNIQUE (figure_id, sha256)
 );
 
@@ -58,39 +63,9 @@ CREATE TABLE chunks (
 CREATE INDEX chunks_figure ON chunks(figure_id);
 CREATE INDEX chunks_document ON chunks(document_id);
 
-CREATE TABLE conversations (
-    id          INTEGER PRIMARY KEY,
-    figure_id   INTEGER NOT NULL REFERENCES figures(id) ON DELETE CASCADE,
-    title       TEXT NOT NULL DEFAULT '',
-    model       TEXT NOT NULL DEFAULT '',
-    created_at  TEXT NOT NULL,
-    updated_at  TEXT NOT NULL
-);
-
-CREATE TABLE messages (
-    id              INTEGER PRIMARY KEY,
-    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-    role            TEXT NOT NULL,   -- user | assistant
-    content         TEXT NOT NULL,
-    sources         TEXT,            -- JSON list of retrieved passages
-    created_at      TEXT NOT NULL
-);
-CREATE INDEX messages_conversation ON messages(conversation_id);
-"""
-
-# Embedding usage as reported by the provider (tokens, and cost in USD when known).
-# documents.* = for the document's current vectors; figures.* = running total incl. rebuilds.
-SCHEMA_V2 = """
-ALTER TABLE documents ADD COLUMN embed_tokens INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE documents ADD COLUMN embed_cost REAL NOT NULL DEFAULT 0;
-ALTER TABLE figures ADD COLUMN embed_tokens_total INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE figures ADD COLUMN embed_cost_total REAL NOT NULL DEFAULT 0;
-"""
-
-# Named system prompts. figure_id NULL = a general prompt usable with every figure;
-# exactly one general prompt has is_default = 1. Conversations and figures point
-# at a prompt; when it is deleted they fall back to the default.
-SCHEMA_V3 = """
+-- Named system prompts. figure_id NULL = a general prompt usable with every figure; exactly
+-- one general prompt has is_default = 1. Conversations and figures point at a prompt; when
+-- it is deleted they fall back to the default.
 CREATE TABLE prompts (
     id          INTEGER PRIMARY KEY,
     figure_id   INTEGER REFERENCES figures(id) ON DELETE CASCADE,
@@ -101,40 +76,34 @@ CREATE TABLE prompts (
     updated_at  TEXT NOT NULL
 );
 CREATE INDEX prompts_figure ON prompts(figure_id);
-INSERT INTO prompts (figure_id, name, text, is_default, created_at, updated_at)
-VALUES (NULL, 'Default', '""" + SYSTEM_PROMPT.replace("'", "''") + """', 1,
-        strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'));
-ALTER TABLE conversations ADD COLUMN prompt_id INTEGER REFERENCES prompts(id) ON DELETE SET NULL;
-ALTER TABLE figures ADD COLUMN default_prompt_id INTEGER REFERENCES prompts(id) ON DELETE SET NULL;
-"""
 
-# Public mode: conversations started by anonymous visitors (NULL = the owner's).
-SCHEMA_V4 = """
-ALTER TABLE conversations ADD COLUMN visitor TEXT;
+CREATE TABLE conversations (
+    id          INTEGER PRIMARY KEY,
+    figure_id   INTEGER NOT NULL REFERENCES figures(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL DEFAULT '',
+    model       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL,
+    updated_at  TEXT NOT NULL,
+    prompt_id   INTEGER REFERENCES prompts(id) ON DELETE SET NULL,
+    visitor     TEXT              -- public mode: an anonymous visitor's; NULL = the owner's
+);
 CREATE INDEX conversations_visitor ON conversations(figure_id, visitor);
+
+CREATE TABLE messages (
+    id              INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    role            TEXT NOT NULL,   -- user | assistant
+    content         TEXT NOT NULL,
+    sources         TEXT,            -- JSON list of retrieved passages
+    created_at      TEXT NOT NULL,
+    steps           TEXT             -- agent search: JSON list of what was looked up
+);
+CREATE INDEX messages_conversation ON messages(conversation_id);
 """
-
-# Agent search: what was looked up for an answer (JSON list of short texts).
-SCHEMA_V5 = """
-ALTER TABLE messages ADD COLUMN steps TEXT;
-"""
-
-
-
-def retokenize(conn: sqlite3.Connection) -> None:
-    """Recompute the stored keywords of every passage after the tokenizer changed
-    (no new embeddings needed). V6: English stemming and word pairs."""
-    from histfig.retrieval.tokenize import tokenize
-
-    rows = conn.execute("SELECT id, text FROM chunks").fetchall()
-    if len(rows) > 500:
-        print(f"Updating the search keywords of {len(rows)} passages (once, a few seconds)…", flush=True)
-    conn.executemany("UPDATE chunks SET tokens=? WHERE id=?",
-                     [(json.dumps(tokenize(r["text"]), ensure_ascii=False), r["id"]) for r in rows])
-
-
-# Append new migrations here (an SQL script or a function); index + 1 == schema version.
-MIGRATIONS = [SCHEMA_V1, SCHEMA_V2, SCHEMA_V3, SCHEMA_V4, SCHEMA_V5, retokenize]
+# PRAGMA user_version of a database with this schema. (Earlier development versions built it
+# in steps 1-5; databases from those are not upgraded.) If the schema ever changes, raise this
+# and turn the difference into an upgrade step in Database.prepare().
+SCHEMA_VERSION = 6
 
 
 def now() -> str:
@@ -145,7 +114,7 @@ class Database:
     def __init__(self, path: Path):
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.migrate()
+        self.prepare()
 
     def _open(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.path, timeout=30)
@@ -168,15 +137,22 @@ class Database:
         finally:
             conn.close()
 
-    def migrate(self) -> None:
+    def prepare(self) -> None:
+        """Create the tables in a new database; check that an existing one is current."""
         with self.connect() as conn:
             version = conn.execute("PRAGMA user_version").fetchone()[0]
-            for i, script in enumerate(MIGRATIONS[version:], start=version + 1):
-                if callable(script):
-                    script(conn)
-                else:
-                    conn.executescript(script)
-                conn.execute(f"PRAGMA user_version = {i}")
+            if version == SCHEMA_VERSION:
+                return
+            if version != 0:
+                raise RuntimeError(
+                    f"{self.path} was made by a different version of HistFig (database version "
+                    f"{version}, expected {SCHEMA_VERSION}). Start with an empty data folder "
+                    "(--data-dir), or use the HistFig version that made it.")
+            conn.executescript(SCHEMA)
+            ts = now()
+            conn.execute("INSERT INTO prompts (figure_id, name, text, is_default, created_at, updated_at) "
+                         "VALUES (NULL, 'Default', ?, 1, ?, ?)", (SYSTEM_PROMPT, ts, ts))
+            conn.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
     # Small helpers -----------------------------------------------------
 

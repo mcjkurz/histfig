@@ -86,10 +86,8 @@ def previous_server(data_dir: Path, port: int) -> int | None:
 
 def stop(pid: int, host: str, port: int, timeout: float = 5.0) -> bool:
     """Stop the process politely, then forcefully; True once the port is free again."""
-    if sys.platform == "win32":
-        os.kill(pid, signal.SIGTERM)  # TerminateProcess
-    else:
-        os.kill(pid, signal.SIGTERM)
+    os.kill(pid, signal.SIGTERM)  # on Windows: TerminateProcess
+    if sys.platform != "win32":
         os.kill(pid, signal.SIGCONT)  # a suspended (Ctrl+Z) process only sees SIGTERM once resumed
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:

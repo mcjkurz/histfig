@@ -2,6 +2,10 @@
 
 Chunks are written first with ``embedding = NULL`` and filled batch by batch,
 so an interrupted job resumes where it stopped when the server restarts.
+
+A document is worked on only while its status is 'processing'. If it is reset
+meanwhile (Rebuild index, retry), the current job stops at its next step and
+the document is processed again from the start.
 """
 
 from __future__ import annotations
@@ -70,10 +74,17 @@ class IngestWorker:
             except Exception as e:  # keep the worker alive whatever happens
                 log.exception("Ingestion failed for document %s", doc_id)
                 self.db.execute(
-                    "UPDATE documents SET status='error', error=? WHERE id=?", (str(e), doc_id)
+                    "UPDATE documents SET status='error', error=? WHERE id=? AND status='processing'",
+                    (str(e), doc_id),
                 )
             finally:
                 self._queued.discard(doc_id)
+            if self._status(doc_id) == "pending":  # reset while we worked on it: start again
+                self.enqueue(doc_id)
+
+    def _status(self, doc_id: int) -> str | None:
+        row = self.db.one("SELECT status FROM documents WHERE id=?", (doc_id,))
+        return row["status"] if row else None
 
     # Work --------------------------------------------------------------
 
@@ -82,11 +93,11 @@ class IngestWorker:
         if doc is None or doc["status"] in ("ready", "error"):
             return
         figure_id = doc["figure_id"]
-        self._check_model(figure_id)
         self.db.execute("UPDATE documents SET status='processing', error=NULL WHERE id=?", (doc_id,))
+        self._check_model(figure_id)
 
-        if doc["chunk_count"] == 0:
-            await self._chunk(doc)
+        if doc["chunk_count"] == 0 and not await self._chunk(doc):
+            return
 
         batch_size = max(1, self.cfg.embedding.batch_size)
         while True:
@@ -97,14 +108,14 @@ class IngestWorker:
             )
             if not rows:
                 break
-            if self.db.one("SELECT id FROM documents WHERE id=?", (doc_id,)) is None:
-                return  # deleted while we were working
-            vectors, usage = await self.embedder.embed_documents_with_usage([r["text"] for r in rows])
-            self._store_vectors(figure_id, doc_id, rows, vectors, usage)
+            vectors, usage = await self.embedder.embed_documents([r["text"] for r in rows])
+            if not self._store_vectors(figure_id, doc_id, rows, vectors, usage):
+                return  # deleted or reset while we were working
 
-        self.db.execute("UPDATE documents SET status='ready' WHERE id=?", (doc_id,))
-        self.index.invalidate(figure_id)
-        log.info("Document %s (%s) is ready", doc_id, doc["filename"])
+        if self.db.execute("UPDATE documents SET status='ready' WHERE id=? AND status='processing'",
+                           (doc_id,)):
+            self.index.invalidate(figure_id)
+            log.info("Document %s (%s) is ready", doc_id, doc["filename"])
 
     def _check_model(self, figure_id: int) -> None:
         fig = self.db.one("SELECT embed_model FROM figures WHERE id=?", (figure_id,))
@@ -121,10 +132,11 @@ class IngestWorker:
                 return
             raise JobError(
                 f"This figure was embedded with {fig['embed_model']}, but the configured "
-                f"model is {current}. Use 'Re-embed all' on the figure page."
+                f"model is {current}. Use “Rebuild index” on the figure's page."
             )
 
-    async def _chunk(self, doc: dict) -> None:
+    async def _chunk(self, doc: dict) -> bool:
+        """Split the document into passages; False if it was deleted or reset meanwhile."""
         data = Path(doc["path"]).read_bytes()
         cfg = self.cfg.chunking
 
@@ -135,6 +147,8 @@ class IngestWorker:
 
         text, chunks = await asyncio.to_thread(work)
         with self.db.connect() as conn:
+            if not self._processing(conn, doc["id"]):
+                return False
             conn.execute("DELETE FROM chunks WHERE document_id=?", (doc["id"],))
             conn.executemany(
                 "INSERT INTO chunks (document_id, figure_id, idx, text, start_char, end_char, tokens) "
@@ -149,17 +163,25 @@ class IngestWorker:
                 "UPDATE documents SET char_count=?, chunk_count=?, embedded_count=0 WHERE id=?",
                 (len(text), len(chunks), doc["id"]),
             )
+        return True
+
+    @staticmethod
+    def _processing(conn, doc_id: int) -> bool:
+        row = conn.execute("SELECT status FROM documents WHERE id=?", (doc_id,)).fetchone()
+        return row is not None and row["status"] == "processing"
 
     def _store_vectors(self, figure_id: int, doc_id: int, rows: list[dict], vectors: np.ndarray,
-                       usage: Usage | None = None):
-        usage = usage or Usage()
+                       usage: Usage) -> bool:
+        """Save a batch of vectors; False if the document was deleted or reset meanwhile."""
         dim = int(vectors.shape[1])
         with self.db.connect() as conn:
+            if not self._processing(conn, doc_id):
+                return False
             fig = conn.execute(
                 "SELECT embed_model, embed_dim FROM figures WHERE id=?", (figure_id,)
             ).fetchone()
             if fig is None:
-                return  # figure deleted meanwhile
+                return False  # figure deleted meanwhile
             if fig["embed_model"] is None:
                 conn.execute(
                     "UPDATE figures SET embed_model=?, embed_dim=? WHERE id=?",
@@ -186,11 +208,13 @@ class IngestWorker:
                 "embed_cost_total = embed_cost_total + ? WHERE id=?",
                 (usage.tokens, usage.cost, figure_id),
             )
+        return True
 
     # Re-embedding ------------------------------------------------------
 
     def rebuild_figure(self, figure_id: int) -> int:
-        """Re-chunk and re-embed all documents of a figure with the current settings."""
+        """Re-chunk and re-embed all documents of a figure with the current settings.
+        Documents being worked on right now are picked up again when that job stops."""
         with self.db.connect() as conn:
             conn.execute("DELETE FROM chunks WHERE figure_id=?", (figure_id,))
             conn.execute(

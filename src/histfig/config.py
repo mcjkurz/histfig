@@ -35,6 +35,7 @@ class ChatConfig:
     model: str = ""
     temperature: float = 0.7
     timeout: float = 300.0
+    history_messages: int = 20  # earlier messages the model sees (0 = none)
     # Extra models that can be picked per conversation (⚙ Options); `model` is always allowed.
     allowed_models: list[str] = field(default_factory=list)
 
@@ -79,7 +80,7 @@ class RetrievalConfig:
     candidates: int = 30
     min_similarity: float = 0.2
     rrf_k: int = 60
-    history_messages: int = 20
+    agent_steps: int = 5  # agent search: rounds of looking things up before answering
 
 
 @dataclass
@@ -124,6 +125,14 @@ class Config:
             problems.append("chunking.overlap must be >= 0 and less than half of chunk_size")
         if self.embedding.batch_size < 1:
             problems.append("embedding.batch_size must be >= 1")
+        if self.chat.history_messages < 0:
+            problems.append("chat.history_messages must be >= 0")
+        if not 1 <= self.retrieval.top_k <= 30:
+            problems.append("retrieval.top_k must be between 1 and 30")
+        if self.retrieval.candidates < 1:
+            problems.append("retrieval.candidates must be >= 1")
+        if self.retrieval.agent_steps < 1:
+            problems.append("retrieval.agent_steps must be >= 1")
         return problems
 
 
@@ -144,24 +153,24 @@ def config_path(data_dir: Path) -> Path:
 
 
 def _fill(cls, values: dict):
-    names = {f.name: f for f in fields(cls)}
+    """An instance of cls from a dict; unknown keys are ignored, numbers written as
+    strings are converted, lists are cleaned of blanks and duplicates."""
+    defaults = cls()
     kwargs = {}
     for key, value in (values or {}).items():
-        if key in names:
-            default = getattr(cls(), key)
-            # coerce simple numeric types written as strings / ints
-            if isinstance(default, bool) or default is None:
-                kwargs[key] = value
-            elif isinstance(default, list):
-                if not isinstance(value, list):
-                    raise ValueError(f"{key} must be a list")
-                kwargs[key] = list(dict.fromkeys(str(v).strip() for v in value if str(v).strip()))
-            elif isinstance(default, float):
-                kwargs[key] = float(value)
-            elif isinstance(default, int):
-                kwargs[key] = int(value)
-            else:
-                kwargs[key] = value
+        if key not in {f.name for f in fields(cls)}:
+            continue
+        default = getattr(defaults, key)
+        if isinstance(default, list):
+            if not isinstance(value, list):
+                raise ValueError(f"{key} must be a list")
+            kwargs[key] = list(dict.fromkeys(str(v).strip() for v in value if str(v).strip()))
+        elif isinstance(default, float):
+            kwargs[key] = float(value)
+        elif isinstance(default, int):
+            kwargs[key] = int(value)
+        else:
+            kwargs[key] = value
     return cls(**kwargs)
 
 
@@ -185,8 +194,8 @@ def load_config(data_dir: Path) -> Config | None:
 
 
 def updated(cfg: Config, changes: dict) -> Config:
-    """A copy of cfg with {section: {field: value}} applied. Unknown keys and the
-    [server] section (needs a restart) are ignored; bad numbers raise ValueError."""
+    """A copy of cfg with {section: {field: value}} applied. Unknown keys, [server]
+    (needs a restart) and [public] (file only) are ignored; bad numbers raise ValueError."""
     data = asdict(cfg)
     for section, values in (changes or {}).items():
         if section in data and section not in ("server", "public") and isinstance(values, dict):
@@ -218,6 +227,8 @@ api_key_env = {chat_api_key_env}
 model = {chat_model}
 temperature = {chat_temperature}
 timeout = {chat_timeout}
+# How many earlier messages the model sees, so it remembers the conversation (0 = none).
+history_messages = {chat_history_messages}
 # Extra models people can pick per conversation (⚙ Options); the model above is always available.
 allowed_models = {chat_allowed_models}
 
@@ -246,11 +257,16 @@ chunk_size = {chunking_chunk_size}
 overlap = {chunking_overlap}
 
 [retrieval]
+# top_k: passages given to the model per question (default; each chat can change it)
+# candidates: passages each search method (meaning, keywords) proposes before they are combined
+# min_similarity: vector-only matches below this (0-1) are left out
+# rrf_k: rank-fusion constant (higher = the two methods' rankings matter more evenly)
+# agent_steps: agent search: rounds of looking things up before answering
 top_k = {retrieval_top_k}
 candidates = {retrieval_candidates}
 min_similarity = {retrieval_min_similarity}
 rrf_k = {retrieval_rrf_k}
-history_messages = {retrieval_history_messages}
+agent_steps = {retrieval_agent_steps}
 
 [public]
 # Only used with `histfig serve --public` (a read-only server you share with others).

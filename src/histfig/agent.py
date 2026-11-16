@@ -14,8 +14,8 @@ import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 
 from histfig.providers.chat import ProviderError
+from histfig.retrieval.search import Hit
 
-MAX_STEPS = 5  # rounds of tool calls before we stop and use what was found
 MAX_MATCHES = 10  # passages returned by one find_text
 
 RESEARCH_PROMPT = """You prepare the answer of {name} to the user's last message by \
@@ -63,9 +63,8 @@ PASSAGE_SQL = """SELECT c.id, c.document_id, c.idx, c.text, d.filename FROM chun
 
 
 def _hit(row) -> dict:
-    """The same shape as retrieval.search.Hit.to_dict(), so the Sources panel shows it."""
-    return {"chunk_id": row["id"], "document_id": row["document_id"], "filename": row["filename"],
-            "chunk": row["idx"], "text": row["text"], "similarity": None, "bm25": None, "score": 0}
+    """A passage in the same shape as simple search returns, so the Sources panel shows it."""
+    return Hit.from_row(row).to_dict()
 
 
 def _show(hits: list[dict]) -> str:
@@ -109,9 +108,9 @@ def _documents(db, figure_id: int) -> str:
 
 
 async def research(chat, db, fig: dict, question: str, history: list[dict], model: str,
-                   top_k: int, search: Search) -> AsyncIterator[tuple[str, object]]:
+                   top_k: int, search: Search, max_steps: int) -> AsyncIterator[tuple[str, object]]:
     """Yields ("step", text) and ("warning", text) while researching, and finally
-    ("hits", passages to answer from). Raises ProviderError if the very first call
+    ("hits", passages to answer from), after at most max_steps rounds of tool calls. Raises ProviderError if the very first call
     fails (e.g. the model can't use tools), so the caller can fall back to a simple search."""
     system = RESEARCH_PROMPT.format(name=fig["name"], description=(fig.get("description") or "").strip(),
                                     documents=_documents(db, fig["id"]), top_k=top_k)
@@ -120,7 +119,7 @@ async def research(chat, db, fig: dict, question: str, history: list[dict], mode
     chosen: list[int] | None = None
     warned = False
 
-    for step in range(MAX_STEPS):
+    for step in range(max_steps):
         try:
             reply = await chat.call_tools(messages, TOOLS, model)
         except ProviderError:

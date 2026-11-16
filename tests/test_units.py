@@ -151,20 +151,6 @@ def test_tokenize_stems_english_and_adds_word_pairs():
     assert "长江_童年" in tokenize("长江童年")
 
 
-def test_migration_recomputes_stored_keywords(tmp_path):
-    from histfig.db import retokenize
-
-    db = Database(tmp_path / "h.db")
-    db.execute("INSERT INTO figures (name, created_at) VALUES ('F', 'x')")
-    db.execute("INSERT INTO documents (figure_id, filename, file_type, sha256, path, created_at) "
-               "VALUES (1, 'a.txt', 'txt', 'h', 'p', 'x')")
-    db.execute("INSERT INTO chunks (document_id, figure_id, idx, text, start_char, end_char, tokens) "
-               "VALUES (1, 1, 0, 'The rivers flow.', 0, 16, '[\"rivers\"]')")
-    with db.connect() as conn:
-        retokenize(conn)
-    assert "river_flow" in db.one("SELECT tokens FROM chunks")["tokens"]
-
-
 def test_rrf_prefers_items_in_both_lists():
     scores = rrf([[1, 2, 3], [3, 4, 1]], k=60)
     ranked = sorted(scores, key=scores.get, reverse=True)
@@ -213,7 +199,8 @@ def test_wizard_fresh_setup(tmp_path, monkeypatch):
     monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
     cfg = wizard.run_wizard(tmp_path)
     assert cfg.chat.base_url == "https://openrouter.ai/api/v1" and cfg.chat.model == "vendor/chat"
-    assert cfg.embedding.api_key == "sk-test" and cfg.embedding.query_prefix.startswith("Instruct:")
+    assert cfg.embedding.api_key == "" and cfg.embedding_key() == "sk-test"  # shared, not copied
+    assert cfg.embedding.query_prefix.startswith("Instruct:")
     assert load_config(tmp_path) == cfg
 
 
@@ -224,18 +211,31 @@ def test_config_tolerates_partial_and_unknown_keys(tmp_path):
     assert c.chat.model == "x" and c.embedding.batch_size == 8 and c.server.port == 8000
 
 
+def test_wizard_keeps_overlap_below_half_the_passage_size(monkeypatch):
+    from histfig import wizard
+
+    answers = iter(["600", "50"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+    assert wizard.ask_int("Overlap", 150, 0, maximum=1001 // 2 - 1) == 50  # 600 refused
+
+
 def test_prefix_suggestions():
     assert suggested_prefixes("nomic-embed-text")[0] == "search_query: "
     assert suggested_prefixes("intfloat/multilingual-e5-small") == ("query: ", "passage: ")
     assert suggested_prefixes("text-embedding-3-small") == ("", "")
 
 
-def test_db_migrates_once(tmp_path):
-    Database(tmp_path / "x.db")
-    db = Database(tmp_path / "x.db")  # second open must not re-run the schema
-    from histfig.db import MIGRATIONS
+def test_db_is_created_once_and_checked(tmp_path):
+    from histfig.db import SCHEMA_VERSION
 
-    assert db.one("PRAGMA user_version")["user_version"] == len(MIGRATIONS)
+    Database(tmp_path / "x.db")
+    db = Database(tmp_path / "x.db")  # opening it again must not re-create anything
+    assert db.one("PRAGMA user_version")["user_version"] == SCHEMA_VERSION
+    assert db.all("SELECT name FROM prompts WHERE is_default=1") == [{"name": "Default"}]
+
+    db.execute("PRAGMA user_version = 3")  # from an old development version: refused, not damaged
+    with pytest.raises(RuntimeError, match="different version of HistFig"):
+        Database(tmp_path / "x.db")
 
 
 def test_usage_parsing():

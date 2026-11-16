@@ -133,14 +133,94 @@ def test_model_change_requires_rebuild_and_resume(cfg, tmp_path):
         client.post(f"/api/figures/{fid}/documents",
                     files=[("files", ("more.txt", b"Another text about autumn.", "text/plain"))])
         docs = wait_ready(client, fid)
-        assert any(d["status"] == "error" and "Rebuild" in (d["error"] or "") or
-                   d["status"] == "error" and "Re-embed" in (d["error"] or "") for d in docs)
+        assert any(d["status"] == "error" and "Rebuild index" in (d["error"] or "") for d in docs)
 
         client.post(f"/api/figures/{fid}/rebuild")
         docs = wait_ready(client, fid)
         assert all(d["status"] == "ready" for d in docs)
         fig = client.get(f"/api/figures/{fid}").json()
         assert fig["embed_model"] == "openai_compatible:other-embed" and not fig["needs_rebuild"]
+
+
+def test_rebuild_while_a_document_is_being_embedded(cfg, tmp_path):
+    """Rebuilding (or retrying) mid-ingestion must re-process the document, not lose its passages."""
+    import asyncio
+
+    class SlowEmbedder(FakeEmbedder):
+        async def _embed(self, texts):
+            await asyncio.sleep(0.05)
+            return await super()._embed(texts)
+
+    with make_client(cfg, tmp_path, SlowEmbedder()) as client:
+        fid = client.post("/api/figures", json={"name": "Wang Wei"}).json()["id"]
+        client.post(f"/api/figures/{fid}/documents",
+                    files=[("files", ("a.txt", (RIVER * 3).encode(), "text/plain"))])
+        deadline = time.time() + 5
+        while client.get(f"/api/figures/{fid}/documents").json()[0]["status"] != "processing":
+            assert time.time() < deadline
+            time.sleep(0.01)
+        client.post(f"/api/figures/{fid}/rebuild")
+        doc = wait_ready(client, fid)[0]
+        assert doc["status"] == "ready" and doc["chunk_count"] > 0
+        assert doc["embedded_count"] == doc["chunk_count"]
+        assert ask(client, fid, "Yangtze river")[0]
+
+
+def test_settings_apply_to_the_next_uploads_without_restart(cfg, tmp_path, monkeypatch):
+    from histfig.config import save_config
+
+    save_config(cfg, tmp_path)
+    with make_client(cfg, tmp_path) as client:
+        fid = client.post("/api/figures", json={"name": "Han Yu"}).json()["id"]
+        client.post(f"/api/figures/{fid}/documents", files=[("files", ("a.txt", RIVER.encode(), "text/plain"))])
+        small = wait_ready(client, fid)[0]["chunk_count"]
+        r = client.put("/api/settings", json={"chunking": {"chunk_size": 1000, "overlap": 0}})
+        assert r.status_code == 200 and r.json()["warnings"]  # existing documents keep their passages
+        client.post(f"/api/figures/{fid}/documents",
+                    files=[("files", ("b.txt", (RIVER + " Again.").encode(), "text/plain"))])
+        docs = {d["filename"]: d for d in wait_ready(client, fid)}
+        assert docs["b.txt"]["chunk_count"] < small  # bigger passages → fewer of them
+
+
+def test_rebuild_all_figures(cfg, tmp_path):
+    with make_client(cfg, tmp_path) as client:
+        fid = client.post("/api/figures", json={"name": "Du Mu"}).json()["id"]
+        client.post("/api/figures", json={"name": "No documents"})
+        client.post(f"/api/figures/{fid}/documents", files=[("files", ("a.txt", RIVER.encode(), "text/plain"))])
+        wait_ready(client, fid)
+
+    cfg.embedding.model = "other-embed"
+    with make_client(cfg, tmp_path, FakeEmbedder("other-embed")) as client:
+        assert client.get("/api/settings").json()["figures"] == {"with_documents": 1, "outdated": 1}
+        assert client.post("/api/figures/rebuild-all").json() == {"figures": 1, "queued": 1}
+        assert all(d["status"] == "ready" for d in wait_ready(client, fid))
+        assert client.get("/api/settings").json()["figures"]["outdated"] == 0
+
+
+def test_export_formats(cfg, tmp_path):
+    with make_client(cfg, tmp_path) as client:
+        fid = client.post("/api/figures", json={"name": "鲁迅", "birth_year": "1881", "death_year": "1936"}).json()["id"]
+        client.post(f"/api/figures/{fid}/documents", files=[("files", ("memoir.txt", RIVER.encode(), "text/plain"))])
+        wait_ready(client, fid)
+        cid = client.post(f"/api/figures/{fid}/conversations", json={"title": "长江 <river>"}).json()["id"]
+        client.post(f"/api/conversations/{cid}/messages", json={"content": "Tell me about the *river* <b>"})
+        url = f"/api/conversations/{cid}/export?format="
+
+        md = client.get(url + "md")
+        assert md.headers["content-type"].startswith("text/markdown") and "#### Sources" in md.text
+        assert ".md" in md.headers["content-disposition"] and "%E9%B2%81%E8%BF%85" in md.headers["content-disposition"]
+
+        txt = client.get(url + "txt")
+        assert txt.headers["content-type"].startswith("text/plain")
+        assert "鲁迅 (1881–1936)" in txt.text and "Sources:" in txt.text and "Yangtze" in txt.text
+
+        page = client.get(url + "html")
+        assert page.headers["content-type"].startswith("text/html") and "attachment" in page.headers["content-disposition"]
+        assert "&lt;river&gt;" in page.text and "<river>" not in page.text  # everything typed is escaped
+        assert "&lt;b&gt;" in page.text and 'class="source"' in page.text
+
+        assert client.get(url + "pdf").status_code == 400
+        assert client.get(f"/api/conversations/{cid + 99}/export").status_code == 404
 
 
 def test_interrupted_ingestion_resumes(cfg, tmp_path):
@@ -222,14 +302,43 @@ def test_embedding_usage_is_recorded(cfg, tmp_path):
         assert client.get("/api/settings").json()["embedding_usage"]["tokens"] == 20 * chunks
 
 
-def test_figure_years_are_whole_numbers(cfg, tmp_path):
+def test_figure_years_are_understood_in_many_forms(cfg, tmp_path):
     with make_client(cfg, tmp_path) as client:
         make = lambda b, d: client.post("/api/figures", json={"name": "X", "birth_year": b, "death_year": d})
         assert make("-551", "-479").json()["birth_year"] == "-551"
-        assert make("", "").status_code == 200 and make("0", "0").status_code == 200
-        assert make("+0065", "").json()["birth_year"] == "65"
-        assert make("c. 1868", "").status_code == 422
-        assert make("1868.5", "").status_code == 422
+        assert make("", "").status_code == 200 and make(None, None).status_code == 200
+        fig = make("公元前551年", "479 BC").json()
+        assert (fig["birth_year"], fig["death_year"]) == ("-551", "-479")
+        fig = make("c. 1881", "１９３６年").json()
+        assert (fig["birth_year"], fig["death_year"]) == ("1881", "1936")
+        assert make("?", "不详").json()["birth_year"] == ""
+        for bad in ("1868.5", "1881-1936", "soon", "123456"):
+            r = make(bad, "")
+            assert r.status_code == 422 and "not a year" in r.text, bad
+        r = make("1936", "1881")  # swapped
+        assert r.status_code == 422 and "before the year of birth" in r.text
+
+
+def test_figure_fields_accept_any_script_and_only_require_a_name(cfg, tmp_path):
+    with make_client(cfg, tmp_path) as client:
+        fig = client.post("/api/figures", json={"name": "  鲁迅\n(Lu Xun)\u200b ",
+                                                "description": "中国现代文学的奠基人。\r\n\x00"}).json()
+        assert fig["name"] == "鲁迅 (Lu Xun)" and fig["description"] == "中国现代文学的奠基人。"
+        assert fig["persona"] == "" and fig["birth_year"] == fig["death_year"] == ""
+        for name in ("", "   ", "\u200b", None):
+            r = client.post("/api/figures", json={"name": name})
+            assert r.status_code == 422 and "Please enter a name" in r.text, name
+        assert client.post("/api/figures", json={}).status_code == 422
+        assert client.post("/api/figures", json={"name": "X" * 201}).status_code == 422
+        fid = fig["id"]
+        assert client.put(f"/api/figures/{fid}", json={"name": "孔子", "birth_year": "前551"}).json()["name"] == "孔子"
+        # Free text never breaks the prompt (braces, quotes and the like are kept as written)
+        client.put(f"/api/figures/{fid}", json={"name": "Odd {persona} \"name\"", "persona": "{name} says {hi}"})
+        cid = client.post(f"/api/figures/{fid}/conversations", json={"title": "  a\nb  "}).json()
+        assert cid["title"] == "a b"
+        r = client.post(f"/api/conversations/{cid['id']}/messages", json={"content": "Hi", "documents": "off"})
+        assert r.status_code == 200 and sse_events(r.text)[-1]["type"] == "done"
+        assert client.post("/api/prompts", json={"name": "  ", "text": "x"}).status_code == 422
 
 
 def test_prompts_general_figure_and_conversation(cfg, tmp_path):
@@ -479,7 +588,7 @@ def test_agent_search_researches_then_answers_from_chosen_passages(cfg, tmp_path
         saved = client.get(f"/api/conversations/{cid}").json()["messages"][1]
         assert saved["steps"] == steps and [h["chunk_id"] for h in saved["sources"]] == [target["id"]]
         md = client.get(f"/api/conversations/{cid}/export").text
-        assert "*Research: Searched “childhood river”" in md and target["text"].splitlines()[0] in md
+        assert "Research:\n\n1. Searched “childhood river”" in md and target["text"].splitlines()[0] in md
 
 
 def test_agent_search_can_skip_documents(cfg, tmp_path):
@@ -507,14 +616,13 @@ def test_agent_search_falls_back_without_tool_support(cfg, tmp_path):
 
 
 def test_agent_search_stops_after_max_steps(cfg, tmp_path):
-    from histfig import agent
-
+    cfg.retrieval.agent_steps = 3
     chat = FakeChat()
     with make_client(cfg, tmp_path, chat=chat) as client:
         fid = with_documents(client)
         chat.script = [{"tool_calls": [call("search", query=f"river {i}")]} for i in range(20)]
         _, events = agent_ask(client, fid, "Tell me about the river")
-        assert len([e for e in events if e["type"] == "step"]) == agent.MAX_STEPS
+        assert len([e for e in events if e["type"] == "step"]) == cfg.retrieval.agent_steps
         sources = next(e["sources"] for e in events if e["type"] == "sources")
         assert 0 < len(sources) <= cfg.retrieval.top_k  # what it found, without a finish
         assert events[-1]["type"] == "done"

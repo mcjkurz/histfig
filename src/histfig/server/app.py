@@ -72,11 +72,12 @@ class AppState:
     models: ModelCache = field(default=None)  # type: ignore[assignment]
     prefetch_models: bool = True
     public: bool = False
-    limiter: object = None  # public.RateLimiter in public mode
+    limiter: RateLimiter | None = None  # only in public mode
 
     def apply_config(self, new: Config) -> None:
         """Use a new configuration right away (saved from the Settings page)."""
         old, self.cfg = self.cfg, new
+        self.worker.cfg = new  # chunking and batch size for the next documents
         if new.chat != old.chat:
             self.chat.cfg = new.chat  # the provider only reads its settings; no need to rebuild it
             self.models = ModelCache(new.chat)
@@ -88,7 +89,6 @@ class AppState:
 
     def embedding_key(self) -> str:
         return self.cfg.embedding_key()  # always the current settings (shares the chat key)
-        self.worker.cfg = new
 
     @property
     def uploads_dir(self) -> Path:

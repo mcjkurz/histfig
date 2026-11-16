@@ -5,8 +5,8 @@ English words are stemmed (rivers → river, flows → flow), and pairs of neigh
 words are added as phrases (iron_house, 铁屋_呐喊), so passages that share a whole
 phrase with the question score higher.
 
-Changing this changes the stored keywords: add a migration that runs
-db.retokenize() again, so existing passages get the new keywords.
+The keywords are stored with each passage when a document is processed, so a change
+here applies to existing documents only after "Rebuild index".
 """
 
 from __future__ import annotations
