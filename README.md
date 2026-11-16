@@ -64,33 +64,28 @@ A codespace is a computer in the cloud that GitHub runs for you; you use it in y
 Personal GitHub accounts include a free monthly allowance. Codespaces have no GPU, so use an online
 model service such as OpenRouter (not Ollama).
 
-1. **Optional, but recommended: store your API key as a secret**, so you never have to paste it
-   into HistFig. On GitHub, open your **Settings → Codespaces → New secret**. Name it
-   `OPENROUTER_API_KEY`, paste your key as the value, and under **Repository access** choose this
-   repository (`mcjkurz/histfig`, or your fork of it).
-2. **Create the codespace.** On the repository page, click the green **Code** button → the
+1. **Create the codespace.** On the repository page, click the green **Code** button → the
    **Codespaces** tab → **Create codespace on main**. An editor opens in your browser. Wait until the
    setup in the terminal at the bottom has finished (it installs everything; the first time takes a
    few minutes).
-3. **Start HistFig.** In the terminal, type:
+2. **Start HistFig.** In the terminal, type:
 
    ```bash
    uv run histfig
    ```
 
-4. **Open it.** A message appears: *Your application running on port 8000 is available*. Click
+3. **Open it.** A message appears: *Your application running on port 8000 is available*. Click
    **Open in Browser**. (Missed it? Open the **Ports** tab next to the terminal and click the globe
    icon next to port 8000.) HistFig opens on its **Settings** page.
-5. **Choose the models.** Pick **OpenRouter** for the chat model and for the embedding model, and
-   choose the models with **Browse models…**. For the key: if you made the secret in step 1, open
-   **Advanced** and type `OPENROUTER_API_KEY` under **Key from environment variable**; otherwise
-   paste the key itself. Click **Save changes** at the bottom, then **Test connections**.
-6. **Start working:** create a figure, upload texts, chat.
+4. **Choose the models.** Pick **OpenRouter** for the chat model and for the embedding model, paste
+   your API key, and choose the models with **Browse models…**. Click **Save changes** at the
+   bottom, then **Test connections**.
+5. **Start working:** create a figure, upload texts, chat.
 
 **Stopping and coming back.** Press <kbd>Ctrl</kbd>+<kbd>C</kbd> in the terminal to stop HistFig.
 The codespace itself stops after about 30 minutes without use. To continue later, open
 [github.com/codespaces](https://github.com/codespaces), click your codespace, and run
-`uv run histfig` again (steps 3–4). Everything you made is still there.
+`uv run histfig` again (steps 2–3). Everything you made is still there.
 
 **Keep a backup.** GitHub deletes codespaces that stay unused for a while (30 days by default), and
 your data is not saved in the repository. So use **Settings → Download backup** now and then. In a

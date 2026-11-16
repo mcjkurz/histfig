@@ -210,7 +210,7 @@ TEMPLATE = """\
 # Every setting has a default, so lines you delete fall back to it.
 #
 # API keys: put the key in api_key, or put the NAME of an environment variable
-# holding it in api_key_env (e.g. "OPENROUTER_API_KEY", handy for Codespaces secrets).
+# holding it in api_key_env (e.g. "OPENROUTER_API_KEY").
 # Check your settings with `histfig doctor`.
 
 [server]

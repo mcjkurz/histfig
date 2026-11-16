@@ -1275,7 +1275,7 @@ async function pageSettings(notes = []) {
       <details class="advanced"><summary>Advanced</summary><div class="form-grid">
         ${frow("api_key_env", "Key from environment variable", `<input name="api_key_env" value="${esc(sec.api_key_env)}"
           placeholder="e.g. OPENROUTER_API_KEY" spellcheck="false">`,
-          "Instead of storing the key, read it from this environment variable (handy for Codespaces secrets). Used when no key is saved.")}
+          "Instead of storing the key, read it from this environment variable. Used when no key is saved.")}
         ${advanced}
       </div></details>
       <div class="form-actions"><div class="test-detail small" id="detail-${which}"></div></div>
