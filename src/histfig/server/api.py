@@ -462,11 +462,11 @@ def short_title(text: str, limit: int = 16) -> str:
 
 
 @router.post("/conversations/{conv_id}/messages")
-async def send_message(conv_id: int, body: MessageIn, s: AppState = Depends(S),
+async def send_message(conv_id: int, body: MessageIn, request: Request, s: AppState = Depends(S),
                        visitor=Depends(current_visitor)):
     conv = _conversation_or_404(s, conv_id, visitor)
     if s.limiter and visitor:
-        s.limiter.check(visitor)
+        s.limiter.check(visitor, request.client.host if request.client else None)
     fig = _figure_or_404(s, conv["figure_id"])
     limit = max(0, s.cfg.chat.history_messages)
     history = s.db.all(

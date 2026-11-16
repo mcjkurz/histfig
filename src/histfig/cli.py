@@ -126,7 +126,8 @@ def cmd_serve(args) -> None:
     if args.public:
         print(f"  PUBLIC (read-only) mode: visitors can chat but not change anything.\n"
               f"  Their conversations are deleted after {cfg.public.keep_days} days unused; "
-              f"limit {cfg.public.messages_per_hour} messages per hour each.")
+              f"limit {cfg.public.messages_per_hour} messages per hour each, "
+              f"{cfg.public.messages_per_hour_per_ip} per IP address.")
     print("  To stop it: press Ctrl+C here (or close this terminal window).\n")
     if not args.no_browser and not os.environ.get("CODESPACES"):
         threading.Timer(1.5, lambda: webbrowser.open(open_url)).start()

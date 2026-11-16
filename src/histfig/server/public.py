@@ -3,7 +3,8 @@
 Everything that changes figures, documents, prompts or settings is refused;
 visitors can only chat. Each visitor is recognised by an anonymous cookie and
 sees only their own conversations, which are deleted automatically when they
-have not been used for [public] keep_days. Messages are limited per visitor.
+have not been used for [public] keep_days. Messages are limited per visitor and per
+IP address (a script that drops the cookie is a new visitor every time, but not a new IP).
 
 When the server is not public, none of this applies: visitor is None, and the
 owner's conversations are the ones without a visitor.
@@ -54,23 +55,37 @@ async def visitor_cookie(request: Request, call_next):
 
 
 class RateLimiter:
-    """At most `per_hour` messages per visitor in any 60-minute window (in memory)."""
+    """At most `per_hour` messages per visitor and `per_ip` per IP address in any 60-minute
+    window (in memory). A message counts against both, and only if both allow it."""
 
-    def __init__(self, per_hour: int):
-        self.per_hour = per_hour
-        self.sent: dict[str, deque] = defaultdict(deque)
+    SWEEP_EVERY = 1000  # checks between removing visitors and IPs with no recent messages
 
-    def check(self, visitor: str) -> None:
-        if self.per_hour <= 0:
-            return
-        now, window = time.monotonic(), self.sent[visitor]
-        while window and now - window[0] > 3600:
-            window.popleft()
-        if len(window) >= self.per_hour:
-            wait = int((3600 - (now - window[0])) // 60) + 1
-            raise HTTPException(429, f"You have sent {self.per_hour} messages in the last hour. "
-                                     f"Please try again in about {wait} minutes.")
-        window.append(now)
+    def __init__(self, per_hour: int, per_ip: int = 0):
+        self.limits = {"visitor": per_hour, "ip": per_ip}
+        self.sent: dict[tuple[str, str], deque] = defaultdict(deque)
+        self.checks = 0
+
+    def check(self, visitor: str, ip: str | None = None) -> None:
+        now = time.monotonic()
+        self.checks += 1
+        if self.checks % self.SWEEP_EVERY == 0:
+            self.sent = defaultdict(deque, {k: w for k, w in self.sent.items() if w and now - w[-1] <= 3600})
+        windows = []
+        for kind, key in (("visitor", visitor), ("ip", ip)):
+            limit = self.limits[kind]
+            if limit <= 0 or not key:
+                continue
+            window = self.sent[(kind, key)]
+            while window and now - window[0] > 3600:
+                window.popleft()
+            if len(window) >= limit:
+                wait = int((3600 - (now - window[0])) // 60) + 1
+                who = "You have" if kind == "visitor" else "Visitors from your network have"
+                raise HTTPException(429, f"{who} sent {limit} messages in the last hour. "
+                                         f"Please try again in about {wait} minutes.")
+            windows.append(window)
+        for window in windows:
+            window.append(now)
 
 
 def delete_old_visitor_conversations(db: Database, keep_days: int) -> int:

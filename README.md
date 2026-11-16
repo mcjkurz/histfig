@@ -246,7 +246,15 @@ Each visitor (browser) only sees their own conversations.
 [public]                 # in data/config.toml
 keep_days = 14           # visitors' conversations unused this long are deleted automatically
 messages_per_hour = 30   # per visitor, to protect your API budget
+messages_per_hour_per_ip = 300  # per IP address, for everyone behind it together
 ```
+
+The per-IP limit stops someone who keeps clearing the cookie (and so counts as a new visitor every
+time). Everyone on one network, such as a class on a school's Wi-Fi, usually shares one IP address,
+so raise it for a large group (0 = no limit). Behind a web server on the same machine (like the
+Caddy example below), HistFig sees the visitors' real addresses. Behind one on another machine, set
+the environment variable `FORWARDED_ALLOW_IPS` to that machine's address; otherwise all visitors
+count as one IP.
 
 To change something, stop the server, start it without `--public`, make the changes, and restart it
 with `--public`. Your own conversations (made without `--public`) are never shown to visitors or deleted.

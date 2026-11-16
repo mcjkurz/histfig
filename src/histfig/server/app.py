@@ -146,7 +146,7 @@ def create_app(
     async def lifespan(app: FastAPI):
         state = AppState(cfg, data_dir, db, index, embedder, chat,
                          IngestWorker(db, cfg, embedder, index, data_dir / "uploads"), ModelCache(cfg.chat), prefetch_models,
-                         public, RateLimiter(cfg.public.messages_per_hour) if public else None)
+                         public, RateLimiter(cfg.public.messages_per_hour, cfg.public.messages_per_hour_per_ip) if public else None)
         if prefetch_models:
             state.models.prefetch()
         state.uploads_dir.mkdir(parents=True, exist_ok=True)

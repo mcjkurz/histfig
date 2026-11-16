@@ -109,6 +109,33 @@ def test_messages_per_hour(cfg, tmp_path):
         assert c.post(f"/api/conversations/{cid2}/messages", json={"content": "Hi", "documents": "off"}).status_code == 200
 
 
+def test_messages_per_hour_per_ip(cfg, tmp_path):
+    fid, _, _ = prepared(cfg, tmp_path)
+    cfg.public.messages_per_hour, cfg.public.messages_per_hour_per_ip = 2, 3
+    with public_client(cfg, tmp_path) as c:
+        def send_as_new_visitor():  # a script that drops the cookie every time
+            c.cookies.clear()
+            cid = c.post(f"/api/figures/{fid}/conversations", json={}).json()["id"]
+            return c.post(f"/api/conversations/{cid}/messages", json={"content": "Hi", "documents": "off"})
+        assert [send_as_new_visitor().status_code for _ in range(3)] == [200, 200, 200]
+        refused = send_as_new_visitor()
+        assert refused.status_code == 429 and "your network" in refused.json()["detail"]
+
+
+def test_rate_limiter_counts_only_allowed_messages():
+    from histfig.server.public import RateLimiter
+
+    limiter = RateLimiter(per_hour=1, per_ip=5)
+    limiter.check("a", "1.2.3.4")
+    for _ in range(3):  # refused for the visitor: must not use up the IP's allowance
+        try:
+            limiter.check("a", "1.2.3.4")
+        except Exception:
+            pass
+    for v in "bcde":
+        limiter.check(v, "1.2.3.4")  # 5 in all from this IP: still allowed
+
+
 def test_old_visitor_conversations_are_deleted(cfg, tmp_path):
     fid, _, own_conv = prepared(cfg, tmp_path)
     with public_client(cfg, tmp_path) as c:

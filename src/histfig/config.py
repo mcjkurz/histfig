@@ -89,6 +89,7 @@ class PublicConfig:
 
     keep_days: int = 14  # visitors' conversations unused this long are deleted (0 = keep)
     messages_per_hour: int = 30  # per visitor (0 = no limit)
+    messages_per_hour_per_ip: int = 300  # per IP address, shared by everyone behind it (0 = no limit)
 
 
 @dataclass
@@ -272,6 +273,7 @@ agent_steps = {retrieval_agent_steps}
 # Only used with `histfig serve --public` (a read-only server you share with others).
 keep_days = {public_keep_days}                # visitors' conversations unused this long are deleted (0 = keep)
 messages_per_hour = {public_messages_per_hour}       # per visitor (0 = no limit)
+messages_per_hour_per_ip = {public_messages_per_hour_per_ip}  # per IP address, for everyone behind it, e.g. a school network (0 = no limit)
 """
 
 
