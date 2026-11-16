@@ -141,7 +141,7 @@ updating never touches it. To be safe, make a [backup](#backups) first.
 | `uv run histfig setup` | Optional: configure in the terminal instead of the browser |
 | `uv run histfig doctor` | Check that the chat and embedding models respond |
 | `uv run histfig serve --public` | Read-only server to share (see below) |
-| `uv run histfig serve --port 8080 --no-browser` | Start on another port, without opening a browser |
+| `uv run histfig --port 8080 --no-browser` | Start on another port, without opening a browser (`serve` may be left out) |
 
 Use `--data-dir PATH` (or the `HISTFIG_DATA` environment variable) to keep data somewhere other than `./data`.
 

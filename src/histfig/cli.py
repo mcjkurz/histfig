@@ -145,19 +145,23 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="histfig", description="Chat with historical figures, locally.")
     parser.add_argument("--data-dir", type=Path, default=None,
                         help="where config, database and uploads live (default: ./data or $HISTFIG_DATA)")
-    sub = parser.add_subparsers(dest="command")
-    # Plain `histfig` means `histfig serve` with its defaults (set after add_subparsers, which resets it)
-    parser.set_defaults(command="serve", host=None, port=None, no_browser=False, public=False)
-
-    serve = sub.add_parser("serve", help="start the web app (default)")
-    serve.add_argument("--host", default=None)
-    serve.add_argument("--port", type=int, default=None)
-    serve.add_argument("--no-browser", action="store_true", help="don't open a browser window")
-    serve.add_argument("--public", action="store_true",
+    def serve_options(p, default):
+        p.add_argument("--host", default=default)
+        p.add_argument("--port", type=int, default=default)
+        p.add_argument("--no-browser", action="store_true", default=default, help="don't open a browser window")
+        p.add_argument("--public", action="store_true", default=default,
                        help="read-only server to share: visitors can chat, but not change anything")
+
+    # Plain `histfig [options]` means `histfig serve [options]`
+    serve_options(parser, None)
+    sub = parser.add_subparsers(dest="command")
+    parser.set_defaults(command="serve")
+    # SUPPRESS: options given before `serve` are kept instead of reset to the defaults
+    serve_options(sub.add_parser("serve", help="start the web app (default)"), argparse.SUPPRESS)
     sub.add_parser("setup", help="configure in the terminal instead of the browser's Settings page")
     sub.add_parser("doctor", help="check that the configured models respond")
 
     args = parser.parse_args(argv)
+    args.no_browser, args.public = bool(args.no_browser), bool(args.public)
     args.data_dir = (args.data_dir or default_data_dir()).resolve()
     {"serve": cmd_serve, "setup": cmd_setup, "doctor": cmd_doctor}[args.command](args)
