@@ -80,6 +80,16 @@ def _figure_view(s: AppState, fig: dict) -> dict:
     }
 
 
+def _check_not_busy(s: AppState, fig: dict) -> None:
+    """A figure can't be chatted with while its documents are being read or embedded:
+    answers would be based on a half-built index."""
+    row = s.db.one("SELECT COUNT(*) AS n FROM documents WHERE figure_id=? AND status IN ('pending','processing')",
+                   (fig["id"],))
+    if row["n"]:
+        raise HTTPException(409, f"{fig['name']}'s documents are still being processed ({row['n']} left). "
+                                 "Chat is available again when that finishes, or when it is stopped.")
+
+
 # Figures -------------------------------------------------------------------
 
 
@@ -321,6 +331,36 @@ async def retry_document(doc_id: int, s: AppState = Depends(S)):
     return {"ok": True}
 
 
+STOPPED = "Stopped before it finished. Retry to continue, or delete it."
+
+
+@router.post("/figures/{figure_id}/stop", dependencies=EDIT)
+def stop_processing(figure_id: int, s: AppState = Depends(S)):
+    """Stop reading/embedding all of a figure's unfinished documents. The worker drops them at
+    its next step (at most the batch in flight finishes); they stay listed so they can be
+    retried (resuming where they stopped) or deleted."""
+    _figure_or_404(s, figure_id)
+    n = s.db.execute(
+        "UPDATE documents SET status='error', error=? WHERE figure_id=? AND status IN ('pending','processing')",
+        (STOPPED, figure_id),
+    )
+    return {"stopped": n}
+
+
+@router.delete("/figures/{figure_id}/documents/failed", dependencies=EDIT)
+def delete_failed_documents(figure_id: int, s: AppState = Depends(S)):
+    """Delete all of a figure's stopped or failed documents at once."""
+    _figure_or_404(s, figure_id)
+    docs = s.db.all("SELECT * FROM documents WHERE figure_id=? AND status='error'", (figure_id,))
+    for doc in docs:
+        s.db.execute("DELETE FROM documents WHERE id=? AND status='error'", (doc["id"],))
+        document_file(s.uploads_dir, doc).unlink(missing_ok=True)
+    if s.db.one("SELECT 1 FROM documents WHERE figure_id=?", (figure_id,)) is None:
+        s.db.execute("UPDATE figures SET embed_model=NULL, embed_dim=NULL WHERE id=?", (figure_id,))
+    s.index.invalidate(figure_id)
+    return {"deleted": len(docs)}
+
+
 @router.post("/figures/{figure_id}/rebuild", dependencies=EDIT)
 async def rebuild_figure(figure_id: int, s: AppState = Depends(S)):
     _figure_or_404(s, figure_id)
@@ -393,7 +433,7 @@ def list_conversations(figure_id: int, s: AppState = Depends(S), visitor=Depends
 @router.post("/figures/{figure_id}/conversations")
 def create_conversation(figure_id: int, body: ConversationIn, s: AppState = Depends(S),
                         visitor=Depends(current_visitor)):
-    _figure_or_404(s, figure_id)
+    _check_not_busy(s, _figure_or_404(s, figure_id))
     _check_model(s, body)
     prompt_id = _check_prompt(s, body.prompt_id, figure_id)
     ts = now()
@@ -465,9 +505,10 @@ def short_title(text: str, limit: int = 16) -> str:
 async def send_message(conv_id: int, body: MessageIn, request: Request, s: AppState = Depends(S),
                        visitor=Depends(current_visitor)):
     conv = _conversation_or_404(s, conv_id, visitor)
+    fig = _figure_or_404(s, conv["figure_id"])
+    _check_not_busy(s, fig)  # before the rate limit: a refused message doesn't count
     if s.limiter and visitor:
         s.limiter.check(visitor, request.client.host if request.client else None)
-    fig = _figure_or_404(s, conv["figure_id"])
     limit = max(0, s.cfg.chat.history_messages)
     history = s.db.all(
         "SELECT role, content FROM (SELECT * FROM messages WHERE conversation_id=? "

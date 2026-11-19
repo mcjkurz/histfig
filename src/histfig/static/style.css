@@ -80,6 +80,7 @@ button.small, .btn.small { font-size: .85rem; padding: 5px 12px; min-height: 32p
 button.block { display: flex; width: 100%; margin-top: 12px; }
 button:hover, .btn:hover { border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
+.btn.disabled { opacity: .5; pointer-events: none; }
 .primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
 .danger { color: var(--danger); }
 .link { background: none; border: none; padding: 2px 4px; color: var(--muted); min-height: 0; }
@@ -212,6 +213,9 @@ label.btn.small { font-size: .85rem; }
 .composer form { max-width: 780px; margin: 0 auto; display: flex; gap: 8px; align-items: flex-end; }
 .composer textarea { min-height: 44px; max-height: 220px; resize: none; }
 .composer button { min-height: 44px; }
+.model-type-row { gap: 6px; margin: 6px 0; }
+.model-type-row .model-type { flex: 1 1 160px; min-width: 0; width: auto; }
+.composer-lock { max-width: 780px; margin: 8px auto 0; font-size: .9rem; }
 .empty-chat { text-align: center; margin-top: 12vh; color: var(--muted); }
 .empty-chat .avatar { margin: 0 auto 12px; }
 

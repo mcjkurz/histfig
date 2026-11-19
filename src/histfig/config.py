@@ -89,7 +89,7 @@ class PublicConfig:
 
     keep_days: int = 14  # visitors' conversations unused this long are deleted (0 = keep)
     messages_per_hour: int = 30  # per visitor (0 = no limit)
-    messages_per_hour_per_ip: int = 300  # per IP address, shared by everyone behind it (0 = no limit)
+    messages_per_hour_per_ip: int = 600  # per IP address, shared by everyone behind it (0 = no limit)
 
 
 @dataclass

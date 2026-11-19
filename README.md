@@ -246,7 +246,7 @@ Each visitor (browser) only sees their own conversations.
 [public]                 # in data/config.toml
 keep_days = 14           # visitors' conversations unused this long are deleted automatically
 messages_per_hour = 30   # per visitor, to protect your API budget
-messages_per_hour_per_ip = 300  # per IP address, for everyone behind it together
+messages_per_hour_per_ip = 600  # per IP address, for everyone behind it together
 ```
 
 The per-IP limit stops someone who keeps clearing the cookie (and so counts as a new visitor every

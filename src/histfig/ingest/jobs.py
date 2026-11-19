@@ -5,7 +5,8 @@ so an interrupted job resumes where it stopped when the server restarts.
 
 A document is worked on only while its status is 'processing'. If it is reset
 meanwhile (Rebuild index, retry), the current job stops at its next step and
-the document is processed again from the start.
+the document is processed again from the start. If it is stopped (set to 'error'),
+the job simply ends at its next step; queued documents that were stopped are skipped.
 """
 
 from __future__ import annotations
@@ -100,7 +101,11 @@ class IngestWorker:
         if doc is None or doc["status"] in ("ready", "error"):
             return
         figure_id = doc["figure_id"]
-        self.db.execute("UPDATE documents SET status='processing', error=NULL WHERE id=?", (doc_id,))
+        if not self.db.execute(  # only if it wasn't stopped or deleted since we read it
+            "UPDATE documents SET status='processing', error=NULL "
+            "WHERE id=? AND status IN ('pending', 'processing')", (doc_id,)
+        ):
+            return
         self._check_model(figure_id)
 
         if doc["chunk_count"] == 0 and not await self._chunk(doc):

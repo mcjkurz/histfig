@@ -167,6 +167,56 @@ def test_rebuild_while_a_document_is_being_embedded(cfg, tmp_path):
         assert ask(client, fid, "Yangtze river")[0]
 
 
+def test_chat_is_locked_while_processing_and_processing_can_be_stopped(cfg, tmp_path):
+    import asyncio
+
+    class SlowEmbedder(FakeEmbedder):
+        async def _embed(self, texts):
+            await asyncio.sleep(0.05)
+            return await super()._embed(texts)
+
+    embedder = SlowEmbedder()
+    with make_client(cfg, tmp_path, embedder) as client:
+        fid = client.post("/api/figures", json={"name": "Li Bai"}).json()["id"]
+        cid = client.post(f"/api/figures/{fid}/conversations", json={}).json()["id"]
+        client.post(f"/api/figures/{fid}/documents", files=[
+            ("files", (f"poem{i}.txt", f"Poem {i}. ".encode() + (RIVER * 3).encode(), "text/plain"))
+            for i in range(20)
+        ])
+        assert client.get(f"/api/figures/{fid}").json()["working"] > 0
+
+        # Locked: no new conversation, no message (and nothing is saved)
+        assert client.post(f"/api/figures/{fid}/conversations", json={}).status_code == 409
+        r = client.post(f"/api/conversations/{cid}/messages", json={"content": "Hello"})
+        assert r.status_code == 409 and "still being processed" in r.json()["detail"]
+        assert client.get(f"/api/conversations/{cid}").json()["messages"] == []
+
+        stopped = client.post(f"/api/figures/{fid}/stop").json()["stopped"]
+        assert stopped > 0
+        docs = wait_ready(client, fid)
+        calls = embedder.calls
+        time.sleep(0.3)
+        assert embedder.calls <= calls + 1  # at most the batch in flight finishes
+        assert sum(d["status"] == "error" for d in docs) == stopped
+        assert client.get(f"/api/figures/{fid}").json()["working"] == 0
+
+        # Unlocked again
+        assert client.post(f"/api/conversations/{cid}/messages", json={"content": "Hello"}).status_code == 200
+
+        # A stopped document can be retried and continues where it stopped
+        first = next(d for d in docs if d["status"] == "error")
+        client.post(f"/api/documents/{first['id']}/retry")
+        doc = next(d for d in wait_ready(client, fid) if d["id"] == first["id"])
+        assert doc["status"] == "ready" and doc["embedded_count"] == doc["chunk_count"] > 0
+
+        # The rest are deleted at once, files too
+        deleted = client.delete(f"/api/figures/{fid}/documents/failed").json()["deleted"]
+        assert deleted == stopped - 1
+        left = client.get(f"/api/figures/{fid}/documents").json()
+        assert left and all(d["status"] == "ready" for d in left)
+        assert len(list((tmp_path / "uploads" / str(fid)).iterdir())) == len(left)
+
+
 def test_settings_apply_to_the_next_uploads_without_restart(cfg, tmp_path, monkeypatch):
     from histfig.config import save_config
 
